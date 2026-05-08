@@ -4,7 +4,7 @@ The viewer exposes a JavaScript API so any app or page can load trip data direct
 
 ## How it works
 
-1. Open the viewer URL with `?embedded` (`https://darknessbot.ried.no/?embedded`)
+1. Open the viewer URL with `?embedded` (`https://eucviewer.ried.no/?embedded`)
 2. The `?embedded` parameter hides the upload UI immediately — no flash of the file picker
 3. After the page finishes loading, call `window.loadFileFromBase64()` to inject trip data
 4. The viewer parses the data client-side and displays it on the map

@@ -438,7 +438,7 @@ document.addEventListener("DOMContentLoaded", function () {
   const tripList = document.getElementById("trip-list");
   const tripDetail = document.getElementById("trip-detail");
   const parserWorker = createParserWorker();
-  const RECENT_DB_NAME = "darknessbot-trip-viewer";
+  const RECENT_DB_NAME = "eucplanet-trip-viewer";
   const RECENT_STORE_NAME = "recentFiles";
   const SESSION_STORE_NAME = "currentSession";
   const SESSION_KEY = "tracks";
@@ -1745,7 +1745,7 @@ document.addEventListener("DOMContentLoaded", function () {
       if (!allTracks.length) {
         const hint = document.createElement("div");
         hint.style.cssText = "color:#888;font-size:13px;margin-top:12px;text-align:center;";
-        hint.innerHTML = 'Waiting for file&hellip; see <a href="https://github.com/eried/darknessbot/blob/main/INTEGRATION.md" target="_blank" style="color:#4FC3F7;">INTEGRATION.md</a> on GitHub';
+        hint.innerHTML = 'Waiting for file&hellip; see <a href="https://github.com/eried/eucviewer/blob/main/INTEGRATION.md" target="_blank" style="color:#4FC3F7;">INTEGRATION.md</a> on GitHub';
         uploadBox.appendChild(hint);
       }
     }, 5000);

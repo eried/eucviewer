@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Notes for Claude (project context)
 
-This repo is the **GitHub Pages deployment target** for the DarknessBot Trip Viewer.
+This repo is the **GitHub Pages deployment target** for the EUC Planet Trip Viewer.
 The *working / development* repo is at `D:\GitHub\darknessbot-trip-viewer\` (FastAPI scaffold
 remnants + `web/` assets). Historically that repo was deployed as a Python server; it has since
 been converted to fully client-side, with the static assets living under `web/`.
@@ -34,13 +34,13 @@ sync unless told otherwise.
 - `parser-worker.js` is a Web Worker (uses `importScripts` for JSZip). Parses `.dbb`/`.csv`
   off-thread and streams `progress` / `track` / `done` / `error` messages.
 - `inspector.html` + `inspector.js` is a standalone page. It reads the `?i=<index>` query param,
-  fetches tracks from IndexedDB (store `darknessbot-trip-viewer/currentSession` key `"tracks"`),
+  fetches tracks from IndexedDB (store `eucplanet-trip-viewer/currentSession` key `"tracks"`),
   falls back to `localStorage["dbb_tracks"]`, then drives a MapLibre terrain map + 5 canvas
   charts + SVG dashboard + playback loop.
 
 ## Storage keys (must match between app.js and inspector.js)
 
-- IndexedDB database: `darknessbot-trip-viewer` (version 2)
+- IndexedDB database: `eucplanet-trip-viewer` (version 2)
   - object store `recentFiles` (keyPath `id`) — up to 5 recent uploads with full `tracks` array
   - object store `currentSession` (no keyPath; key `"tracks"`) — the most recently displayed
     `allTracks` array. **This is what the inspector reads.**
