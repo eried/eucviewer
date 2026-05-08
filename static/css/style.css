@@ -57,7 +57,7 @@ body, html {
     max-width: 420px;
     padding: 3rem;
 }
-#upload-icon { font-size: 4rem; margin-bottom: 1rem; }
+#upload-icon { width: 5rem; height: 5rem; margin: 0 auto 1rem; display: block; }
 #upload-box h1 { font-size: 1.6rem; margin-bottom: 0.5rem; color: #fff; font-weight: 300; text-align: center; line-height: 1.4; }
 #upload-box h1 strong { font-weight: 700; }
 #app-link { color: #fff; text-decoration: none; }
