@@ -63,6 +63,16 @@ body, html {
 #app-link { color: #fff; text-decoration: none; }
 #app-link:hover { color: #00e5ff; }
 
+#upload-hint {
+    font-size: 0.82rem;
+    color: rgba(224, 224, 224, 0.65);
+    line-height: 1.5;
+    margin: 0.25rem 0 1.25rem;
+}
+#upload-hint p + p { margin-top: 0.6rem; }
+#upload-hint .upload-hint-aside { font-size: 0.76rem; opacity: 0.75; }
+#upload-hint strong { color: #e0e0e0; font-weight: 600; }
+
 #upload-label {
     display: inline-block;
     padding: 0.75rem 2rem;

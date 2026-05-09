@@ -6,7 +6,7 @@
     <title>EUC Planet Trip Viewer</title>
     <link rel="icon" href="static/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="static/css/style.css?v=18" />
+    <link rel="stylesheet" href="static/css/style.css?v=20" />
 </head>
 <body>
     <div id="map"></div>
@@ -14,7 +14,11 @@
     <div id="upload-overlay">
         <div id="upload-box">
             <img id="upload-icon" src="static/favicon.svg" alt="" />
-            <h1><strong>EUC Planet</strong> Trip Viewer</h1>
+            <h1><a id="app-link" href="https://eucplanet.ried.no/" target="_blank" rel="noopener"><strong>EUC Planet</strong></a> Trip Viewer</h1>
+            <div id="upload-hint">
+                <p>In EUC Planet, open <strong>Trips</strong> and share a ride (.csv), or pick <strong>Export all</strong> from the top-right menu (.dbb).</p>
+                <p class="upload-hint-aside">Exports from other apps like DarknessBot also work.</p>
+            </div>
             <label id="upload-label" for="file-input">
                 .dbb / .csv file
                 <input type="file" id="file-input" accept=".dbb,.csv" />
