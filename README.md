@@ -1,4 +1,4 @@
-# EUC Planet Trip Viewer
+# DarknessBot Trip Viewer
 
 Fully client-side web viewer for DarknessBot scooter trip logs (`.dbb` / `.csv`).
 Runs as static pages, no backend.
@@ -25,7 +25,7 @@ External libraries (all loaded from CDN):
 
 ## Data storage
 
-- **IndexedDB** `eucplanet-trip-viewer` — primary storage
+- **IndexedDB** `darknessbot-trip-viewer` — primary storage
   - `recentFiles` store: up to 5 recently uploaded files with their parsed tracks
   - `currentSession` store: last-loaded `allTracks` array (key `"tracks"`)
 - **localStorage** `dbb_tracks` — fallback/fast cache for small datasets (silently fails over quota)

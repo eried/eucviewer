@@ -4,7 +4,7 @@ The viewer exposes a JavaScript API so any app or page can load trip data direct
 
 ## How it works
 
-1. Open the viewer URL with `?embedded` (`https://eucviewer.ried.no/?embedded`)
+1. Open the viewer URL with `?embedded` (`https://trips.darknessproduction.com/?embedded`)
 2. The `?embedded` parameter hides the upload UI immediately — no flash of the file picker
 3. After the page finishes loading, call `window.loadFileFromBase64()` to inject trip data
 4. The viewer parses the data client-side and displays it on the map
@@ -12,7 +12,7 @@ The viewer exposes a JavaScript API so any app or page can load trip data direct
 ## File formats
 
 - **`.dbb`** — a ZIP archive containing one or more `.csv` files. Each CSV becomes a separate trip on the map.
-- **`.csv`** — a single trip log with columns: `Date, Speed, Voltage, Temperature, Battery level, Altitude, Latitude, Longitude, Total mileage`. Both DarknessBot (European date `DD.MM.YYYY HH:mm:ss`) and EUC World (ISO `YYYY-MM-DDTHH:mm:ss`) formats are supported.
+- **`.csv`** — a single trip log with columns: `Date, Speed, Voltage, Temperature, Battery level, Altitude, Latitude, Longitude, Total mileage`.
 
 ## JavaScript API
 
