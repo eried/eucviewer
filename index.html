@@ -6,7 +6,7 @@
     <title>DarknessBot Trip Viewer</title>
     <link rel="icon" href="static/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="static/css/style.css?v=21" />
+    <link rel="stylesheet" href="static/css/style.css?v=20" />
 </head>
 <body>
     <div id="map"></div>
@@ -22,7 +22,6 @@
                 .dbb / .csv file
                 <input type="file" id="file-input" accept=".dbb,.csv" />
             </label>
-            <button type="button" id="about-button">About</button>
             <div id="progress-area" class="hidden">
                 <div id="progress-bar"><div id="progress-fill"></div></div>
                 <div id="progress-text"></div>
@@ -49,15 +48,6 @@
         </a>
         <span id="page-version" title="HTML last-modified date (auto-updated on deploy)"></span>
     </div>
-    <div id="about-modal" class="hidden" role="dialog" aria-modal="true" aria-labelledby="about-title">
-        <div id="about-card">
-            <button type="button" id="about-close" aria-label="Close About">&times;</button>
-            <h2 id="about-title">About</h2>
-            <p>This is an open-source project for viewing trip exports from the DarknessBot app.</p>
-            <p>It is a fork of <a href="https://github.com/eried/eucviewer" target="_blank" rel="noopener">eried/eucviewer</a>.</p>
-            <p>Thanks to Erwin Ried for creating the original viewer!</p>
-        </div>
-    </div>
     <script>
         (function(){
             var d = new Date(document.lastModified);
@@ -65,16 +55,6 @@
                 ? document.lastModified
                 : d.toISOString().slice(0, 16).replace('T', ' ');
             document.getElementById('page-version').textContent = 'build ' + iso;
-        })();
-        (function(){
-            var modal = document.getElementById('about-modal');
-            var openBtn = document.getElementById('about-button');
-            var closeBtn = document.getElementById('about-close');
-            function closeAbout() { modal.classList.add('hidden'); }
-            openBtn.addEventListener('click', function(){ modal.classList.remove('hidden'); });
-            closeBtn.addEventListener('click', closeAbout);
-            modal.addEventListener('click', function(e){ if (e.target === modal) closeAbout(); });
-            document.addEventListener('keydown', function(e){ if (e.key === 'Escape') closeAbout(); });
         })();
     </script>
 
