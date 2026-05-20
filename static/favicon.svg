@@ -1,22 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108">
-  <defs>
-    <radialGradient id="glow" cx="54" cy="54" r="46" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#0091EA" stop-opacity="0.5"/>
-      <stop offset="1" stop-color="#0277BD"/>
-    </radialGradient>
-    <radialGradient id="ring" cx="54" cy="54" r="38" gradientUnits="userSpaceOnUse">
-      <stop offset="0.55" stop-color="#01579B"/>
-      <stop offset="0.75" stop-color="#00B0FF"/>
-      <stop offset="1.0" stop-color="#4FC3F7"/>
-    </radialGradient>
-    <radialGradient id="core" cx="50" cy="48" r="22" gradientUnits="userSpaceOnUse">
-      <stop offset="0.0" stop-color="#EEFFFF"/>
-      <stop offset="0.3" stop-color="#80DEEA"/>
-      <stop offset="0.6" stop-color="#00B0FF"/>
-      <stop offset="1.0" stop-color="#01579B"/>
-    </radialGradient>
-  </defs>
-  <path d="M54,12 A42,42 0,1,1 53.99,12 Z M54,20 A34,34 0,1,0 54.01,20 Z" fill="url(#glow)" fill-rule="evenodd"/>
-  <path d="M54,16 A38,38 0,1,1 53.99,16 Z M54,30 A24,24 0,1,0 54.01,30 Z" fill="url(#ring)" fill-rule="evenodd"/>
-  <circle cx="54" cy="54" r="20" fill="url(#core)"/>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" version="1.1" width="140" height="140" viewBox="0 0 140 140">
+<defs>
+<clipPath id="clip_1">
+<path transform="matrix(1,0,0,-1,0,140)" d="M70.5 15.5C99.49495 15.5 123 39.00505 123 68 123 96.99495 99.49495 120.5 70.5 120.5 41.50505 120.5 18 96.99495 18 68 18 39.00505 41.50505 15.5 70.5 15.5ZM70 1.5C32.99692 1.5 3 31.49692 3 68.5 3 105.5031 32.99692 135.5 70 135.5 107.0031 135.5 137 105.5031 137 68.5 137 31.49692 107.0031 1.5 70 1.5ZM70.5 27.5C92.86753 27.5 111 45.63247 111 68 111 90.36753 92.86753 108.5 70.5 108.5 48.13247 108.5 30 90.36753 30 68 30 45.63247 48.13247 27.5 70.5 27.5ZM28.54391 120.9777C39.32667 129.8113 51.75137 135.276 65.81801 137.3718 86.91797 140.5155 109.8575 134.3867 112.6272 132.6205 111.818 127.1238 104.3851 125.0661 95.35578 124.9103 91.69217 124.847 81.90619 125.6047 65.99784 127.1832L28.54391 120.9777Z"/>
+</clipPath>
+<clipPath id="clip_2">
+<path transform="matrix(1,0,0,-1,0,140)" d="M0 0H140V140H0Z"/>
+</clipPath>
+</defs>
+<g clip-path="url(#clip_1)">
+<g clip-path="url(#clip_2)">
+<path transform="matrix(1,0,0,-1,0,140)" d="M-2-3.5H142V143.2544H-2Z" fill="#f6f6f6"/>
+</g>
+</g>
 </svg>

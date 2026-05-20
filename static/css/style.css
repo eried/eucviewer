@@ -87,6 +87,26 @@ body, html {
 #upload-label:hover { background: #00b8d4; }
 #upload-label input { display: none; }
 
+#about-button {
+    display: block;
+    margin: 0.85rem auto 0;
+    border: 1px solid rgba(0, 229, 255, 0.22);
+    background: rgba(255, 255, 255, 0.04);
+    color: #00e5ff;
+    border-radius: 8px;
+    padding: 0.55rem 1.25rem;
+    font: inherit;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+#about-button:hover {
+    background: rgba(0, 229, 255, 0.08);
+    border-color: rgba(0, 229, 255, 0.45);
+    color: #fff;
+}
+
 /* Progress */
 #progress-area { margin-top: 1.5rem; }
 
@@ -717,6 +737,70 @@ body, html {
 }
 
 .hidden { display: none !important; }
+
+#about-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1300;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    background: rgba(0, 0, 0, 0.62);
+    backdrop-filter: blur(8px);
+}
+
+#about-card {
+    position: relative;
+    width: min(92vw, 390px);
+    padding: 26px 28px 24px;
+    color: #d9e6ea;
+    text-align: left;
+    background: rgba(10, 10, 15, 0.96);
+    border: 1px solid rgba(0, 229, 255, 0.18);
+    border-radius: 8px;
+    box-shadow: 0 18px 60px rgba(0, 0, 0, 0.45);
+}
+
+#about-card h2 {
+    margin-bottom: 0.85rem;
+    color: #fff;
+    font-size: 1.1rem;
+    font-weight: 700;
+}
+
+#about-card p {
+    color: rgba(217, 230, 234, 0.78);
+    font-size: 0.88rem;
+    line-height: 1.5;
+}
+
+#about-card p + p { margin-top: 0.7rem; }
+
+#about-card a {
+    color: #00e5ff;
+    text-decoration: none;
+}
+#about-card a:hover { color: #fff; }
+
+#about-close {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 30px;
+    height: 30px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: rgba(217, 230, 234, 0.65);
+    font-size: 1.35rem;
+    line-height: 1;
+    cursor: pointer;
+}
+#about-close:hover {
+    background: rgba(0, 229, 255, 0.08);
+    color: #fff;
+}
 
 /* Page footer (GitHub link + build version) */
 #page-footer {
