@@ -13,6 +13,13 @@ document.addEventListener("DOMContentLoaded", function () {
   const topoLayer = L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", {
     maxZoom: 17,
   });
+  const MAP_LAYER_KEY = "dbb_map_layer";
+  const baseLayers = { "Standard": standardLayer, "Dark": darkLayer, "Satellite": satelliteLayer, "Topo": topoLayer };
+  let selectedBaseLayerName = "Standard";
+  try {
+    const savedLayerName = localStorage.getItem(MAP_LAYER_KEY);
+    if (savedLayerName && baseLayers[savedLayerName]) selectedBaseLayerName = savedLayerName;
+  } catch (_) {}
   let glowLayer;
 
   const map = L.map("map", {
@@ -21,10 +28,13 @@ document.addEventListener("DOMContentLoaded", function () {
     zoomControl: false,
     preferCanvas: true,
     zoomSnap: 1,
-    layers: [standardLayer],
+    layers: [baseLayers[selectedBaseLayerName]],
   });
+  map.getContainer().classList.toggle("dark-tiles", selectedBaseLayerName === "Dark");
 
   map.on("baselayerchange", function (e) {
+    selectedBaseLayerName = e.name;
+    try { localStorage.setItem(MAP_LAYER_KEY, selectedBaseLayerName); } catch (_) {}
     if (e.name === "Dark") {
       map.getContainer().classList.add("dark-tiles");
     } else {
@@ -35,7 +45,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
   L.control.zoom({ position: "bottomleft" }).addTo(map);
   L.control.layers(
-    { "Standard": standardLayer, "Dark": darkLayer, "Satellite": satelliteLayer, "Topo": topoLayer },
+    baseLayers,
     null,
     { position: "bottomleft" }
   ).addTo(map);
@@ -180,6 +190,13 @@ document.addEventListener("DOMContentLoaded", function () {
         { width: 4,  alpha: 0.5,  color: "255,200,50" },
         { width: 2,  alpha: 0.9,  color: "255,240,180" },
       ];
+      const fuchsiaAlphaPasses = [
+        { width: 16, alpha: 0.02, color: "230, 0, 126" },
+        { width: 10, alpha: 0.04, color: "230, 0, 126" },
+        { width: 6,  alpha: 0.08, color: "230, 0, 126" },
+        { width: 3,  alpha: 0.16, color: "230, 0, 126" },
+        { width: 2,  alpha: 0.3, color: "230, 0, 126" },
+      ];
       const fuchsiaPasses = [
         { width: 16, alpha: 0.08, color: "230, 0, 126" },
         { width: 10, alpha: 0.16, color: "230, 0, 126" },
@@ -188,7 +205,9 @@ document.addEventListener("DOMContentLoaded", function () {
         { width: 2,  alpha: 0.95, color: "230, 0, 126" },
       ];
 
-      const basePasses = cyanPasses.map((p) => ({
+      const isLightMap = map.hasLayer(standardLayer) || map.hasLayer(topoLayer);
+      const basePassSource = isLightMap ? fuchsiaAlphaPasses : cyanPasses;
+      const basePasses = basePassSource.map((p) => ({
         ...p, alpha: sel >= 0 ? p.alpha * 0.3 : p.alpha,
       }));
 
@@ -248,7 +267,6 @@ document.addEventListener("DOMContentLoaded", function () {
               }
             }
           } else {
-            const isLightMap = map.hasLayer(standardLayer) || map.hasLayer(topoLayer);
             const selectedPasses = isLightMap ? fuchsiaPasses : orangePasses;
             for (const pass of selectedPasses) {
               ctx.strokeStyle = `rgba(${pass.color},${pass.alpha})`;
