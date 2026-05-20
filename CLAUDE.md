@@ -1,8 +1,8 @@
-# AGENTS.md
+# CLAUDE.md
 
-This file provides guidance to agents when working with code in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Notes for agents (project context)
+## Notes for Claude (project context)
 
 This repo is the **GitHub Pages deployment target** for the EUC Planet Trip Viewer.
 The *working / development* repo is at `D:\GitHub\darknessbot-trip-viewer\` (FastAPI scaffold

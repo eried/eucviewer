@@ -11,7 +11,7 @@
     errorBanner.classList.remove("hidden");
   }
 
-  const RECENT_DB_NAME = "darknessbot-trip-viewer";
+  const RECENT_DB_NAME = "eucplanet-trip-viewer";
   const SESSION_STORE_NAME = "currentSession";
   const SESSION_KEY = "tracks";
 
