@@ -100,6 +100,9 @@ function parseCsvText(text, name) {
     const temp = safeFloat(row.Temperature);
     const batt = safeFloat(row["Battery level"]);
     const alt = safeFloat(row.Altitude);
+    const pwm = safeFloat(row.PWM);
+    const current = safeFloat(row.Current);
+    const power = safeFloat(row.Power);
     const lat = safeFloat(row.Latitude);
     const lon = safeFloat(row.Longitude);
     const date = row.Date || "";
@@ -140,6 +143,9 @@ function parseCsvText(text, name) {
       hasGps ? roundTo(lat, 6) : 0,
       hasGps ? roundTo(lon, 6) : 0,
       roundTo(mileageDelta, 3),
+      roundTo(pwm, 1),
+      roundTo(current, 1),
+      roundTo(power, 0),
     ]);
 
     if (speed > 0) speeds.push(speed);
@@ -156,6 +162,9 @@ function parseCsvText(text, name) {
         roundTo(volt, 1),
         roundTo(temp, 1),
         roundTo(batt, 1),
+        roundTo(pwm, 1),
+        roundTo(current, 1),
+        roundTo(power, 0),
       ]);
     }
   }

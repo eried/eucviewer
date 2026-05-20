@@ -6,7 +6,7 @@
     <title>Trip Inspector &mdash; EUC Planet</title>
     <link rel="icon" href="static/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
-    <link rel="stylesheet" href="static/css/inspector.css?v=8" />
+    <link rel="stylesheet" href="static/css/inspector.css?v=9" />
 </head>
 <body>
     <div id="inspector">
@@ -84,6 +84,9 @@
                             <select id="color-select">
                                 <option value="solid" selected>Solid</option>
                                 <option value="speed">Speed</option>
+                                <option value="pwm">PWM</option>
+                                <option value="power">Power</option>
+                                <option value="current">Current</option>
                                 <option value="battery">Battery</option>
                                 <option value="voltage">Voltage</option>
                                 <option value="temp">Temp</option>
@@ -129,6 +132,18 @@
                     <div class="chart-header"><span class="chart-swatch"></span><span class="chart-label">Speed</span><span class="chart-reading" data-reading></span></div>
                     <canvas></canvas>
                 </div>
+                <div class="chart-block" data-key="pwm">
+                    <div class="chart-header"><span class="chart-swatch"></span><span class="chart-label">PWM</span><span class="chart-reading" data-reading></span></div>
+                    <canvas></canvas>
+                </div>
+                <div class="chart-block" data-key="power">
+                    <div class="chart-header"><span class="chart-swatch"></span><span class="chart-label">Power</span><span class="chart-reading" data-reading></span></div>
+                    <canvas></canvas>
+                </div>
+                <div class="chart-block" data-key="current">
+                    <div class="chart-header"><span class="chart-swatch"></span><span class="chart-label">Current</span><span class="chart-reading" data-reading></span></div>
+                    <canvas></canvas>
+                </div>
                 <div class="chart-block" data-key="battery">
                     <div class="chart-header"><span class="chart-swatch"></span><span class="chart-label">Battery</span><span class="chart-reading" data-reading></span></div>
                     <canvas></canvas>
@@ -172,6 +187,6 @@
     </div>
 
     <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-    <script src="static/js/inspector.js?v=22"></script>
+    <script src="static/js/inspector.js?v=28"></script>
 </body>
 </html>

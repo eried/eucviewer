@@ -57,10 +57,12 @@
     return;
   }
 
-  // Timeseries layout: [sec, speed, voltage, temp, battery, altitude, lat, lon, mileageKm]
+  // Timeseries layout: [sec, speed, voltage, temp, battery, altitude, lat, lon, mileageKm, pwm, current, power]
   const SEC = 0, SPD = 1, VOLT = 2, TEMP = 3, BATT = 4, ALT = 5, LAT = 6, LON = 7, MILEAGE = 8;
+  const PWM = 9, CURRENT = 10, POWER = 11;
   // Points layout: [lat, lon, speed, alt, volt, temp, battery]
   const P_LAT = 0, P_LON = 1, P_SPD = 2, P_ALT = 3, P_VOLT = 4, P_TEMP = 5, P_BATT = 6;
+  const P_PWM = 7, P_CURRENT = 8, P_POWER = 9;
 
   const duration = ts[ts.length - 1][SEC] - ts[0][SEC];
   const t0 = ts[0][SEC];
@@ -140,7 +142,7 @@
   let routePoints = Array.isArray(track.points) ? track.points.filter((p) => p[P_LAT] !== 0 && p[P_LON] !== 0) : [];
   if (routePoints.length < 2) {
     // Fallback for legacy payloads: reconstruct route from timeseries GPS rows.
-    routePoints = gpsPoints.map((r) => [r[LAT], r[LON], r[SPD], r[ALT], r[VOLT], r[TEMP], r[BATT]]);
+    routePoints = gpsPoints.map((r) => [r[LAT], r[LON], r[SPD], r[ALT], r[VOLT], r[TEMP], r[BATT], r[PWM], r[CURRENT], r[POWER]]);
   }
   const hasGps = routePoints.length > 1;
 
@@ -186,11 +188,14 @@
 
   // Color-by configs: invert=true means high value is "good" (green end of palette).
   const COLOR_MODES = {
-    speed:    { pointIdx: P_SPD,  unit: "km/h", invert: false },
-    battery:  { pointIdx: P_BATT, unit: "%",    invert: true  },
-    voltage:  { pointIdx: P_VOLT, unit: "V",    invert: true  },
-    temp:     { pointIdx: P_TEMP, unit: "\u00b0C", invert: false },
-    altitude: { pointIdx: P_ALT,  unit: "m",    invert: false }
+    speed:    { pointIdx: P_SPD,     unit: "km/h", invert: false },
+    pwm:      { pointIdx: P_PWM,     unit: "%",    invert: false },
+    power:    { pointIdx: P_POWER,   unit: "W",    invert: false },
+    current:  { pointIdx: P_CURRENT, unit: "A",    invert: false },
+    battery:  { pointIdx: P_BATT,    unit: "%",    invert: true  },
+    voltage:  { pointIdx: P_VOLT,    unit: "V",    invert: true  },
+    temp:     { pointIdx: P_TEMP,    unit: "\u00b0C", invert: false },
+    altitude: { pointIdx: P_ALT,     unit: "m",    invert: false }
   };
   // Palette low → high; inverted modes reverse stops.
   const PALETTE = ["#2962ff", "#00e5ff", "#69f0ae", "#ffeb3b", "#ff5252"];
@@ -310,7 +315,10 @@
     }
     if (tot <= 0) return null;
     const expr = ["interpolate", ["linear"], ["line-progress"]];
-    const step = Math.max(1, Math.floor((end + 1) / 150));
+    // Downsample against the FULL route length, not the growing traveled
+    // length — a constant step keeps the same vertices carrying colour stops
+    // every frame, so the drawn trail's colours don't re-sample as it grows.
+    const step = Math.max(1, Math.floor(coords.length / 150));
     let lastP = -1;
     for (let i = 0; i <= end; i += step) {
       const p = cum[i] / tot;
@@ -427,6 +435,27 @@
     if (solid && currentTraceMode === "trail-dynamic") {
       currentTraceMode = "trail-fixed";
       sel.value = "trail-fixed";
+    }
+  }
+
+  // Greys out trace-colour options that have no chart — i.e. metrics this trip
+  // carries no data for — so the colour picker matches the charts shown.
+  // Falls back to Solid if the active colour becomes unavailable.
+  function syncColorSelectOptions() {
+    const sel = document.getElementById("color-select");
+    if (!sel) return;
+    for (const opt of sel.options) {
+      const key = opt.value;
+      if (key === "solid") { opt.disabled = false; continue; }
+      const block = document.querySelector(`.chart-block[data-key="${key}"]`);
+      opt.disabled = !block || block.classList.contains("hidden");
+    }
+    if (currentColorMode !== "solid") {
+      const active = sel.querySelector(`option[value="${currentColorMode}"]`);
+      if (active && active.disabled) {
+        currentColorMode = "solid";
+        sel.value = "solid";
+      }
     }
   }
 
@@ -574,6 +603,7 @@
           controls.classList.toggle("collapsed");
         });
       }
+      syncColorSelectOptions();
       syncTraceModeOptions();
       applyTrace();
 
@@ -586,18 +616,37 @@
 
   // ---------- Charts ----------
   const CHART_CONFIG = {
-    speed:    { color: "#00e5ff", idx: SPD,  unit: " km/h" },
-    voltage:  { color: "#ff5252", idx: VOLT, unit: " V" },
-    temp:     { color: "#ffa000", idx: TEMP, unit: " \u00b0C" },
-    battery:  { color: "#69f0ae", idx: BATT, unit: " %" },
-    altitude: { color: "#ce93d8", idx: ALT,  unit: " m" },
+    speed:    { color: "#00e5ff", idx: SPD,     unit: " km/h" },
+    pwm:      { color: "#ff4081", idx: PWM,     unit: " %" },
+    power:    { color: "#7c4dff", idx: POWER,   unit: " W" },
+    current:  { color: "#ffd740", idx: CURRENT, unit: " A" },
+    voltage:  { color: "#ff5252", idx: VOLT,    unit: " V" },
+    temp:     { color: "#ffa000", idx: TEMP,    unit: " \u00b0C" },
+    battery:  { color: "#69f0ae", idx: BATT,    unit: " %" },
+    altitude: { color: "#ce93d8", idx: ALT,     unit: " m" },
   };
+
+  // PWM / Current / Power only exist on some wheels \u2014 hide a chart when the
+  // trip carries no data for it (incl. legacy cached tracks without the column).
+  const OPTIONAL_CHARTS = new Set(["pwm", "current", "power"]);
+  function chartHasData(idx) {
+    for (let i = 0; i < ts.length; i++) {
+      const v = ts[i][idx];
+      if (typeof v === "number" && v !== 0) return true;
+    }
+    return false;
+  }
 
   const chartBlocks = document.querySelectorAll(".chart-block");
   const charts = [];
   chartBlocks.forEach(block => {
     const key = block.dataset.key;
     const cfg = CHART_CONFIG[key];
+    if (!cfg) return;
+    if (OPTIONAL_CHARTS.has(key) && !chartHasData(cfg.idx)) {
+      block.classList.add("hidden");
+      return;
+    }
     const canvas = block.querySelector("canvas");
     const reading = block.querySelector("[data-reading]");
     charts.push({ key, cfg, canvas, reading, block });
@@ -838,8 +887,10 @@
         const markerPos = [lerp(a[0], b[0], routeFrac), lerp(a[1], b[1], routeFrac)];
         riderMarker.setLngLat(markerPos);
 
+        // Trail ends exactly on coords[currentRouteIdx] — no interpolated marker
+        // point — so the gradient's line-progress matches the geometry and the
+        // colours stay pinned to the ground instead of crawling each frame.
         const traveled = coords.slice(0, currentRouteIdx + 1);
-        if (b !== a) traveled.push(markerPos);
         if (traveled.length >= 2) {
           map.getSource("traveled").setData({
             type: "Feature", geometry: { type: "LineString", coordinates: traveled }

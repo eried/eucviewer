@@ -262,6 +262,9 @@ html, body {
 .chart-block[data-key="temp"]     .chart-swatch { background: #ffa000; }
 .chart-block[data-key="battery"]  .chart-swatch { background: #69f0ae; }
 .chart-block[data-key="altitude"] .chart-swatch { background: #ce93d8; }
+.chart-block[data-key="pwm"]      .chart-swatch { background: #ff4081; }
+.chart-block[data-key="power"]    .chart-swatch { background: #7c4dff; }
+.chart-block[data-key="current"]  .chart-swatch { background: #ffd740; }
 
 .chart-block canvas {
     flex: 1;

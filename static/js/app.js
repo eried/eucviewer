@@ -112,6 +112,9 @@ document.addEventListener("DOMContentLoaded", function () {
   const PAINT_METRICS = {
     distance: { pointIdx: -1 },
     speed:    { pointIdx: 2 },
+    pwm:      { pointIdx: 7 },
+    power:    { pointIdx: 9 },
+    current:  { pointIdx: 8 },
     battery:  { pointIdx: 6 },
     voltage:  { pointIdx: 4 },
     temp:     { pointIdx: 5 },
@@ -280,7 +283,39 @@ document.addEventListener("DOMContentLoaded", function () {
   glowLayer = new GlowLayer();
   glowLayer.addTo(map);
 
+  // Greys out trace-colour options the selected trip has no data for.
+  function updateTraceColorOptions() {
+    const sel = document.getElementById("trace-color-select");
+    if (!sel) return;
+    const track = selectedIdx >= 0 ? allTracks[selectedIdx] : null;
+    for (const opt of sel.options) {
+      const key = opt.value;
+      if (key === "solid") { opt.disabled = false; continue; }
+      let hasData = false;
+      if (track && track.points && track.points.length) {
+        if (key === "distance") {
+          hasData = true;
+        } else {
+          const m = PAINT_METRICS[key];
+          if (m) {
+            for (const p of track.points) {
+              const v = p[m.pointIdx];
+              if (typeof v === "number" && v !== 0) { hasData = true; break; }
+            }
+          }
+        }
+      }
+      opt.disabled = !hasData;
+    }
+    const active = sel.querySelector(`option[value="${traceColor}"]`);
+    if (traceColor !== "solid" && active && active.disabled) {
+      traceColor = "solid";
+      sel.value = "solid";
+    }
+  }
+
   function updateGlow() {
+    updateTraceColorOptions();
     const latLngs = allTracks.map((t) => t.points.map((p) => L.latLng(p[0], p[1])));
     glowLayer.setData(latLngs, selectedIdx);
     glowLayer.setVisible(trackVisible);
@@ -301,9 +336,19 @@ document.addEventListener("DOMContentLoaded", function () {
       } else {
         values = pts.map((p) => p[metric.pointIdx]);
         min = Infinity; max = -Infinity;
-        for (const v of values) { if (v < min) min = v; if (v > max) max = v; }
+        for (const v of values) {
+          if (typeof v !== "number") continue;
+          if (v < min) min = v;
+          if (v > max) max = v;
+        }
         colorFn = heatColor;
         legMin = min; legMax = max;
+      }
+      if (!isFinite(min) || !isFinite(max) || min === max) {
+        // Metric absent for this trip (legacy track or an empty column).
+        glowLayer.setPaint(null);
+        updateTraceLegend(null);
+        return;
       }
       glowLayer.setPaint({ trackIdx: selectedIdx, values, min, max, span: max - min, colorFn });
       updateTraceLegend(traceColor, legMin, legMax);
@@ -332,7 +377,7 @@ document.addEventListener("DOMContentLoaded", function () {
     if (glowLayer) glowLayer.redraw();
   }
 
-  const TRACE_UNITS = { speed: "km/h", battery: "%", voltage: "V", temp: "°C", altitude: "m", distance: "km" };
+  const TRACE_UNITS = { speed: "km/h", pwm: "%", power: "W", current: "A", battery: "%", voltage: "V", temp: "°C", altitude: "m", distance: "km" };
   const legendEl = document.getElementById("color-legend");
   function legendGradientCss(key) {
     // distance → distanceColor ramp; metrics → heatColor ramp.
@@ -416,10 +461,16 @@ document.addEventListener("DOMContentLoaded", function () {
     const volt = bestPt[4] || 0;
     const temp = bestPt[5] || 0;
     const batt = bestPt[6] || 0;
+    const pwm = bestPt[7] || 0;
+    const current = bestPt[8] || 0;
+    const power = bestPt[9] || 0;
     const cumKm = getCumDistPts(allTracks[selectedIdx])[bestIdx] || 0;
 
     let html = `<i class="clr" style="background:${"#66bb6a"}"></i>Dist: <b>${cumKm.toFixed(2)}</b> km`;
     html += `<br><i class="clr" style="background:#00e5ff"></i>Speed: <b>${speed.toFixed(1)}</b> km/h`;
+    if (pwm)     html += `<br><i class="clr" style="background:#ff4081"></i>PWM: <b>${pwm.toFixed(1)}</b> %`;
+    if (power)   html += `<br><i class="clr" style="background:#7c4dff"></i>Power: <b>${power.toFixed(0)}</b> W`;
+    if (current) html += `<br><i class="clr" style="background:#ffd740"></i>Current: <b>${current.toFixed(1)}</b> A`;
     if (volt) html += `<br><i class="clr" style="background:#ff5252"></i>Voltage: <b>${volt.toFixed(1)}</b> V`;
     if (temp) html += `<br><i class="clr" style="background:#ffa000"></i>Temp: <b>${temp.toFixed(0)}</b> &deg;C`;
     if (batt) html += `<br><i class="clr" style="background:#69f0ae"></i>Battery: <b>${batt.toFixed(0)}</b>%`;
@@ -579,7 +630,7 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function createParserWorker() {
-    return new Worker("static/js/parser-worker.js?v=5");
+    return new Worker("static/js/parser-worker.js?v=7");
   }
 
   function createRecentFilesUi() {
@@ -935,7 +986,8 @@ document.addEventListener("DOMContentLoaded", function () {
     selectedIdx = -1;
     trackVisible = new Set(tracks.map((_, i) => i));
     updateGlow();
-    fitAll();
+    // No fitAll() here — the auto-select below zooms to track 0. Calling both
+    // raced two zoom animations and could leave the map un-zoomed on start.
 
     panelTabText.textContent = `Trip Explorer (${tracks.length})`;
     buildTripList();
@@ -1152,18 +1204,8 @@ document.addEventListener("DOMContentLoaded", function () {
       li.dataset.idx = i;
       const s = t.stats;
 
-      let detailHtml = "";
-      if (s.distanceKm) detailHtml += `<div class="detail-row"><span><i class="clr" style="background:${COLORS.distance}"></i>Distance</span><span>${s.distanceKm} km</span></div>`;
-      detailHtml += `<div class="detail-row"><span><i class="clr" style="background:${COLORS.speed}"></i>Speed</span><span>${s.avgSpeed} / ${s.maxSpeed} km/h</span></div>`;
-      if (s.maxVoltage) detailHtml += `<div class="detail-row"><span><i class="clr" style="background:${COLORS.voltage}"></i>Voltage</span><span>${s.minVoltage} - ${s.maxVoltage} V</span></div>`;
-      if (s.maxTemp) detailHtml += `<div class="detail-row"><span><i class="clr" style="background:${COLORS.temp}"></i>Temp</span><span>${s.maxTemp} &deg;C</span></div>`;
-      if (s.maxAlt) detailHtml += `<div class="detail-row"><span><i class="clr" style="background:${COLORS.altitude}"></i>Altitude</span><span>${s.minAlt} - ${s.maxAlt} m</span></div>`;
-      if (t.dateStart) {
-        const start = t.dateStart.split("T")[1]?.substring(0, 8) || "";
-        const end = t.dateEnd.split("T")[1]?.substring(0, 8) || "";
-        if (start) detailHtml += `<div class="detail-row"><span>Time</span><span>${start} - ${end}</span></div>`;
-      }
-      detailHtml += `<div class="chart-wrap"><canvas class="trip-chart" data-idx="${i}"></canvas><div class="chart-tooltip hidden"></div></div>`;
+      let detailHtml = buildDetailHtml(t);
+      detailHtml += `<div class="chart-wrap"><canvas class="trip-chart" data-idx="${i}"></canvas></div>`;
 
       const meta = s.points > 0
         ? `${s.distanceKm} km &middot; ${s.maxSpeed} km/h max`
@@ -1453,15 +1495,123 @@ document.addEventListener("DOMContentLoaded", function () {
     temp:     "#ffa000",
     battery:  "#69f0ae",
     altitude: "#ce93d8",
+    pwm:      "#ff4081",
+    current:  "#ffd740",
+    power:    "#7c4dff",
   };
 
   const SERIES = [
-    { idx: 1, key: "speed",    label: "Speed",   unit: "km/h" },
-    { idx: 2, key: "voltage",  label: "Voltage", unit: "V" },
-    { idx: 3, key: "temp",     label: "Temp",    unit: "\u00b0C" },
-    { idx: 4, key: "battery",  label: "Battery", unit: "%" },
-    { idx: 5, key: "altitude", label: "Alt",     unit: "m" },
+    { idx: 1,  key: "speed",    label: "Speed",   unit: "km/h" },
+    { idx: 9,  key: "pwm",      label: "PWM",     unit: "%" },
+    { idx: 11, key: "power",    label: "Power",   unit: "W" },
+    { idx: 10, key: "current",  label: "Current", unit: "A" },
+    { idx: 2,  key: "voltage",  label: "Voltage", unit: "V" },
+    { idx: 3,  key: "temp",     label: "Temp",    unit: "\u00b0C" },
+    { idx: 4,  key: "battery",  label: "Battery", unit: "%" },
+    { idx: 5,  key: "altitude", label: "Alt",     unit: "m" },
   ];
+
+  // Detail rows: a static range by default; while the cursor scrubs the mini
+  // chart they switch to the live value at that sample (setDetailRowsLive) and
+  // revert to the range on mouse-out (restoreDetailRows).
+  const DETAIL_ROWS = [
+    { key: "distance", label: "Distance", color: "#66bb6a" },
+    { key: "speed",    label: "Speed",    color: "#00e5ff", idx: 1,  unit: "km/h", dp: 1 },
+    { key: "pwm",      label: "PWM",      color: "#ff4081", idx: 9,  unit: "%",    dp: 1 },
+    { key: "power",    label: "Power",    color: "#7c4dff", idx: 11, unit: "W",    dp: 0 },
+    { key: "current",  label: "Current", color: "#ffd740", idx: 10, unit: "A",    dp: 1 },
+    { key: "voltage",  label: "Voltage", color: "#ff5252", idx: 2,  unit: "V",    dp: 1 },
+    { key: "temp",     label: "Temp",    color: "#ffa000", idx: 3,  unit: "°C",   dp: 1 },
+    { key: "battery",  label: "Battery", color: "#69f0ae", idx: 4,  unit: "%",    dp: 0 },
+    { key: "altitude", label: "Altitude",color: "#ce93d8", idx: 5,  unit: "m",    dp: 0 },
+    { key: "time",     label: "Time",    color: null },
+  ];
+  const DETAIL_ROW_MAP = {};
+  DETAIL_ROWS.forEach(r => { DETAIL_ROW_MAP[r.key] = r; });
+  let liveDetailIdx = -1;
+
+  // Builds the detail rows for a trip — each shows a min–max range (total for
+  // distance, start–end for time). Rows with no data are omitted.
+  function buildDetailHtml(t) {
+    const ts = t.timeseries || [];
+    const s = t.stats || {};
+    let html = "";
+    for (const r of DETAIL_ROWS) {
+      let range = null;
+      if (r.key === "distance") {
+        if (s.distanceKm > 0) range = s.distanceKm.toFixed(2) + " km";
+      } else if (r.key === "time") {
+        const start = (t.dateStart || "").split("T")[1];
+        const end = (t.dateEnd || "").split("T")[1];
+        if (start) {
+          range = start.substring(0, 8) + " - " + (end ? end.substring(0, 8) : start.substring(0, 8));
+        }
+      } else if (r.key === "speed") {
+        range = (s.avgSpeed || 0) + " / " + (s.maxSpeed || 0) + " km/h";
+      } else {
+        let mn = Infinity, mx = -Infinity, hasData = false;
+        for (const row of ts) {
+          const v = row[r.idx];
+          if (typeof v !== "number") continue;
+          if (v < mn) mn = v;
+          if (v > mx) mx = v;
+          if (v !== 0) hasData = true;
+        }
+        if (hasData && isFinite(mn)) {
+          range = mn.toFixed(r.dp) + " - " + mx.toFixed(r.dp) + " " + r.unit;
+        }
+      }
+      if (range == null) continue;
+      const dot = r.color ? `<i class="clr" style="background:${r.color}"></i>` : "";
+      html += `<div class="detail-row" data-row="${r.key}"><span>${dot}${r.label}</span>` +
+              `<span class="detail-val" data-range="${range}">${range}</span></div>`;
+    }
+    return html;
+  }
+
+  function clockAt(track, sec) {
+    const baseMs = Date.parse(track.dateStart || "");
+    if (isNaN(baseMs)) return "—";
+    const d = new Date(baseMs + sec * 1000);
+    const p = (n) => String(n).padStart(2, "0");
+    return p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
+  }
+
+  // Fills a trip's detail rows with the values at one timeseries sample.
+  function setDetailRowsLive(trackIdx, sampleIdx) {
+    const track = allTracks[trackIdx];
+    if (!track || !track.timeseries) return;
+    const row = track.timeseries[sampleIdx];
+    if (!row) return;
+    const item = document.querySelector(`.trip-item[data-idx="${trackIdx}"]`);
+    if (!item) return;
+    const cumKm = getCumDistTs(track)[sampleIdx] || 0;
+    item.querySelectorAll(".detail-row").forEach(rowEl => {
+      const r = DETAIL_ROW_MAP[rowEl.dataset.row];
+      const valEl = rowEl.querySelector(".detail-val");
+      if (!r || !valEl) return;
+      let txt = null;
+      if (r.key === "distance") txt = cumKm.toFixed(2) + " km";
+      else if (r.key === "time") txt = clockAt(track, row[0] || 0);
+      else if (r.idx != null) {
+        const v = row[r.idx];
+        txt = (typeof v === "number" ? v.toFixed(r.dp) : "0") + " " + r.unit;
+      }
+      if (txt != null) valEl.textContent = txt;
+    });
+    liveDetailIdx = trackIdx;
+  }
+
+  // Reverts the detail rows back to their static ranges.
+  function restoreDetailRows() {
+    if (liveDetailIdx < 0) return;
+    const item = document.querySelector(`.trip-item[data-idx="${liveDetailIdx}"]`);
+    liveDetailIdx = -1;
+    if (!item) return;
+    item.querySelectorAll(".detail-val").forEach(el => {
+      if (el.dataset.range != null) el.textContent = el.dataset.range;
+    });
+  }
 
   function drawChart(canvas, trackIdx) {
     const t = allTracks[trackIdx];
@@ -1491,7 +1641,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const ch = h - pad.top - pad.bottom;
 
     const activeSeries = SERIES.filter(s => {
-      for (const row of ts) if (row[s.idx] !== 0) return true;
+      for (const row of ts) if ((row[s.idx] || 0) !== 0) return true;
       return false;
     });
 
@@ -1621,7 +1771,7 @@ document.addEventListener("DOMContentLoaded", function () {
   document.addEventListener("mousemove", (e) => {
     const canvas = e.target.closest(".trip-chart");
     if (!canvas || !canvas._chartData) {
-      document.querySelectorAll(".chart-tooltip").forEach(t => t.classList.add("hidden"));
+      restoreDetailRows();
       hideChartMarker();
       return;
     }
@@ -1638,26 +1788,13 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     const row = cd.ts[best];
-    const wrap = canvas.closest(".chart-wrap");
-    const tip = wrap.querySelector(".chart-tooltip");
-
     const trackIdx = parseInt(canvas.dataset.idx);
-    const cumKm = getCumDistTs(allTracks[trackIdx])[best] || 0;
 
-    let html = `<span style="color:#888">${formatSec(row[0])}</span> <span style="color:#66bb6a">${cumKm.toFixed(2)} km</span>`;
-    for (const s of cd.activeSeries) {
-      html += `<br><i class="clr" style="background:${CHART_COLORS[s.key]}"></i>${s.label}: <b>${row[s.idx].toFixed(1)}</b> ${s.unit}`;
-    }
-    tip.innerHTML = html;
-    tip.classList.remove("hidden");
+    // Scrubbing the chart fills the detail rows with live values (the rows
+    // replace the old floating tooltip; they revert to ranges on mouse-out).
+    setDetailRowsLive(trackIdx, best);
 
-    const tipW = tip.offsetWidth;
-    let tx = mx + 10;
-    if (tx + tipW > rect.width) tx = mx - tipW - 10;
-    tip.style.left = tx + "px";
-    tip.style.top = "4px";
-
-    drawChart(canvas, parseInt(canvas.dataset.idx));
+    drawChart(canvas, trackIdx);
     drawCrosshair(canvas, best);
 
     const lat = row[6] || 0;
@@ -1674,7 +1811,7 @@ document.addEventListener("DOMContentLoaded", function () {
     map.setView(canvas._hoverLatLon, map.getZoom(), { animate: true });
   });
 
-  document.addEventListener("mouseleave", () => { hideChartMarker(); }, true);
+  document.addEventListener("mouseleave", () => { hideChartMarker(); restoreDetailRows(); }, true);
 
   function formatSec(s) {
     const m = Math.floor(s / 60);
