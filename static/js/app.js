@@ -1,6 +1,9 @@
 document.addEventListener("DOMContentLoaded", function () {
   // --- Map setup with multiple tile layers ---
-  const osmLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  const standardLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+  });
+  const darkLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
   });
   const satelliteLayer = L.tileLayer(
@@ -10,6 +13,21 @@ document.addEventListener("DOMContentLoaded", function () {
   const topoLayer = L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", {
     maxZoom: 17,
   });
+  // Map style is chosen in the #map-controls panel and persisted to localStorage.
+  // Each style records whether the dark-tiles invert filter applies.
+  const MAP_LAYER_KEY = "dbb_map_layer";
+  const BASE_STYLES = {
+    standard:  { layer: standardLayer,  dark: false },
+    dark:      { layer: darkLayer,      dark: true  },
+    satellite: { layer: satelliteLayer, dark: false },
+    topo:      { layer: topoLayer,      dark: false },
+  };
+  let selectedStyle = "standard";
+  try {
+    const saved = (localStorage.getItem(MAP_LAYER_KEY) || "").toLowerCase();
+    if (BASE_STYLES[saved]) selectedStyle = saved;
+  } catch (_) {}
+  let glowLayer;
 
   const map = L.map("map", {
     center: [65, 15],
@@ -17,12 +35,12 @@ document.addEventListener("DOMContentLoaded", function () {
     zoomControl: false,
     preferCanvas: true,
     zoomSnap: 1,
-    layers: [osmLayer],
+    layers: [BASE_STYLES[selectedStyle].layer],
   });
+  map.getContainer().classList.toggle("dark-tiles", BASE_STYLES[selectedStyle].dark);
 
-  map.getContainer().classList.add("dark-tiles");
-  // Base layer + the dark-tiles filter are driven by the #map-controls panel
-  // (see setBaseStyle below); the bottom-left control is just zoom now.
+  // Base layer is driven by the #map-controls panel (see setBaseStyle below);
+  // the bottom-left control is just zoom now.
   L.control.zoom({ position: "bottomleft" }).addTo(map);
 
   // --- State ---
@@ -132,6 +150,7 @@ document.addEventListener("DOMContentLoaded", function () {
       this._visible = vis;
       this._draw();
     },
+    redraw() { this._draw(); },
     _onViewChange() { this._draw(); },
     _draw() {
       if (!this._map) return;
@@ -166,8 +185,24 @@ document.addEventListener("DOMContentLoaded", function () {
         { width: 4,  alpha: 0.5,  color: "255,200,50" },
         { width: 2,  alpha: 0.9,  color: "255,240,180" },
       ];
+      const fuchsiaAlphaPasses = [
+        { width: 16, alpha: 0.02, color: "230, 0, 126" },
+        { width: 10, alpha: 0.04, color: "230, 0, 126" },
+        { width: 6,  alpha: 0.08, color: "230, 0, 126" },
+        { width: 3,  alpha: 0.16, color: "230, 0, 126" },
+        { width: 2,  alpha: 0.3, color: "230, 0, 126" },
+      ];
+      const fuchsiaPasses = [
+        { width: 16, alpha: 0.08, color: "230, 0, 126" },
+        { width: 10, alpha: 0.16, color: "230, 0, 126" },
+        { width: 6,  alpha: 0.35, color: "230, 0, 126" },
+        { width: 3,  alpha: 0.65, color: "230, 0, 126" },
+        { width: 2,  alpha: 0.95, color: "230, 0, 126" },
+      ];
 
-      const basePasses = cyanPasses.map((p) => ({
+      const isLightMap = map.hasLayer(standardLayer) || map.hasLayer(topoLayer);
+      const basePassSource = isLightMap ? fuchsiaAlphaPasses : cyanPasses;
+      const basePasses = basePassSource.map((p) => ({
         ...p, alpha: sel >= 0 ? p.alpha * 0.3 : p.alpha,
       }));
 
@@ -227,12 +262,13 @@ document.addEventListener("DOMContentLoaded", function () {
               }
             }
           } else {
-            for (const pass of orangePasses) {
+            const selectedPasses = isLightMap ? fuchsiaPasses : orangePasses;
+            for (const pass of selectedPasses) {
               ctx.strokeStyle = `rgba(${pass.color},${pass.alpha})`;
               ctx.lineWidth = pass.width;
               ctx.lineJoin = "round";
               ctx.lineCap = "round";
-              ctx.globalCompositeOperation = pass.width <= 4 ? "source-over" : "lighter";
+              ctx.globalCompositeOperation = isLightMap || pass.width <= 4 ? "source-over" : "lighter";
               drawTrack(lls);
             }
           }
@@ -241,7 +277,7 @@ document.addEventListener("DOMContentLoaded", function () {
     },
   });
 
-  const glowLayer = new GlowLayer();
+  glowLayer = new GlowLayer();
   glowLayer.addTo(map);
 
   function updateGlow() {
@@ -280,24 +316,20 @@ document.addEventListener("DOMContentLoaded", function () {
   // --- Map controls overlay: map style + trace colour ---
   const mapControlsEl = document.getElementById("map-controls");
 
-  // Base layers and whether the dark-tiles CSS filter applies to each.
-  const BASE_STYLES = {
-    dark:      { layer: osmLayer,       dark: true  },
-    standard:  { layer: osmLayer,       dark: false },
-    satellite: { layer: satelliteLayer, dark: false },
-    topo:      { layer: topoLayer,      dark: true  },
-  };
-  let currentBaseLayer = osmLayer;
   function setBaseStyle(name) {
     const style = BASE_STYLES[name];
     if (!style) return;
-    if (style.layer !== currentBaseLayer) {
-      map.removeLayer(currentBaseLayer);
+    const current = BASE_STYLES[selectedStyle];
+    if (style.layer !== current.layer) {
+      map.removeLayer(current.layer);
       map.addLayer(style.layer);
-      currentBaseLayer = style.layer;
     }
-    // Dark/Topo get the invert filter; Standard/Satellite show true colours.
+    selectedStyle = name;
+    // Dark gets the invert filter; the others show their true colours.
     map.getContainer().classList.toggle("dark-tiles", style.dark);
+    try { localStorage.setItem(MAP_LAYER_KEY, name); } catch (_) {}
+    // Track glow colours depend on a light vs dark basemap — repaint.
+    if (glowLayer) glowLayer.redraw();
   }
 
   const TRACE_UNITS = { speed: "km/h", battery: "%", voltage: "V", temp: "°C", altitude: "m", distance: "km" };
@@ -322,7 +354,10 @@ document.addEventListener("DOMContentLoaded", function () {
   const styleSelEl = document.getElementById("map-style-select");
   const colorSelEl = document.getElementById("trace-color-select");
   const mapControlsToggle = document.getElementById("map-controls-toggle");
-  if (styleSelEl) styleSelEl.addEventListener("change", (e) => setBaseStyle(e.target.value));
+  if (styleSelEl) {
+    styleSelEl.value = selectedStyle;
+    styleSelEl.addEventListener("change", (e) => setBaseStyle(e.target.value));
+  }
   if (colorSelEl) colorSelEl.addEventListener("change", (e) => { traceColor = e.target.value; updateGlow(); });
   if (mapControlsToggle) mapControlsToggle.addEventListener("click", () => mapControlsEl.classList.toggle("collapsed"));
 
