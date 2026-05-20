@@ -664,21 +664,6 @@ body, html {
 }
 .export-btn:hover { background: rgba(255, 160, 0, 0.06); }
 
-/* Paint toggle button */
-.paint-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    opacity: 0.3;
-    margin-right: 4px;
-    vertical-align: middle;
-    transition: opacity 0.2s, filter 0.2s;
-    line-height: 1;
-}
-.paint-btn:hover { opacity: 0.7; }
-.paint-btn.active { opacity: 1; filter: drop-shadow(0 0 4px currentColor); }
-
 /* Track list popup (map click) */
 .track-list-popup .leaflet-popup-content-wrapper {
     background: rgba(10, 10, 15, 0.95);
@@ -752,4 +737,91 @@ body, html {
     opacity: 0.75;
     border-left: 1px solid rgba(255, 255, 255, 0.15);
     padding-left: 10px;
+}
+
+/* Map overlay controls (map style + trace colour) */
+#map-controls {
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    z-index: 900;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 6px;
+    background: rgba(10, 12, 18, 0.82);
+    border: 1px solid rgba(0, 229, 255, 0.18);
+    border-radius: 8px;
+    backdrop-filter: blur(10px);
+    color: #d7e4ea;
+    font-size: 0.78rem;
+}
+#map-controls-toggle {
+    background: transparent;
+    border: none;
+    color: #00e5ff;
+    cursor: pointer;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    align-self: flex-start;
+}
+#map-controls-toggle:hover { background: rgba(0, 229, 255, 0.12); }
+#map-controls .map-controls-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 4px 6px 6px;
+    min-width: 180px;
+}
+#map-controls.collapsed .map-controls-body { display: none; }
+#map-controls.collapsed { padding: 4px; }
+#map-controls label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    justify-content: space-between;
+}
+#map-controls label > span {
+    color: #8fa7b0;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    font-size: 0.68rem;
+}
+#map-controls select {
+    background: rgba(0, 0, 0, 0.55);
+    color: #e4f6fa;
+    border: 1px solid rgba(0, 229, 255, 0.22);
+    border-radius: 5px;
+    padding: 3px 6px;
+    font-size: 0.78rem;
+    font-family: inherit;
+    cursor: pointer;
+    min-width: 120px;
+}
+#map-controls select:focus { outline: 1px solid #00e5ff; }
+#map-controls select option {
+    background: #0f1419;
+    color: #e4f6fa;
+}
+
+#color-legend {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin-top: 2px;
+}
+.legend-bar {
+    height: 8px;
+    border-radius: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+}
+.legend-scale {
+    display: flex;
+    justify-content: space-between;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.68rem;
+    color: #9ab8c0;
 }

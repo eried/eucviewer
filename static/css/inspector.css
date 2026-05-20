@@ -458,7 +458,7 @@ html, body {
     padding: 3px 6px;
     font-size: 0.78rem;
     cursor: pointer;
-    min-width: 110px;
+    width: 150px;
 }
 #map-controls select:focus { outline: 1px solid #00e5ff; }
 #map-controls select:disabled {
