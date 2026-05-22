@@ -103,6 +103,12 @@ function parseCsvText(text, name) {
     const pwm = safeFloat(row.PWM);
     const current = safeFloat(row.Current);
     const power = safeFloat(row.Power);
+    // Optional columns — absent on most wheels / older exports (safeFloat → 0).
+    // "Ext GPS speed" is deliberately ignored: it has been folded into "GPS speed".
+    const gpsSpeed = safeFloat(row["GPS speed"]);
+    const gForce = safeFloat(row["G-Force"]);
+    const gForceX = safeFloat(row["G-Force X"]);
+    const gForceY = safeFloat(row["G-Force Y"]);
     const lat = safeFloat(row.Latitude);
     const lon = safeFloat(row.Longitude);
     const date = row.Date || "";
@@ -146,6 +152,10 @@ function parseCsvText(text, name) {
       roundTo(pwm, 1),
       roundTo(current, 1),
       roundTo(power, 0),
+      roundTo(gpsSpeed, 1),
+      roundTo(gForce, 3),
+      roundTo(gForceX, 3),
+      roundTo(gForceY, 3),
     ]);
 
     if (speed > 0) speeds.push(speed);
@@ -165,6 +175,7 @@ function parseCsvText(text, name) {
         roundTo(pwm, 1),
         roundTo(current, 1),
         roundTo(power, 0),
+        roundTo(gpsSpeed, 1),
       ]);
     }
   }

@@ -6,7 +6,7 @@
     <title>Trip Inspector &mdash; EUC Planet</title>
     <link rel="icon" href="static/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
-    <link rel="stylesheet" href="static/css/inspector.css?v=9" />
+    <link rel="stylesheet" href="static/css/inspector.css?v=17" />
 </head>
 <body>
     <div id="inspector">
@@ -24,7 +24,7 @@
                     <line id="speedo-needle" x1="60" y1="60" x2="60" y2="18" />
                     <circle cx="60" cy="60" r="4" class="gauge-hub" />
                 </svg>
-                <div class="gauge-value"><span id="speedo-value">0</span><small>km/h</small></div>
+                <div class="gauge-value"><span id="speedo-value">0</span></div>
                 <div class="gauge-label">Speed</div>
             </div>
 
@@ -36,10 +36,17 @@
                 <div class="gauge-label">Battery</div>
             </div>
 
+            <div class="gauge gauge-gforce hidden" id="gforce-gauge" title="Instantaneous G-Force (lateral / longitudinal)">
+                <canvas id="gforce-canvas" class="gforce-canvas"></canvas>
+                <div class="gforce-info">
+                    <div class="gauge-label">G-Force</div>
+                    <div class="gforce-num"><span id="gforce-value">0.00</span><small>g</small></div>
+                </div>
+            </div>
+
             <div class="readout">
                 <div class="readout-label">Distance</div>
-                <div class="readout-value"><span id="odo-value">0.00</span><small>km</small></div>
-                <div class="readout-sub">of <span id="odo-total">0.00</span> km</div>
+                <div class="readout-value"><span id="odo-value">0.00</span><small class="unit-dist">km</small></div>
             </div>
 
             <div class="readout">
@@ -49,12 +56,12 @@
 
             <div class="readout">
                 <div class="readout-label">Temp</div>
-                <div class="readout-value"><span id="temp-value">&mdash;</span><small>&deg;C</small></div>
+                <div class="readout-value"><span id="temp-value">&mdash;</span><small class="unit-temp">&deg;C</small></div>
             </div>
 
             <div class="readout">
                 <div class="readout-label">Altitude</div>
-                <div class="readout-value"><span id="alt-value">&mdash;</span><small>m</small></div>
+                <div class="readout-value"><span id="alt-value">&mdash;</span><small class="unit-alt">m</small></div>
             </div>
 
             <div class="readout clock">
@@ -84,6 +91,7 @@
                             <select id="color-select">
                                 <option value="solid" selected>Solid</option>
                                 <option value="speed">Speed</option>
+                                <option value="gpsspeed">GPS speed</option>
                                 <option value="pwm">PWM</option>
                                 <option value="power">Power</option>
                                 <option value="current">Current</option>
@@ -128,38 +136,17 @@
             </div>
 
             <aside id="charts">
-                <div class="chart-block" data-key="speed">
-                    <div class="chart-header"><span class="chart-swatch"></span><span class="chart-label">Speed</span><span class="chart-reading" data-reading></span></div>
-                    <canvas></canvas>
-                </div>
-                <div class="chart-block" data-key="pwm">
-                    <div class="chart-header"><span class="chart-swatch"></span><span class="chart-label">PWM</span><span class="chart-reading" data-reading></span></div>
-                    <canvas></canvas>
-                </div>
-                <div class="chart-block" data-key="power">
-                    <div class="chart-header"><span class="chart-swatch"></span><span class="chart-label">Power</span><span class="chart-reading" data-reading></span></div>
-                    <canvas></canvas>
-                </div>
-                <div class="chart-block" data-key="current">
-                    <div class="chart-header"><span class="chart-swatch"></span><span class="chart-label">Current</span><span class="chart-reading" data-reading></span></div>
-                    <canvas></canvas>
-                </div>
-                <div class="chart-block" data-key="battery">
-                    <div class="chart-header"><span class="chart-swatch"></span><span class="chart-label">Battery</span><span class="chart-reading" data-reading></span></div>
-                    <canvas></canvas>
-                </div>
-                <div class="chart-block" data-key="voltage">
-                    <div class="chart-header"><span class="chart-swatch"></span><span class="chart-label">Voltage</span><span class="chart-reading" data-reading></span></div>
-                    <canvas></canvas>
-                </div>
-                <div class="chart-block" data-key="temp">
-                    <div class="chart-header"><span class="chart-swatch"></span><span class="chart-label">Temp</span><span class="chart-reading" data-reading></span></div>
-                    <canvas></canvas>
-                </div>
-                <div class="chart-block" data-key="altitude">
-                    <div class="chart-header"><span class="chart-swatch"></span><span class="chart-label">Altitude</span><span class="chart-reading" data-reading></span></div>
-                    <canvas></canvas>
-                </div>
+                <!-- Each block's header (label + min/value/max + collapse caret)
+                     is built by inspector.js so the Speed block can grow its
+                     triple-row GPS layout. -->
+                <div class="chart-block" data-key="speed"><div class="chart-body"><canvas></canvas></div></div>
+                <div class="chart-block" data-key="pwm"><div class="chart-body"><canvas></canvas></div></div>
+                <div class="chart-block" data-key="power"><div class="chart-body"><canvas></canvas></div></div>
+                <div class="chart-block" data-key="current"><div class="chart-body"><canvas></canvas></div></div>
+                <div class="chart-block" data-key="battery"><div class="chart-body"><canvas></canvas></div></div>
+                <div class="chart-block" data-key="voltage"><div class="chart-body"><canvas></canvas></div></div>
+                <div class="chart-block" data-key="temp"><div class="chart-body"><canvas></canvas></div></div>
+                <div class="chart-block" data-key="altitude"><div class="chart-body"><canvas></canvas></div></div>
             </aside>
         </main>
 
@@ -187,6 +174,6 @@
     </div>
 
     <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-    <script src="static/js/inspector.js?v=28"></script>
+    <script src="static/js/inspector.js?v=38"></script>
 </body>
 </html>

@@ -155,6 +155,39 @@ html, body {
     text-shadow: 0 1px 2px rgba(0,0,0,0.6);
 }
 
+/* G-Force — circle on the left, "G-FORCE" label on top with the value below
+   on the right, matching the readout pattern (label-on-top / value-below). */
+.gauge-gforce {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+}
+.gforce-canvas {
+    width: 84px;
+    height: 84px;
+    display: block;
+}
+.gforce-info {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+}
+.gforce-info .gauge-label { margin-top: 0; }
+.gforce-num {
+    color: #fff;
+    font-weight: 700;
+    font-size: 1.1rem;
+    line-height: 1.1;
+    margin-top: 2px;
+}
+.gforce-num small {
+    font-size: 0.6rem;
+    color: #888;
+    margin-left: 3px;
+    font-weight: 400;
+}
+.gauge-gforce.gf-nodata .gforce-num { color: #6a6a72; }
+
 /* Readouts */
 .readout {
     display: flex;
@@ -233,44 +266,135 @@ html, body {
 
 .chart-block {
     background: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.05);
     border-radius: 5px;
-    padding: 6px 8px 4px;
-    flex: 1;
-    min-height: 90px;
-    display: flex;
-    flex-direction: column;
+    flex: 0 0 auto;        /* fixed height — never squished, panel scrolls */
+    overflow: hidden;
 }
-.chart-header {
+
+/* Header — click to collapse. Holds the label and min / value / max stats. */
+.chart-head {
     display: flex;
     align-items: center;
     gap: 6px;
+    padding: 5px 8px;
+    cursor: pointer;
+    user-select: none;
+}
+.chart-head:hover { background: rgba(255, 255, 255, 0.035); }
+.ch-caret {
+    width: 9px;
+    flex-shrink: 0;
+    color: #6a6a72;
+    font-size: 0.6rem;
+    text-align: center;
+    transition: transform 0.15s;
+}
+.chart-block.collapsed .ch-caret { transform: rotate(-90deg); }
+.ch-label {
+    font-weight: 700;
     font-size: 0.72rem;
-    color: #999;
-    margin-bottom: 2px;
+    width: 54px;
+    flex-shrink: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
-.chart-swatch {
-    width: 8px; height: 8px;
-    border-radius: 2px;
-    background: #ccc;
+.ch-label.ch-sub { font-weight: 600; font-size: 0.66rem; }
+.chart-head-speed .ch-label { width: 78px; }
+
+/* min | value | max — value centred and bright (with the unit), min/max
+   small and dim and unit-less. The trio hugs the right edge of the header. */
+.ch-statline {
+    margin-left: auto;
+    display: grid;
+    grid-template-columns: 38px 84px 38px;
+    align-items: baseline;
+    gap: 4px;
+    font-family: 'SF Mono', Menlo, Consolas, monospace;
 }
-.chart-label { flex: 1; font-weight: 600; }
-.chart-reading { color: #fff; font-weight: 700; font-family: 'SF Mono', Menlo, monospace; font-size: 0.78rem; }
+.ch-val .ch-unit {
+    font-weight: 500;
+    color: #9aa0a6;
+    margin-left: 3px;
+    font-size: 0.78em;
+}
+.ch-min, .ch-max {
+    font-size: 0.63rem;
+    color: #6e6e78;
+}
+.ch-min { text-align: right; }
+.ch-max { text-align: left; }
+.ch-val {
+    font-size: 0.84rem;
+    font-weight: 700;
+    color: #fff;
+    text-align: center;
+    white-space: nowrap;
+}
 
-.chart-block[data-key="speed"]    .chart-swatch { background: #00e5ff; }
-.chart-block[data-key="voltage"]  .chart-swatch { background: #ff5252; }
-.chart-block[data-key="temp"]     .chart-swatch { background: #ffa000; }
-.chart-block[data-key="battery"]  .chart-swatch { background: #69f0ae; }
-.chart-block[data-key="altitude"] .chart-swatch { background: #ce93d8; }
-.chart-block[data-key="pwm"]      .chart-swatch { background: #ff4081; }
-.chart-block[data-key="power"]    .chart-swatch { background: #7c4dff; }
-.chart-block[data-key="current"]  .chart-swatch { background: #ffd740; }
-
-.chart-block canvas {
+/* Speed block: stacked Speed / GPS / difference rows. */
+.ch-speedrows {
     flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.ch-row {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+}
+.ch-row-diff .ch-val { color: #ffd740; font-size: 0.76rem; }
+
+/* Body — the canvas. Hidden when the block is collapsed. */
+.chart-body {
+    height: 116px;
+    padding: 0 6px 6px;
+}
+.chart-block.collapsed .chart-body { display: none; }
+.chart-body canvas {
     width: 100%;
+    height: 100%;
     display: block;
     cursor: crosshair;
+}
+
+/* Hover readout for the wheel-vs-GPS speed differential. */
+#chart-tip {
+    position: fixed;
+    z-index: 2500;
+    pointer-events: none;
+    padding: 6px 9px;
+    background: rgba(10, 12, 18, 0.95);
+    border: 1px solid rgba(0, 229, 255, 0.28);
+    border-radius: 6px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.55);
+    font-size: 0.72rem;
+    line-height: 1.5;
+    color: #d7e4ea;
+    white-space: nowrap;
+}
+#chart-tip.hidden { display: none; }
+#chart-tip b { color: #fff; }
+#chart-tip .tip-row {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+#chart-tip .tip-row i {
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+#chart-tip .tip-diff {
+    display: block;
+    margin-top: 2px;
+    padding-top: 2px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    color: #ffd740;
+    font-weight: 700;
 }
 
 /* ---------- Playback ---------- */

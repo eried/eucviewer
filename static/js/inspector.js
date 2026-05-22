@@ -1,6 +1,48 @@
 (async function () {
   "use strict";
 
+  // Imperial unit toggle — drives display labels and converters everywhere
+  // values are shown. Override with ?units=imperial / ?units=metric.
+  const UNITS = (() => {
+    const force = new URLSearchParams(location.search).get("units");
+    let imperial = force === "imperial";
+    if (!force) {
+      try {
+        const loc = new Intl.Locale(navigator.language || "en").maximize();
+        if (loc.region === "US") imperial = true;
+      } catch (_) {}
+    }
+    return imperial
+      ? {
+          imperial: true,
+          dist:  (km) => km * 0.621371,
+          speed: (kmh) => kmh * 0.621371,
+          temp:  (c) => c * 9 / 5 + 32,
+          alt:   (m) => m * 3.28084,
+          distUnit: "mi", speedUnit: "mph", tempUnit: "°F", altUnit: "ft",
+        }
+      : {
+          imperial: false,
+          dist:  (km) => km, speed: (kmh) => kmh, temp: (c) => c, alt: (m) => m,
+          distUnit: "km", speedUnit: "km/h", tempUnit: "°C", altUnit: "m",
+        };
+  })();
+  function convertByKind(kind, v) {
+    if (kind === "speed") return UNITS.speed(v);
+    if (kind === "temp")  return UNITS.temp(v);
+    if (kind === "alt")   return UNITS.alt(v);
+    if (kind === "dist")  return UNITS.dist(v);
+    return v;
+  }
+  // Apply the user's units to every static unit label in the dashboard.
+  function applyUnitLabels() {
+    document.querySelectorAll(".unit-speed").forEach(e => e.textContent = UNITS.speedUnit);
+    document.querySelectorAll(".unit-dist").forEach(e => e.textContent = UNITS.distUnit);
+    document.querySelectorAll(".unit-temp").forEach(e => e.textContent = UNITS.tempUnit);
+    document.querySelectorAll(".unit-alt").forEach(e => e.textContent = UNITS.altUnit);
+  }
+  applyUnitLabels();
+
   // ---------- Load track ----------
   const params = new URLSearchParams(location.search);
   const trackIdx = parseInt(params.get("i"));
@@ -57,12 +99,18 @@
     return;
   }
 
-  // Timeseries layout: [sec, speed, voltage, temp, battery, altitude, lat, lon, mileageKm, pwm, current, power]
+  // Timeseries layout: [sec, speed, voltage, temp, battery, altitude, lat, lon, mileageKm,
+  //                     pwm, current, power, gpsSpeed, gForce, gForceX, gForceY]
+  // Indices 12-15 are absent on legacy cached tracks — always guard for undefined.
   const SEC = 0, SPD = 1, VOLT = 2, TEMP = 3, BATT = 4, ALT = 5, LAT = 6, LON = 7, MILEAGE = 8;
   const PWM = 9, CURRENT = 10, POWER = 11;
-  // Points layout: [lat, lon, speed, alt, volt, temp, battery]
+  const GPSSPD = 12, GFORCE = 13, GFORCEX = 14, GFORCEY = 15;
+  // Points layout: [lat, lon, speed, alt, volt, temp, battery, pwm, current, power, gpsSpeed]
   const P_LAT = 0, P_LON = 1, P_SPD = 2, P_ALT = 3, P_VOLT = 4, P_TEMP = 5, P_BATT = 6;
-  const P_PWM = 7, P_CURRENT = 8, P_POWER = 9;
+  const P_PWM = 7, P_CURRENT = 8, P_POWER = 9, P_GPSSPD = 10;
+
+  // GPS speed overlays the wheel-speed chart as a dashed companion line.
+  const GPS_COLOR = "#80d8ff";
 
   const duration = ts[ts.length - 1][SEC] - ts[0][SEC];
   const t0 = ts[0][SEC];
@@ -117,12 +165,11 @@
   document.getElementById("trip-name").textContent = track.date || track.name;
   const subBits = [];
   if (track.stats) {
-    if (track.stats.distanceKm) subBits.push(track.stats.distanceKm + " km");
-    if (track.stats.maxSpeed) subBits.push(track.stats.maxSpeed + " km/h max");
+    if (track.stats.distanceKm) subBits.push(UNITS.dist(track.stats.distanceKm).toFixed(2) + " " + UNITS.distUnit);
+    if (track.stats.maxSpeed) subBits.push(UNITS.speed(track.stats.maxSpeed).toFixed(0) + " " + UNITS.speedUnit + " max");
     subBits.push((track.stats.rows || ts.length).toLocaleString() + " samples");
   }
   document.getElementById("trip-subtitle").textContent = subBits.join(" \u00b7 ");
-  document.getElementById("odo-total").textContent = totalKm.toFixed(2);
   document.getElementById("clock-total").textContent = fmtTime(duration);
 
   function fmtTime(sec) {
@@ -131,6 +178,12 @@
     const m = Math.floor((sec % 3600) / 60);
     const s = sec % 60;
     return String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
+  }
+
+  // toFixed but without a "-0.00" sign on values that round to zero.
+  function fmtFixed(value, dp) {
+    const s = value.toFixed(dp);
+    return /^-0\.?0*$/.test(s) ? s.slice(1) : s;
   }
 
   // ---------- MapLibre map ----------
@@ -142,7 +195,7 @@
   let routePoints = Array.isArray(track.points) ? track.points.filter((p) => p[P_LAT] !== 0 && p[P_LON] !== 0) : [];
   if (routePoints.length < 2) {
     // Fallback for legacy payloads: reconstruct route from timeseries GPS rows.
-    routePoints = gpsPoints.map((r) => [r[LAT], r[LON], r[SPD], r[ALT], r[VOLT], r[TEMP], r[BATT], r[PWM], r[CURRENT], r[POWER]]);
+    routePoints = gpsPoints.map((r) => [r[LAT], r[LON], r[SPD], r[ALT], r[VOLT], r[TEMP], r[BATT], r[PWM], r[CURRENT], r[POWER], r[GPSSPD]]);
   }
   const hasGps = routePoints.length > 1;
 
@@ -188,14 +241,15 @@
 
   // Color-by configs: invert=true means high value is "good" (green end of palette).
   const COLOR_MODES = {
-    speed:    { pointIdx: P_SPD,     unit: "km/h", invert: false },
+    speed:    { pointIdx: P_SPD,     unit: "km/h", invert: false, unitKind: "speed" },
+    gpsspeed: { pointIdx: P_GPSSPD,  unit: "km/h", invert: false, unitKind: "speed" },
     pwm:      { pointIdx: P_PWM,     unit: "%",    invert: false },
     power:    { pointIdx: P_POWER,   unit: "W",    invert: false },
     current:  { pointIdx: P_CURRENT, unit: "A",    invert: false },
     battery:  { pointIdx: P_BATT,    unit: "%",    invert: true  },
     voltage:  { pointIdx: P_VOLT,    unit: "V",    invert: true  },
-    temp:     { pointIdx: P_TEMP,    unit: "\u00b0C", invert: false },
-    altitude: { pointIdx: P_ALT,     unit: "m",    invert: false }
+    temp:     { pointIdx: P_TEMP,    unit: "\u00b0C", invert: false, unitKind: "temp" },
+    altitude: { pointIdx: P_ALT,     unit: "m",    invert: false, unitKind: "alt" }
   };
   // Palette low → high; inverted modes reverse stops.
   const PALETTE = ["#2962ff", "#00e5ff", "#69f0ae", "#ffeb3b", "#ff5252"];
@@ -296,7 +350,7 @@
     }
     if (!isFinite(minV) || !isFinite(maxV)) return null;
     if (minV === maxV) maxV = minV + 1;
-    return { min: minV, max: maxV, invert: cfg.invert, unit: cfg.unit };
+    return { min: minV, max: maxV, invert: cfg.invert, unit: cfg.unit, unitKind: cfg.unitKind };
   }
 
   // Builds a line-gradient expression for coords[0..endIdx]. Each vertex's
@@ -347,7 +401,18 @@
     const legend = document.getElementById("color-legend");
     if (!stats) { legend.classList.add("hidden"); return; }
     legend.querySelector(".legend-bar").classList.toggle("inverted", !!stats.invert);
-    const fmt = (v) => (Math.abs(v) >= 100 ? v.toFixed(0) : v.toFixed(1)) + " " + stats.unit;
+    // Speed / temp / altitude metrics get the locale-appropriate label and
+    // converted bounds; other metrics (V, A, W, %) keep their static units.
+    const kind = stats.unitKind;
+    const unit = kind === "speed" ? UNITS.speedUnit
+               : kind === "temp"  ? UNITS.tempUnit
+               : kind === "alt"   ? UNITS.altUnit
+               : stats.unit;
+    const conv = (v) => kind ? convertByKind(kind, v) : v;
+    const fmt = (v) => {
+      const c = conv(v);
+      return (Math.abs(c) >= 100 ? c.toFixed(0) : c.toFixed(1)) + " " + unit;
+    };
     legend.querySelector("[data-legend-min]").textContent = fmt(stats.min);
     legend.querySelector("[data-legend-max]").textContent = fmt(stats.max);
     legend.classList.remove("hidden");
@@ -447,9 +512,16 @@
     for (const opt of sel.options) {
       const key = opt.value;
       if (key === "solid") { opt.disabled = false; continue; }
+      // GPS speed has no chart block — it lives on the speed chart. Toggle it
+      // by whether the trip carries the column.
+      if (key === "gpsspeed") { opt.disabled = !hasGpsSpeed; continue; }
       const block = document.querySelector(`.chart-block[data-key="${key}"]`);
       opt.disabled = !block || block.classList.contains("hidden");
     }
+    // "Speed" trace is the wheel's dial speed — name it "Wheel speed" when GPS
+    // speed is also available so the two metrics read distinctly.
+    const speedOpt = sel.querySelector('option[value="speed"]');
+    if (speedOpt) speedOpt.textContent = hasGpsSpeed ? "Wheel speed" : "Speed";
     if (currentColorMode !== "solid") {
       const active = sel.querySelector(`option[value="${currentColorMode}"]`);
       if (active && active.disabled) {
@@ -615,18 +687,31 @@
   }
 
   // ---------- Charts ----------
+  // render: "area" (default, filled), "line" (line only), "current" (filled to
+  // the 0 A baseline, green below it for regen). dp = decimal places shown.
+  const REGEN_COLOR = "#00e676";
+  // unitKind selects the UNITS converter used when displaying min/value/max.
+  // Internal chart drawing always uses raw metric values — only the readout
+  // changes — so axis scaling is independent of the locale. The unit string
+  // is appended to the live value (min/max stay unit-less for compactness).
   const CHART_CONFIG = {
-    speed:    { color: "#00e5ff", idx: SPD,     unit: " km/h" },
-    pwm:      { color: "#ff4081", idx: PWM,     unit: " %" },
-    power:    { color: "#7c4dff", idx: POWER,   unit: " W" },
-    current:  { color: "#ffd740", idx: CURRENT, unit: " A" },
-    voltage:  { color: "#ff5252", idx: VOLT,    unit: " V" },
-    temp:     { color: "#ffa000", idx: TEMP,    unit: " \u00b0C" },
-    battery:  { color: "#69f0ae", idx: BATT,    unit: " %" },
-    altitude: { color: "#ce93d8", idx: ALT,     unit: " m" },
+    speed:    { color: "#00e5ff", idx: SPD,     label: "Speed",    dp: 1, unitKind: "speed" },
+    pwm:      { color: "#ff4081", idx: PWM,     label: "PWM",      dp: 1, unit: "%" },
+    power:    { color: "#7c4dff", idx: POWER,   label: "Power",    dp: 0, unit: "W" },
+    current:  { color: "#ffd740", idx: CURRENT, label: "Current",  dp: 1, render: "current", unit: "A" },
+    battery:  { color: "#69f0ae", idx: BATT,    label: "Battery",  dp: 0, unit: "%" },
+    voltage:  { color: "#ff5252", idx: VOLT,    label: "Voltage",  dp: 1, unit: "V" },
+    temp:     { color: "#ffa000", idx: TEMP,    label: "Temp",     dp: 1, render: "line", unitKind: "temp" },
+    altitude: { color: "#ce93d8", idx: ALT,     label: "Altitude", dp: 0, unitKind: "alt" },
   };
+  function chartUnit(cfg) {
+    if (cfg.unitKind === "speed") return UNITS.speedUnit;
+    if (cfg.unitKind === "temp")  return UNITS.tempUnit;
+    if (cfg.unitKind === "alt")   return UNITS.altUnit;
+    return cfg.unit || "";
+  }
 
-  // PWM / Current / Power only exist on some wheels \u2014 hide a chart when the
+  // PWM / Current / Power only exist on some wheels - hide a chart when the
   // trip carries no data for it (incl. legacy cached tracks without the column).
   const OPTIONAL_CHARTS = new Set(["pwm", "current", "power"]);
   function chartHasData(idx) {
@@ -635,6 +720,90 @@
       if (typeof v === "number" && v !== 0) return true;
     }
     return false;
+  }
+
+  const hasGpsSpeed = chartHasData(GPSSPD);
+
+  function seriesMinMax(idx) {
+    let mn = Infinity, mx = -Infinity;
+    for (let i = 0; i < ts.length; i++) {
+      const v = ts[i][idx];
+      if (typeof v !== "number") continue;
+      if (v < mn) mn = v;
+      if (v > mx) mx = v;
+    }
+    return isFinite(mn) ? { min: mn, max: mx } : { min: 0, max: 0 };
+  }
+
+  // ---- Collapsible chart headers (label + min / value / max) ----
+  function makeEl(tag, cls, txt) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (txt != null) e.textContent = txt;
+    return e;
+  }
+  function makeStatline() {
+    const line = makeEl("div", "ch-statline");
+    const min = makeEl("span", "ch-min");
+    const val = makeEl("span", "ch-val", "\u2014");
+    const max = makeEl("span", "ch-max");
+    line.append(min, val, max);
+    return { line, min, val, max };
+  }
+
+  function buildChartHeader(c) {
+    const head = makeEl("div", "chart-head");
+    head.appendChild(makeEl("span", "ch-caret", "\u25be"));
+
+    if (c.extra) {
+      // Speed with GPS - triple header: Speed row, GPS row, difference row.
+      head.classList.add("chart-head-speed");
+      const rows = makeEl("div", "ch-speedrows");
+      const mkRow = (text, sub, color) => {
+        const row = makeEl("div", "ch-row");
+        const lbl = makeEl("span", "ch-label" + (sub ? " ch-sub" : ""), text);
+        if (color) lbl.style.color = color;
+        const s = makeStatline();
+        row.append(lbl, s.line);
+        rows.appendChild(row);
+        return s;
+      };
+      // With GPS as a companion, the wheel's own dial speed is "Wheel Speed".
+      const sWheel = mkRow("Wheel Speed", false, c.cfg.color);
+      const sGps = mkRow("GPS Speed", true, c.extra.color);
+      const rDiff = makeEl("div", "ch-row ch-row-diff");
+      rDiff.appendChild(makeEl("span", "ch-label", ""));
+      const sDiff = makeStatline();
+      sDiff.val.textContent = "";
+      rDiff.appendChild(sDiff.line);
+      rows.appendChild(rDiff);
+      head.appendChild(rows);
+      c.elMin = sWheel.min; c.elVal = sWheel.val; c.elMax = sWheel.max;
+      c.elGpsMin = sGps.min; c.elGpsVal = sGps.val; c.elGpsMax = sGps.max;
+      c.elDiff = sDiff.val;
+    } else {
+      const lbl = makeEl("span", "ch-label", c.cfg.label);
+      lbl.style.color = c.cfg.color;
+      const s = makeStatline();
+      head.append(lbl, s.line);
+      c.elMin = s.min; c.elVal = s.val; c.elMax = s.max;
+    }
+
+    head.addEventListener("click", () => toggleCollapse(c));
+    c.head = head;
+    c.block.insertBefore(head, c.block.firstChild);
+  }
+
+  function toggleCollapse(c) {
+    c.collapsed = !c.collapsed;
+    c.block.classList.toggle("collapsed", c.collapsed);
+    if (!c.collapsed) {
+      // Re-fit the canvas once the body is laid out again, then redraw.
+      requestAnimationFrame(() => {
+        resizeChart(c);
+        drawChart(c, currentSampleIdx + sampleFraction);
+      });
+    }
   }
 
   const chartBlocks = document.querySelectorAll(".chart-block");
@@ -647,36 +816,266 @@
       block.classList.add("hidden");
       return;
     }
-    const canvas = block.querySelector("canvas");
-    const reading = block.querySelector("[data-reading]");
-    charts.push({ key, cfg, canvas, reading, block });
+    const c = { key, cfg, block, canvas: block.querySelector("canvas"), collapsed: false };
+    // The speed chart carries GPS speed as a dashed companion on the same axis.
+    if (key === "speed" && hasGpsSpeed) c.extra = { idx: GPSSPD, color: GPS_COLOR };
+    buildChartHeader(c);
+
+    // Static trip min / max shown either side of the live value. Values that
+    // carry a unitKind get the locale-appropriate conversion.
+    const mm = seriesMinMax(cfg.idx);
+    c.elMin.textContent = fmtFixed(convertByKind(cfg.unitKind, mm.min), cfg.dp);
+    c.elMax.textContent = fmtFixed(convertByKind(cfg.unitKind, mm.max), cfg.dp);
+    if (c.extra) {
+      const gm = seriesMinMax(c.extra.idx);
+      c.elGpsMin.textContent = fmtFixed(convertByKind(cfg.unitKind, gm.min), cfg.dp);
+      c.elGpsMax.textContent = fmtFixed(convertByKind(cfg.unitKind, gm.max), cfg.dp);
+    }
+    charts.push(c);
   });
 
-  function resizeCharts() {
+  // ---------- G-Force instant gauge ----------
+  // G-Force is an instantaneous IMU reading, shown as a live dot with a fading
+  // motion trail in the lateral (X) / longitudinal (Y) plane next to Speed and
+  // Battery. A row reads 0 when the IMU missed that sample: isolated misses are
+  // interpolated so the dot glides; a sustained drop-out blanks the dot.
+  const GF_RGB = "224,64,251";
+  const gforceGauge = (function setupGforceGauge() {
+    if (!chartHasData(GFORCE)) return null;
+    const present = new Uint8Array(ts.length).fill(1);
+    let i = 0;
+    while (i < ts.length) {
+      if (ts[i][GFORCE] !== 0) { i++; continue; }
+      let j = i;
+      while (j < ts.length && ts[j][GFORCE] === 0) j++;
+      if (j - i >= 4) {
+        for (let k = i; k < j; k++) present[k] = 0;            // sustained drop-out
+      } else {
+        const lo = i - 1, hi = j;                              // isolated miss - interpolate
+        for (const col of [GFORCEX, GFORCEY]) {
+          const a = lo >= 0 ? ts[lo][col] : (hi < ts.length ? ts[hi][col] : 0);
+          const b = hi < ts.length ? ts[hi][col] : a;
+          for (let k = i; k < j; k++) ts[k][col] = a + (b - a) * ((k - lo) / (hi - lo));
+        }
+      }
+      i = j;
+    }
+    // The outer ring maps to the trip's peak planar g, with a little headroom.
+    let gMax = 0.2;
+    for (let k = 0; k < ts.length; k++) {
+      if (!present[k]) continue;
+      const m = Math.hypot(ts[k][GFORCEX], ts[k][GFORCEY]);
+      if (m > gMax) gMax = m;
+    }
+    const el = document.getElementById("gforce-gauge");
+    el.classList.remove("hidden");
+    return {
+      present, gMax: gMax * 1.12, el,
+      canvas: document.getElementById("gforce-canvas"),
+      value: document.getElementById("gforce-value"),
+    };
+  })();
+
+  function resizeGforce() {
+    if (!gforceGauge) return;
     const dpr = window.devicePixelRatio || 1;
-    charts.forEach(c => {
-      const rect = c.canvas.getBoundingClientRect();
-      c.canvas.width = Math.max(10, rect.width * dpr);
-      c.canvas.height = Math.max(10, rect.height * dpr);
-    });
+    const rect = gforceGauge.canvas.getBoundingClientRect();
+    if (rect.width < 2) return;
+    gforceGauge.canvas.width = Math.round(rect.width * dpr);
+    gforceGauge.canvas.height = Math.round(rect.height * dpr);
+  }
+
+  // Redraws the G-Force gauge: rings, a fading trail of recent samples, live dot.
+  function updateGforceGauge() {
+    if (!gforceGauge) return;
+    const g = gforceGauge;
+    const cv = g.canvas, ctx = cv.getContext("2d");
+    const W = cv.width, H = cv.height;
+    if (W < 2 || H < 2) return;
+    const dpr = window.devicePixelRatio || 1;
+    const cx = W / 2, cy = H / 2;
+    const R = Math.min(W, H) / 2 - 3 * dpr;
+    ctx.clearRect(0, 0, W, H);
+
+    // Reference rings + axes.
+    ctx.lineWidth = 1 * dpr;
+    ctx.strokeStyle = "rgba(255,255,255,0.13)";
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.stroke();
+    ctx.strokeStyle = "rgba(255,255,255,0.07)";
+    ctx.beginPath(); ctx.arc(cx, cy, R / 2, 0, Math.PI * 2); ctx.stroke();
+    ctx.strokeStyle = "rgba(255,255,255,0.09)";
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - R); ctx.lineTo(cx, cy + R);
+    ctx.moveTo(cx - R, cy); ctx.lineTo(cx + R, cy);
+    ctx.stroke();
+
+    const cur = currentSampleIdx;
+    if (g.present[cur] === 0) {
+      g.el.classList.add("gf-nodata");
+      g.value.textContent = "\u2014";
+      return;
+    }
+    g.el.classList.remove("gf-nodata");
+
+    const toXY = (gx, gy) => {
+      let nx = gx / g.gMax, ny = gy / g.gMax;
+      const len = Math.hypot(nx, ny);
+      if (len > 1) { nx /= len; ny /= len; }
+      return [cx + nx * R, cy - ny * R];          // +Y (forward) points up
+    };
+
+    // Trail: a long fading curve through the most recent samples. Quadratic
+    // segments tied through midpoints give a continuous, smooth curve instead
+    // of jagged polyline; alpha rises slowly so older samples stay visible.
+    const N = 48;
+    const pts = [];
+    for (let i = Math.max(0, cur - N); i <= cur; i++) {
+      if (g.present[i] === 0) { pts.length = 0; continue; }   // a gap breaks the trail
+      pts.push(toXY(ts[i][GFORCEX], ts[i][GFORCEY]));
+    }
+    const hx = sampleAt(GFORCEX), hy = sampleAt(GFORCEY);
+    const head = toXY(hx, hy);
+    pts.push(head);
+
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    if (pts.length >= 2) {
+      // Precompute midpoints between consecutive vertices — each curve segment
+      // goes from one midpoint to the next, passing through the data point as
+      // the quadratic control. End-caps anchor to the first/last data points.
+      const mid = [];
+      for (let i = 0; i < pts.length - 1; i++) {
+        mid.push([(pts[i][0] + pts[i + 1][0]) / 2, (pts[i][1] + pts[i + 1][1]) / 2]);
+      }
+      const total = pts.length - 1;
+      for (let i = 0; i < total; i++) {
+        const t = (i + 1) / total;                            // 0 oldest -> 1 newest
+        // Power < 1 makes the fade slower at the tail so old samples linger.
+        const alpha = 0.03 + 0.55 * Math.pow(t, 0.75);
+        ctx.strokeStyle = "rgba(" + GF_RGB + "," + alpha.toFixed(3) + ")";
+        ctx.lineWidth = 0.5 * dpr + 2.6 * dpr * t;
+        ctx.beginPath();
+        if (i === 0) ctx.moveTo(pts[0][0], pts[0][1]);
+        else ctx.moveTo(mid[i - 1][0], mid[i - 1][1]);
+        if (i === total - 1) {
+          ctx.quadraticCurveTo(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1]);
+        } else {
+          ctx.quadraticCurveTo(pts[i][0], pts[i][1], mid[i][0], mid[i][1]);
+        }
+        ctx.stroke();
+      }
+    }
+
+    // Live dot, glowing.
+    ctx.shadowColor = "rgba(" + GF_RGB + ",0.9)";
+    ctx.shadowBlur = 6 * dpr;
+    ctx.fillStyle = "#e040fb";
+    ctx.beginPath(); ctx.arc(head[0], head[1], 3.6 * dpr, 0, Math.PI * 2); ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = 1.1 * dpr;
+    ctx.beginPath(); ctx.arc(head[0], head[1], 3.6 * dpr, 0, Math.PI * 2); ctx.stroke();
+
+    g.value.textContent = Math.hypot(hx, hy).toFixed(2);
+  }
+
+  function resizeChart(c) {
+    if (c.collapsed) return;
+    const dpr = window.devicePixelRatio || 1;
+    const rect = c.canvas.getBoundingClientRect();
+    if (rect.width < 2 || rect.height < 2) return;
+    c.canvas.width = Math.round(rect.width * dpr);
+    c.canvas.height = Math.round(rect.height * dpr);
+  }
+
+  function resizeCharts() {
+    charts.forEach(resizeChart);
+    resizeGforce();
     drawAllCharts();
+    updateGforceGauge();
   }
 
   function drawAllCharts() {
-    charts.forEach(drawChart);
+    charts.forEach((c) => { if (!c.collapsed) drawChart(c); });
   }
 
-  function drawChart(c) {
+  // 2-colour filled current chart: amber above the 0 A baseline, green below
+  // it (regen). The baseline is a faint reference line.
+  function drawCurrentChart(ctx, c, n, px, py, dpr) {
+    const idx = c.cfg.idx;
+    const zeroY = py(0);
+    const W = ctx.canvas.width, H = ctx.canvas.height;
+    const areaPath = () => {
+      ctx.beginPath();
+      ctx.moveTo(px(0), zeroY);
+      for (let i = 0; i < n; i++) ctx.lineTo(px(i), py(ts[i][idx]));
+      ctx.lineTo(px(n - 1), zeroY);
+      ctx.closePath();
+    };
+    ctx.save();
+    ctx.beginPath(); ctx.rect(0, 0, W, zeroY); ctx.clip();
+    areaPath(); ctx.fillStyle = c.cfg.color + "44"; ctx.fill();
+    ctx.restore();
+    ctx.save();
+    ctx.beginPath(); ctx.rect(0, zeroY, W, H - zeroY); ctx.clip();
+    areaPath(); ctx.fillStyle = REGEN_COLOR + "44"; ctx.fill();
+    ctx.restore();
+    // 0 A baseline
+    ctx.strokeStyle = "rgba(255,255,255,0.16)";
+    ctx.lineWidth = 1 * dpr;
+    ctx.beginPath(); ctx.moveTo(px(0), zeroY); ctx.lineTo(px(n - 1), zeroY); ctx.stroke();
+    // line, coloured per segment by sign. Where a segment crosses 0 the line
+    // is split at the zero point so green never spills into the positive side
+    // and vice-versa.
+    ctx.lineWidth = 1.6 * dpr;
+    ctx.lineJoin = "round";
+    const zeroYline = py(0);
+    for (let i = 1; i < n; i++) {
+      const a = ts[i - 1][idx], b = ts[i][idx];
+      const x0 = px(i - 1), y0 = py(a);
+      const x1 = px(i), y1 = py(b);
+      if ((a < 0) !== (b < 0) && a !== b) {
+        const t = -a / (b - a);                 // fraction along the segment where v = 0
+        const xz = x0 + t * (x1 - x0);
+        ctx.strokeStyle = a < 0 ? REGEN_COLOR : c.cfg.color;
+        ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(xz, zeroYline); ctx.stroke();
+        ctx.strokeStyle = b < 0 ? REGEN_COLOR : c.cfg.color;
+        ctx.beginPath(); ctx.moveTo(xz, zeroYline); ctx.lineTo(x1, y1); ctx.stroke();
+      } else {
+        const sign = a !== 0 ? a : b;
+        ctx.strokeStyle = sign < 0 ? REGEN_COLOR : c.cfg.color;
+        ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+      }
+    }
+  }
+
+  function drawChart(c, fracIdxArg) {
+    if (c.collapsed) return;
     const ctx = c.canvas.getContext("2d");
     const w = c.canvas.width, h = c.canvas.height;
+    const dpr = window.devicePixelRatio || 1;
     ctx.clearRect(0, 0, w, h);
+    if (w < 2 || h < 2) return;
+
+    const idx = c.cfg.idx;
+    const n = ts.length;
+    const render = c.cfg.render || "area";
 
     let minV = Infinity, maxV = -Infinity;
-    for (let i = 0; i < ts.length; i++) {
-      const v = ts[i][c.cfg.idx];
+    for (let i = 0; i < n; i++) {
+      const v = ts[i][idx];
       if (v < minV) minV = v;
       if (v > maxV) maxV = v;
+      // Fold the GPS-speed overlay into the speed chart's scale so both lines
+      // share one axis and the gap between them reads off directly.
+      if (c.extra) {
+        const e = ts[i][c.extra.idx];
+        if (typeof e === "number") { if (e < minV) minV = e; if (e > maxV) maxV = e; }
+      }
     }
+    if (!isFinite(minV)) { minV = 0; maxV = 1; }
+    // The current chart always spans 0 so the regen / draw split stays visible.
+    if (render === "current") { if (minV > 0) minV = 0; if (maxV < 0) maxV = 0; }
     if (minV === maxV) { maxV = minV + 1; }
     // Pad a bit
     const range = maxV - minV;
@@ -684,68 +1083,126 @@
     maxV += range * 0.08;
 
     const pad = 4;
-    const px = (i) => pad + (i / (ts.length - 1)) * (w - pad * 2);
+    const px = (i) => pad + (i / (n - 1)) * (w - pad * 2);
     const py = (v) => h - pad - ((v - minV) / (maxV - minV)) * (h - pad * 2);
 
-    // Fill gradient under line
-    const grad = ctx.createLinearGradient(0, 0, 0, h);
-    grad.addColorStop(0, c.cfg.color + "55");
-    grad.addColorStop(1, c.cfg.color + "00");
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.moveTo(px(0), h);
-    for (let i = 0; i < ts.length; i++) ctx.lineTo(px(i), py(ts[i][c.cfg.idx]));
-    ctx.lineTo(px(ts.length - 1), h);
-    ctx.closePath();
-    ctx.fill();
-
-    // Line
-    ctx.strokeStyle = c.cfg.color;
-    ctx.lineWidth = 1.6 * (window.devicePixelRatio || 1);
-    ctx.beginPath();
-    for (let i = 0; i < ts.length; i++) {
-      const x = px(i), y = py(ts[i][c.cfg.idx]);
-      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    if (render === "current") {
+      drawCurrentChart(ctx, c, n, px, py, dpr);
+    } else {
+      if (render !== "line") {
+        // Filled area under the line.
+        const grad = ctx.createLinearGradient(0, 0, 0, h);
+        grad.addColorStop(0, c.cfg.color + "55");
+        grad.addColorStop(1, c.cfg.color + "00");
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.moveTo(px(0), h);
+        for (let i = 0; i < n; i++) ctx.lineTo(px(i), py(ts[i][idx]));
+        ctx.lineTo(px(n - 1), h);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.strokeStyle = c.cfg.color;
+      ctx.lineWidth = 1.6 * dpr;
+      ctx.lineJoin = "round";
+      ctx.beginPath();
+      for (let i = 0; i < n; i++) {
+        const x = px(i), y = py(ts[i][idx]);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
     }
-    ctx.stroke();
+
+    // GPS-speed companion line - dashed, no fill, on the shared axis.
+    if (c.extra) {
+      ctx.save();
+      ctx.strokeStyle = c.extra.color;
+      ctx.lineWidth = 1.4 * dpr;
+      ctx.setLineDash([5 * dpr, 4 * dpr]);
+      ctx.beginPath();
+      let started = false;
+      for (let k = 0; k < n; k++) {
+        const v = ts[k][c.extra.idx];
+        if (typeof v !== "number") { started = false; continue; }
+        const x = px(k), y = py(v);
+        if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
 
     // Cached for cursor drawing
-    c._px = px; c._py = py; c._range = [minV, maxV];
+    c._px = px; c._py = py;
 
-    // Redraw cursor
-    if (currentSampleIdx >= 0) drawCursor(c, arguments[1] != null ? arguments[1] : currentSampleIdx);
+    if (currentSampleIdx >= 0) drawCursor(c, fracIdxArg != null ? fracIdxArg : currentSampleIdx);
   }
 
   function drawCursor(c, fracIdx) {
     const ctx = c.canvas.getContext("2d");
     if (!c._px) return;
+    const dpr = window.devicePixelRatio || 1;
     const i0 = Math.floor(fracIdx);
     const i1 = Math.min(ts.length - 1, i0 + 1);
     const f = fracIdx - i0;
     const x = c._px(fracIdx);
-    const v = ts[i0][c.cfg.idx] + (ts[i1][c.cfg.idx] - ts[i0][c.cfg.idx]) * f;
-    const y = c._py(v);
     ctx.save();
     ctx.strokeStyle = "rgba(255, 160, 0, 0.7)";
-    ctx.lineWidth = 1 * (window.devicePixelRatio || 1);
+    ctx.lineWidth = 1 * dpr;
     ctx.beginPath();
     ctx.moveTo(x, 0); ctx.lineTo(x, c.canvas.height);
     ctx.stroke();
-    ctx.fillStyle = "#ffa000";
+    // Main-series dot at the cursor (green when the current chart is in regen).
+    const v = ts[i0][c.cfg.idx] + (ts[i1][c.cfg.idx] - ts[i0][c.cfg.idx]) * f;
+    ctx.fillStyle = (c.cfg.render === "current" && v < 0) ? REGEN_COLOR : c.cfg.color;
     ctx.beginPath();
-    ctx.arc(x, y, 3 * (window.devicePixelRatio || 1), 0, Math.PI * 2);
+    ctx.arc(x, c._py(v), 3 * dpr, 0, Math.PI * 2);
     ctx.fill();
+    // GPS-speed overlay dot.
+    if (c.extra) {
+      const g0 = ts[i0][c.extra.idx], g1 = ts[i1][c.extra.idx];
+      if (typeof g0 === "number" && typeof g1 === "number") {
+        ctx.fillStyle = c.extra.color;
+        ctx.beginPath();
+        ctx.arc(x, c._py(g0 + (g1 - g0) * f), 3 * dpr, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
     ctx.restore();
+  }
+
+  // Floating readout for the wheel-vs-GPS speed differential on hover.
+  const chartTip = document.createElement("div");
+  chartTip.id = "chart-tip";
+  chartTip.className = "hidden";
+  document.body.appendChild(chartTip);
+
+  // Place a floating tooltip near (mx, my), flipping or clamping so it always
+  // stays inside the viewport rather than getting cut off at the edge.
+  function positionTooltip(el, mx, my) {
+    const w = el.offsetWidth, h = el.offsetHeight;
+    const W = window.innerWidth, H = window.innerHeight;
+    const m = 6, gap = 16;
+    let left = mx + gap;
+    let top  = my + gap;
+    if (left + w + m > W) left = mx - w - gap;
+    if (top  + h + m > H) top  = my - h - gap;
+    if (left < m) left = m;
+    if (top  < m) top  = m;
+    el.style.left = left + "px";
+    el.style.top  = top + "px";
+  }
+
+  function sampleFromClientX(canvas, clientX) {
+    const rect = canvas.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    return Math.round(ratio * (ts.length - 1));
   }
 
   // Chart drag/scrub interaction
   charts.forEach(c => {
     let dragging = false;
     const onMove = (clientX) => {
-      const rect = c.canvas.getBoundingClientRect();
-      const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-      const sample = Math.round(ratio * (ts.length - 1));
-      const t = ts[sample][SEC] - t0;
+      const t = ts[sampleFromClientX(c.canvas, clientX)][SEC] - t0;
       setCurrentTime(t);
     };
     const onWindowMove = e => { if (dragging) onMove(e.clientX); };
@@ -757,6 +1214,29 @@
     });
     window.addEventListener("mousemove", onWindowMove);
     window.addEventListener("mouseup", onWindowUp);
+
+    // Speed chart only: hovering reveals the wheel-vs-GPS differential at
+    // that sample without disturbing playback.
+    if (c.extra) {
+      c.canvas.addEventListener("mousemove", e => {
+        const s = sampleFromClientX(c.canvas, e.clientX);
+        const row = ts[s];
+        const wheel = row[SPD];
+        const gps = row[c.extra.idx];
+        if (typeof gps !== "number") { chartTip.classList.add("hidden"); return; }
+        const wheelD = UNITS.speed(wheel), gpsD = UNITS.speed(gps);
+        const diff = wheelD - gpsD;
+        const sign = diff >= 0 ? "+" : "−";
+        chartTip.innerHTML =
+          '<b>' + fmtTime(row[SEC] - t0) + '</b>' +
+          '<span class="tip-row"><i style="background:#00e5ff"></i>Wheel speed <b>' + wheelD.toFixed(1) + '</b></span>' +
+          '<span class="tip-row"><i style="background:' + GPS_COLOR + '"></i>GPS speed <b>' + gpsD.toFixed(1) + '</b></span>' +
+          '<span class="tip-diff">Δ ' + sign + Math.abs(diff).toFixed(1) + ' ' + UNITS.speedUnit + '</span>';
+        chartTip.classList.remove("hidden");
+        positionTooltip(chartTip, e.clientX, e.clientY);
+      });
+      c.canvas.addEventListener("mouseleave", () => chartTip.classList.add("hidden"));
+    }
   });
 
   // ---------- Playback state ----------
@@ -842,7 +1322,7 @@
     // Dashboard (interpolated between adjacent samples)
     const speed = sampleAt(SPD);
     const maxSpeed = Math.max(track.stats?.maxSpeed || 60, 60);
-    document.getElementById("speedo-value").textContent = speed.toFixed(1);
+    document.getElementById("speedo-value").textContent = UNITS.speed(speed).toFixed(1);
     const ratio = Math.min(1, speed / maxSpeed);
     document.getElementById("speedo-fill").style.strokeDashoffset = (157 * (1 - ratio)).toFixed(1);
     const angle = -90 + ratio * 180;
@@ -857,22 +1337,40 @@
     const cumNow = currentSampleIdx < cumKm.length - 1
       ? lerp(cumKm[currentSampleIdx], cumKm[currentSampleIdx + 1], sampleFraction)
       : cumKm[currentSampleIdx];
-    document.getElementById("odo-value").textContent = cumNow.toFixed(2);
+    document.getElementById("odo-value").textContent = UNITS.dist(cumNow).toFixed(2);
     document.getElementById("volt-value").textContent = sampleAt(VOLT).toFixed(1);
-    document.getElementById("temp-value").textContent = sampleAt(TEMP).toFixed(1);
-    document.getElementById("alt-value").textContent = sampleAt(ALT).toFixed(0);
+    document.getElementById("temp-value").textContent = UNITS.temp(sampleAt(TEMP)).toFixed(1);
+    document.getElementById("alt-value").textContent = UNITS.alt(sampleAt(ALT)).toFixed(0);
     document.getElementById("clock-value").textContent = fmtTime(currentTime);
+    updateGforceGauge();
 
     // Scrub
     if (document.activeElement !== scrub) {
       scrub.value = duration > 0 ? (currentTime / duration) * 1000 : 0;
     }
 
-    // Charts: update readings + cursors (cursor uses fractional index for smooth sweep)
+    // Charts: refresh each header's live value (and the Speed difference row),
+    // then redraw the canvas of every expanded block.
     const fracIdx = currentSampleIdx + sampleFraction;
     charts.forEach(c => {
-      c.reading.textContent = sampleAt(c.cfg.idx).toFixed(1) + c.cfg.unit;
-      drawChart(c, fracIdx);
+      const dp = c.cfg.dp;
+      const kind = c.cfg.unitKind;
+      const unit = chartUnit(c.cfg);
+      const unitSpan = unit ? ' <span class="ch-unit">' + unit + '</span>' : '';
+      const val = sampleAt(c.cfg.idx);
+      c.elVal.innerHTML = fmtFixed(convertByKind(kind, val), dp) + unitSpan;
+      if (c.cfg.render === "current") {
+        c.elVal.style.color = val < 0 ? REGEN_COLOR : "#fff";
+      }
+      if (c.extra) {
+        const gps = sampleAt(c.extra.idx);
+        c.elGpsVal.innerHTML = fmtFixed(convertByKind(kind, gps), dp) + unitSpan;
+        // The difference is shown in display units too — both lines are on the
+        // same axis so the delta is meaningful either way.
+        const diff = convertByKind(kind, val) - convertByKind(kind, gps);
+        c.elDiff.textContent = "Δ " + (diff >= 0 ? "+" : "−") + Math.abs(diff).toFixed(dp) + " " + unit;
+      }
+      if (!c.collapsed) drawChart(c, fracIdx);
     });
 
     // Map marker + traveled line (marker lerped between adjacent coords)

@@ -1,4 +1,30 @@
 document.addEventListener("DOMContentLoaded", function () {
+  // Imperial unit toggle — drives display labels and converters everywhere
+  // values are shown. Override with ?units=imperial / ?units=metric.
+  const UNITS = (() => {
+    const force = new URLSearchParams(location.search).get("units");
+    let imperial = force === "imperial";
+    if (!force) {
+      try {
+        const loc = new Intl.Locale(navigator.language || "en").maximize();
+        if (loc.region === "US") imperial = true;
+      } catch (_) {}
+    }
+    return imperial
+      ? {
+          imperial: true,
+          dist:  (km) => km * 0.621371,
+          speed: (kmh) => kmh * 0.621371,
+          temp:  (c) => c * 9 / 5 + 32,
+          alt:   (m) => m * 3.28084,
+          distUnit: "mi", speedUnit: "mph", tempUnit: "°F", altUnit: "ft",
+        }
+      : {
+          imperial: false,
+          dist:  (km) => km, speed: (kmh) => kmh, temp: (c) => c, alt: (m) => m,
+          distUnit: "km", speedUnit: "km/h", tempUnit: "°C", altUnit: "m",
+        };
+  })();
   // --- Map setup with multiple tile layers ---
   const standardLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
@@ -112,6 +138,7 @@ document.addEventListener("DOMContentLoaded", function () {
   const PAINT_METRICS = {
     distance: { pointIdx: -1 },
     speed:    { pointIdx: 2 },
+    gpsspeed: { pointIdx: 10 },
     pwm:      { pointIdx: 7 },
     power:    { pointIdx: 9 },
     current:  { pointIdx: 8 },
@@ -283,30 +310,34 @@ document.addEventListener("DOMContentLoaded", function () {
   glowLayer = new GlowLayer();
   glowLayer.addTo(map);
 
-  // Greys out trace-colour options the selected trip has no data for.
+  // Greys out trace-colour options the selected trip has no data for, and
+  // labels the wheel-speed option "Wheel speed" when GPS speed is also there.
   function updateTraceColorOptions() {
     const sel = document.getElementById("trace-color-select");
     if (!sel) return;
     const track = selectedIdx >= 0 ? allTracks[selectedIdx] : null;
+    const hasMetric = (idx) => {
+      if (!track || !track.points) return false;
+      for (const p of track.points) {
+        const v = p[idx];
+        if (typeof v === "number" && v !== 0) return true;
+      }
+      return false;
+    };
     for (const opt of sel.options) {
       const key = opt.value;
       if (key === "solid") { opt.disabled = false; continue; }
       let hasData = false;
-      if (track && track.points && track.points.length) {
-        if (key === "distance") {
-          hasData = true;
-        } else {
-          const m = PAINT_METRICS[key];
-          if (m) {
-            for (const p of track.points) {
-              const v = p[m.pointIdx];
-              if (typeof v === "number" && v !== 0) { hasData = true; break; }
-            }
-          }
-        }
+      if (key === "distance") {
+        hasData = !!(track && track.points && track.points.length);
+      } else {
+        const m = PAINT_METRICS[key];
+        if (m) hasData = hasMetric(m.pointIdx);
       }
       opt.disabled = !hasData;
     }
+    const speedOpt = sel.querySelector('option[value="speed"]');
+    if (speedOpt) speedOpt.textContent = hasMetric(10) ? "Wheel speed" : "Speed";
     const active = sel.querySelector(`option[value="${traceColor}"]`);
     if (traceColor !== "solid" && active && active.disabled) {
       traceColor = "solid";
@@ -377,7 +408,10 @@ document.addEventListener("DOMContentLoaded", function () {
     if (glowLayer) glowLayer.redraw();
   }
 
-  const TRACE_UNITS = { speed: "km/h", pwm: "%", power: "W", current: "A", battery: "%", voltage: "V", temp: "°C", altitude: "m", distance: "km" };
+  // Legend label per metric — the value gets converted via UNITS for the
+  // distance / speed / temp / altitude rows so the units match the rest of UI.
+  const TRACE_UNIT_KIND = { speed: "speed", gpsspeed: "speed", temp: "temp", altitude: "alt", distance: "dist" };
+  const TRACE_STATIC_UNIT = { pwm: "%", power: "W", current: "A", battery: "%", voltage: "V" };
   const legendEl = document.getElementById("color-legend");
   function legendGradientCss(key) {
     // distance → distanceColor ramp; metrics → heatColor ramp.
@@ -389,8 +423,13 @@ document.addEventListener("DOMContentLoaded", function () {
     if (!legendEl) return;
     if (!key || key === "solid") { legendEl.classList.add("hidden"); return; }
     legendEl.querySelector(".legend-bar").style.background = legendGradientCss(key);
-    const unit = TRACE_UNITS[key] || "";
-    const fmt = (v) => (Math.abs(v) >= 100 ? v.toFixed(0) : v.toFixed(1)) + " " + unit;
+    const kind = TRACE_UNIT_KIND[key];
+    const unit = kind ? unitForKind(kind) : (TRACE_STATIC_UNIT[key] || "");
+    const conv = (v) => kind ? convertByKind(kind, v) : v;
+    const fmt = (v) => {
+      const c = conv(v);
+      return (Math.abs(c) >= 100 ? c.toFixed(0) : c.toFixed(1)) + " " + unit;
+    };
     legendEl.querySelector("[data-legend-min]").textContent = fmt(min);
     legendEl.querySelector("[data-legend-max]").textContent = fmt(max);
     legendEl.classList.remove("hidden");
@@ -464,22 +503,39 @@ document.addEventListener("DOMContentLoaded", function () {
     const pwm = bestPt[7] || 0;
     const current = bestPt[8] || 0;
     const power = bestPt[9] || 0;
+    const gpsSpeed = bestPt[10] || 0;
     const cumKm = getCumDistPts(allTracks[selectedIdx])[bestIdx] || 0;
 
-    let html = `<i class="clr" style="background:${"#66bb6a"}"></i>Dist: <b>${cumKm.toFixed(2)}</b> km`;
-    html += `<br><i class="clr" style="background:#00e5ff"></i>Speed: <b>${speed.toFixed(1)}</b> km/h`;
+    // When GPS speed is present, the wheel value is "Wheel speed" / GPS is
+    // "GPS speed" — same wording the inspector and detail rows use.
+    const speedLabel = gpsSpeed ? "Wheel speed" : "Speed";
+    let html = `<i class="clr" style="background:#66bb6a"></i>Dist: <b>${UNITS.dist(cumKm).toFixed(2)}</b> ${UNITS.distUnit}`;
+    html += `<br><i class="clr" style="background:#00e5ff"></i>${speedLabel}: <b>${UNITS.speed(speed).toFixed(1)}</b> ${UNITS.speedUnit}`;
+    if (gpsSpeed) html += `<br><i class="clr" style="background:${GPS_SPEED_COLOR}"></i>GPS speed: <b>${UNITS.speed(gpsSpeed).toFixed(1)}</b> ${UNITS.speedUnit}`;
     if (pwm)     html += `<br><i class="clr" style="background:#ff4081"></i>PWM: <b>${pwm.toFixed(1)}</b> %`;
     if (power)   html += `<br><i class="clr" style="background:#7c4dff"></i>Power: <b>${power.toFixed(0)}</b> W`;
     if (current) html += `<br><i class="clr" style="background:#ffd740"></i>Current: <b>${current.toFixed(1)}</b> A`;
     if (volt) html += `<br><i class="clr" style="background:#ff5252"></i>Voltage: <b>${volt.toFixed(1)}</b> V`;
-    if (temp) html += `<br><i class="clr" style="background:#ffa000"></i>Temp: <b>${temp.toFixed(0)}</b> &deg;C`;
+    if (temp) html += `<br><i class="clr" style="background:#ffa000"></i>Temp: <b>${UNITS.temp(temp).toFixed(0)}</b> ${UNITS.tempUnit}`;
     if (batt) html += `<br><i class="clr" style="background:#69f0ae"></i>Battery: <b>${batt.toFixed(0)}</b>%`;
-    if (alt)  html += `<br><i class="clr" style="background:#ce93d8"></i>Alt: <b>${alt.toFixed(0)}</b> m`;
+    if (alt)  html += `<br><i class="clr" style="background:#ce93d8"></i>Alt: <b>${UNITS.alt(alt).toFixed(0)}</b> ${UNITS.altUnit}`;
 
     tooltip.innerHTML = html;
-    tooltip.style.left = (e.clientX + 14) + "px";
-    tooltip.style.top = (e.clientY - 10) + "px";
     tooltip.classList.remove("hidden");
+    // Clamp inside the viewport — at the right/bottom edge the tooltip would
+    // otherwise be clipped off-screen.
+    {
+      const w = tooltip.offsetWidth, h = tooltip.offsetHeight;
+      const W = window.innerWidth, H = window.innerHeight, m = 6;
+      let left = e.clientX + 14;
+      let top  = e.clientY - 10;
+      if (left + w + m > W) left = e.clientX - w - 14;
+      if (top  + h + m > H) top  = H - h - m;
+      if (left < m) left = m;
+      if (top  < m) top  = m;
+      tooltip.style.left = left + "px";
+      tooltip.style.top  = top + "px";
+    }
 
     syncChartCrosshair(selectedIdx, bestPt);
   });
@@ -630,7 +686,7 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function createParserWorker() {
-    return new Worker("static/js/parser-worker.js?v=7");
+    return new Worker("static/js/parser-worker.js?v=8");
   }
 
   function createRecentFilesUi() {
@@ -1095,9 +1151,9 @@ document.addEventListener("DOMContentLoaded", function () {
         const mins = Math.round((selSec % 3600) / 60);
         selSummary.innerHTML = `
           <div class="summary-row"><span>${selCount}</span> trips</div>
-          <div class="summary-row"><span>${selKm.toFixed(1)}</span> km</div>
+          <div class="summary-row"><span>${UNITS.dist(selKm).toFixed(1)}</span> ${UNITS.distUnit}</div>
           <div class="summary-row"><span>${hrs}h ${mins}m</span> riding</div>
-          <div class="summary-row"><span>${selTop}</span> km/h top</div>
+          <div class="summary-row"><span>${UNITS.speed(selTop).toFixed(0)}</span> ${UNITS.speedUnit} top</div>
         `;
       }
     }
@@ -1127,9 +1183,9 @@ document.addEventListener("DOMContentLoaded", function () {
     summary.className = "trip-summary";
     summary.innerHTML = `
       <div class="summary-row"><span>${allTracks.length}</span> trips</div>
-      <div class="summary-row"><span>${totalKm.toFixed(1)}</span> km</div>
+      <div class="summary-row"><span>${UNITS.dist(totalKm).toFixed(1)}</span> ${UNITS.distUnit}</div>
       <div class="summary-row"><span>${hrs}h ${mins}m</span> riding</div>
-      <div class="summary-row"><span>${topSpeed}</span> km/h top</div>
+      <div class="summary-row"><span>${UNITS.speed(topSpeed).toFixed(0)}</span> ${UNITS.speedUnit} top</div>
     `;
     header.appendChild(summary);
 
@@ -1208,8 +1264,8 @@ document.addEventListener("DOMContentLoaded", function () {
       detailHtml += `<div class="chart-wrap"><canvas class="trip-chart" data-idx="${i}"></canvas></div>`;
 
       const meta = s.points > 0
-        ? `${s.distanceKm} km &middot; ${s.maxSpeed} km/h max`
-        : `No GPS &middot; ${s.maxSpeed} km/h max &middot; ${(s.rows || 0).toLocaleString()} samples`;
+        ? `${UNITS.dist(s.distanceKm).toFixed(2)} ${UNITS.distUnit} &middot; ${UNITS.speed(s.maxSpeed).toFixed(0)} ${UNITS.speedUnit} max`
+        : `No GPS &middot; ${UNITS.speed(s.maxSpeed).toFixed(0)} ${UNITS.speedUnit} max &middot; ${(s.rows || 0).toLocaleString()} samples`;
 
       li.innerHTML = `
         <div class="trip-header">
@@ -1244,10 +1300,25 @@ document.addEventListener("DOMContentLoaded", function () {
         updateGroupCheckbox(li.closest(".month-group"));
       });
 
+      // Click a togglable detail-row name to hide / re-show that series on
+      // the mini chart. Click is stopped so it doesn't bubble to selectTrip.
+      li.querySelectorAll('.detail-row[data-toggle="1"]').forEach(row => {
+        row.addEventListener("click", (e) => {
+          e.stopPropagation();
+          row.classList.toggle("series-off");
+          const canvas = li.querySelector(".trip-chart");
+          if (canvas && canvas.offsetWidth > 0) {
+            drawChart(canvas, parseInt(canvas.dataset.idx));
+            if (canvas._persistCrosshair != null) drawCrosshair(canvas, canvas._persistCrosshair);
+          }
+        });
+      });
+
       li.addEventListener("click", (e) => {
         if (e.target.closest(".trip-check")) return;
         if (e.target.closest(".inspect-btn")) { e.stopPropagation(); return; }
         if (e.target.closest(".chart-wrap")) return;
+        if (e.target.closest('.detail-row[data-toggle="1"]')) return;
         selectTrip(i);
       });
       return li;
@@ -1316,7 +1387,7 @@ document.addEventListener("DOMContentLoaded", function () {
         yHeader.innerHTML = `
           <input type="checkbox" class="year-check" checked>
           <span class="year-label">${yg.year}</span>
-          <span class="year-meta">${yearTrips} trips &middot; ${yearKm.toFixed(1)} km</span>
+          <span class="year-meta">${yearTrips} trips &middot; ${UNITS.dist(yearKm).toFixed(1)} ${UNITS.distUnit}</span>
           <span class="year-chevron">&#9662;</span>
         `;
 
@@ -1366,7 +1437,7 @@ document.addEventListener("DOMContentLoaded", function () {
       header.innerHTML = `
         <input type="checkbox" class="month-check" checked>
         <span class="month-label">${mg.month}</span>
-        <span class="month-meta">${mg.indices.length} trips &middot; ${groupKm.toFixed(1)} km</span>
+        <span class="month-meta">${mg.indices.length} trips &middot; ${UNITS.dist(groupKm).toFixed(1)} ${UNITS.distUnit}</span>
         <span class="month-chevron">&#9662;</span>
       `;
 
@@ -1500,6 +1571,19 @@ document.addEventListener("DOMContentLoaded", function () {
     power:    "#7c4dff",
   };
 
+  // GPS speed (timeseries index 12) rides on the speed line's axis as a dashed
+  // companion. Absent on legacy tracks — every read of it is guarded.
+  const GPS_SPEED_IDX = 12;
+  const GPS_SPEED_COLOR = "#80d8ff";
+  function trackHasGpsSpeed(ts) {
+    if (!ts) return false;
+    for (const row of ts) {
+      const v = row[GPS_SPEED_IDX];
+      if (typeof v === "number" && v !== 0) return true;
+    }
+    return false;
+  }
+
   const SERIES = [
     { idx: 1,  key: "speed",    label: "Speed",   unit: "km/h" },
     { idx: 9,  key: "pwm",      label: "PWM",     unit: "%" },
@@ -1514,18 +1598,38 @@ document.addEventListener("DOMContentLoaded", function () {
   // Detail rows: a static range by default; while the cursor scrubs the mini
   // chart they switch to the live value at that sample (setDetailRowsLive) and
   // revert to the range on mouse-out (restoreDetailRows).
+  // unitKind = which UNITS converter applies to this row's values (the unit
+  // label itself is taken from UNITS so it follows the user's locale).
   const DETAIL_ROWS = [
-    { key: "distance", label: "Distance", color: "#66bb6a" },
-    { key: "speed",    label: "Speed",    color: "#00e5ff", idx: 1,  unit: "km/h", dp: 1 },
-    { key: "pwm",      label: "PWM",      color: "#ff4081", idx: 9,  unit: "%",    dp: 1 },
-    { key: "power",    label: "Power",    color: "#7c4dff", idx: 11, unit: "W",    dp: 0 },
-    { key: "current",  label: "Current", color: "#ffd740", idx: 10, unit: "A",    dp: 1 },
-    { key: "voltage",  label: "Voltage", color: "#ff5252", idx: 2,  unit: "V",    dp: 1 },
-    { key: "temp",     label: "Temp",    color: "#ffa000", idx: 3,  unit: "°C",   dp: 1 },
-    { key: "battery",  label: "Battery", color: "#69f0ae", idx: 4,  unit: "%",    dp: 0 },
-    { key: "altitude", label: "Altitude",color: "#ce93d8", idx: 5,  unit: "m",    dp: 0 },
-    { key: "time",     label: "Time",    color: null },
+    { key: "distance", label: "Distance",  color: null,      unitKind: "dist" },
+    { key: "speed",    label: "Speed",     color: "#00e5ff", idx: 1,  unitKind: "speed", dp: 1 },
+    { key: "gpsspeed", label: "GPS speed", color: "#80d8ff", idx: 12, unitKind: "speed", dp: 1 },
+    { key: "pwm",      label: "PWM",       color: "#ff4081", idx: 9,  unit: "%",    dp: 1 },
+    { key: "power",    label: "Power",     color: "#7c4dff", idx: 11, unit: "W",    dp: 0 },
+    { key: "current",  label: "Current",   color: "#ffd740", idx: 10, unit: "A",    dp: 1 },
+    { key: "voltage",  label: "Voltage",   color: "#ff5252", idx: 2,  unit: "V",    dp: 1 },
+    { key: "temp",     label: "Temp",      color: "#ffa000", idx: 3,  unitKind: "temp", dp: 1 },
+    { key: "battery",  label: "Battery",   color: "#69f0ae", idx: 4,  unit: "%",    dp: 0 },
+    { key: "altitude", label: "Altitude",  color: "#ce93d8", idx: 5,  unitKind: "alt",  dp: 0 },
+    { key: "time",     label: "Time",      color: null },
   ];
+  // Convert a metric value for display in the user's unit system.
+  function convertByKind(kind, v) {
+    if (kind === "speed") return UNITS.speed(v);
+    if (kind === "temp")  return UNITS.temp(v);
+    if (kind === "dist")  return UNITS.dist(v);
+    if (kind === "alt")   return UNITS.alt(v);
+    return v;
+  }
+  function unitForKind(kind, fallback) {
+    if (kind === "speed") return UNITS.speedUnit;
+    if (kind === "temp")  return UNITS.tempUnit;
+    if (kind === "dist")  return UNITS.distUnit;
+    if (kind === "alt")   return UNITS.altUnit;
+    return fallback || "";
+  }
+  // Regen (negative current) gets a distinct green, mirroring the inspector.
+  const REGEN_COLOR = "#00e676";
   const DETAIL_ROW_MAP = {};
   DETAIL_ROWS.forEach(r => { DETAIL_ROW_MAP[r.key] = r; });
   let liveDetailIdx = -1;
@@ -1535,11 +1639,30 @@ document.addEventListener("DOMContentLoaded", function () {
   function buildDetailHtml(t) {
     const ts = t.timeseries || [];
     const s = t.stats || {};
+    // When GPS speed is also recorded, the wheel's own dial speed is labelled
+    // "Wheel speed" so it reads distinct from the "GPS speed" row.
+    const hasGps = trackHasGpsSpeed(ts);
+    // Speed and GPS speed both show "avg / max" so the two rows compare side
+    // by side. Computed live since legacy caches don't include avgGpsSpeed.
+    const avgMaxOf = (idx) => {
+      let sum = 0, cnt = 0, mx = -Infinity, hasData = false;
+      for (const row of ts) {
+        const v = row[idx];
+        if (typeof v !== "number") continue;
+        if (v > 0) { sum += v; cnt++; }
+        if (v > mx) mx = v;
+        if (v !== 0) hasData = true;
+      }
+      if (!hasData) return null;
+      const avg = cnt ? sum / cnt : 0;
+      return { avg, max: Math.max(mx, 0) };
+    };
     let html = "";
     for (const r of DETAIL_ROWS) {
       let range = null;
+      const unitLabel = unitForKind(r.unitKind, r.unit);
       if (r.key === "distance") {
-        if (s.distanceKm > 0) range = s.distanceKm.toFixed(2) + " km";
+        if (s.distanceKm > 0) range = UNITS.dist(s.distanceKm).toFixed(2) + " " + UNITS.distUnit;
       } else if (r.key === "time") {
         const start = (t.dateStart || "").split("T")[1];
         const end = (t.dateEnd || "").split("T")[1];
@@ -1547,7 +1670,18 @@ document.addEventListener("DOMContentLoaded", function () {
           range = start.substring(0, 8) + " - " + (end ? end.substring(0, 8) : start.substring(0, 8));
         }
       } else if (r.key === "speed") {
-        range = (s.avgSpeed || 0) + " / " + (s.maxSpeed || 0) + " km/h";
+        // Wheel speed: avg comes from stats; the "0/0" fallback for empty
+        // stats keeps the layout stable on cached tracks without telemetry.
+        const a = UNITS.speed(s.avgSpeed || 0);
+        const mx = UNITS.speed(s.maxSpeed || 0);
+        range = a.toFixed(1) + " / " + mx.toFixed(1) + " " + UNITS.speedUnit;
+      } else if (r.key === "gpsspeed") {
+        const stat = avgMaxOf(r.idx);
+        if (stat) {
+          const a = UNITS.speed(stat.avg);
+          const mx = UNITS.speed(stat.max);
+          range = a.toFixed(1) + " / " + mx.toFixed(1) + " " + UNITS.speedUnit;
+        }
       } else {
         let mn = Infinity, mx = -Infinity, hasData = false;
         for (const row of ts) {
@@ -1558,12 +1692,23 @@ document.addEventListener("DOMContentLoaded", function () {
           if (v !== 0) hasData = true;
         }
         if (hasData && isFinite(mn)) {
-          range = mn.toFixed(r.dp) + " - " + mx.toFixed(r.dp) + " " + r.unit;
+          const lo = convertByKind(r.unitKind, mn);
+          const hi = convertByKind(r.unitKind, mx);
+          range = lo.toFixed(r.dp) + " - " + hi.toFixed(r.dp) + " " + unitLabel;
         }
       }
       if (range == null) continue;
-      const dot = r.color ? `<i class="clr" style="background:${r.color}"></i>` : "";
-      html += `<div class="detail-row" data-row="${r.key}"><span>${dot}${r.label}</span>` +
+      const label = (hasGps && r.key === "speed") ? "Wheel speed" : r.label;
+      // The colour is exposed as the `--c` custom property so the toggled-off
+      // swatch can swap fill for border with pure CSS. Distance and Time have
+      // no swatch (not chart series) — a transparent placeholder keeps their
+      // labels aligned with the rest.
+      const dot = r.color
+        ? `<i class="clr" style="--c:${r.color}"></i>`
+        : `<i class="clr clr-spacer"></i>`;
+      // Rows tied to a chart series (have an idx) are click-to-toggle.
+      const toggleAttr = (r.idx != null) ? ' data-toggle="1"' : '';
+      html += `<div class="detail-row" data-row="${r.key}"${toggleAttr}><span>${dot}${label}</span>` +
               `<span class="detail-val" data-range="${range}">${range}</span></div>`;
     }
     return html;
@@ -1591,11 +1736,14 @@ document.addEventListener("DOMContentLoaded", function () {
       const valEl = rowEl.querySelector(".detail-val");
       if (!r || !valEl) return;
       let txt = null;
-      if (r.key === "distance") txt = cumKm.toFixed(2) + " km";
-      else if (r.key === "time") txt = clockAt(track, row[0] || 0);
-      else if (r.idx != null) {
+      if (r.key === "distance") {
+        txt = UNITS.dist(cumKm).toFixed(2) + " " + UNITS.distUnit;
+      } else if (r.key === "time") {
+        txt = clockAt(track, row[0] || 0);
+      } else if (r.idx != null) {
         const v = row[r.idx];
-        txt = (typeof v === "number" ? v.toFixed(r.dp) : "0") + " " + r.unit;
+        const num = (typeof v === "number") ? convertByKind(r.unitKind, v) : 0;
+        txt = num.toFixed(r.dp) + " " + unitForKind(r.unitKind, r.unit);
       }
       if (txt != null) valEl.textContent = txt;
     });
@@ -1640,10 +1788,21 @@ document.addEventListener("DOMContentLoaded", function () {
     const cw = w - pad.left - pad.right;
     const ch = h - pad.top - pad.bottom;
 
+    // Series the user has toggled off on this trip's detail rows. Reading the
+    // DOM keeps the state right next to where it is set — no extra bookkeeping.
+    const hidden = new Set();
+    const item = canvas.closest(".trip-item");
+    if (item) {
+      item.querySelectorAll(".detail-row.series-off").forEach(r => hidden.add(r.dataset.row));
+    }
+
     const activeSeries = SERIES.filter(s => {
+      if (hidden.has(s.key)) return false;
       for (const row of ts) if ((row[s.idx] || 0) !== 0) return true;
       return false;
     });
+
+    const hasGpsSpeed = !hidden.has("gpsspeed") && trackHasGpsSpeed(ts);
 
     const ranges = {};
     for (const s of activeSeries) {
@@ -1653,8 +1812,25 @@ document.addEventListener("DOMContentLoaded", function () {
         if (v < min) min = v;
         if (v > max) max = v;
       }
+      // GPS speed shares the wheel-speed axis so the two lines compare directly.
+      if (s.key === "speed" && hasGpsSpeed) {
+        for (const row of ts) {
+          const v = row[GPS_SPEED_IDX];
+          if (typeof v === "number") { if (v < min) min = v; if (v > max) max = v; }
+        }
+      }
       const span = max - min || 1;
       ranges[s.key] = { min: min - span * 0.05, max: max + span * 0.05 };
+    }
+    // GPS speed present but no wheel-speed series — give it a standalone axis.
+    if (hasGpsSpeed && !ranges.speed) {
+      let min = Infinity, max = -Infinity;
+      for (const row of ts) {
+        const v = row[GPS_SPEED_IDX];
+        if (typeof v === "number") { if (v < min) min = v; if (v > max) max = v; }
+      }
+      const span = max - min || 1;
+      ranges.speed = { min: min - span * 0.05, max: max + span * 0.05 };
     }
 
     const tMin = ts[0][0];
@@ -1664,21 +1840,70 @@ document.addEventListener("DOMContentLoaded", function () {
     for (const s of activeSeries) {
       const r = ranges[s.key];
       const rSpan = r.max - r.min || 1;
-      ctx.beginPath();
-      ctx.strokeStyle = CHART_COLORS[s.key];
       ctx.lineWidth = 1.2;
       ctx.globalAlpha = 0.8;
-      for (let i = 0; i < ts.length; i++) {
-        const x = pad.left + ((ts[i][0] - tMin) / tSpan) * cw;
-        const y = pad.top + ch - ((ts[i][s.idx] - r.min) / rSpan) * ch;
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
+      if (s.key === "current") {
+        // 2-colour line: regen green where current is < 0, amber otherwise.
+        // Segments that cross 0 are split at the zero point so each colour
+        // stops cleanly at the baseline — no green spilling into +A and vice
+        // versa.
+        const yZero = pad.top + ch - ((0 - r.min) / rSpan) * ch;
+        for (let i = 1; i < ts.length; i++) {
+          const a = ts[i - 1][s.idx], b = ts[i][s.idx];
+          const x0 = pad.left + ((ts[i - 1][0] - tMin) / tSpan) * cw;
+          const y0 = pad.top + ch - ((a - r.min) / rSpan) * ch;
+          const x1 = pad.left + ((ts[i][0] - tMin) / tSpan) * cw;
+          const y1 = pad.top + ch - ((b - r.min) / rSpan) * ch;
+          if ((a < 0) !== (b < 0) && a !== b) {
+            const t = -a / (b - a);
+            const xz = x0 + t * (x1 - x0);
+            ctx.strokeStyle = a < 0 ? REGEN_COLOR : CHART_COLORS.current;
+            ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(xz, yZero); ctx.stroke();
+            ctx.strokeStyle = b < 0 ? REGEN_COLOR : CHART_COLORS.current;
+            ctx.beginPath(); ctx.moveTo(xz, yZero); ctx.lineTo(x1, y1); ctx.stroke();
+          } else {
+            const sign = a !== 0 ? a : b;
+            ctx.strokeStyle = sign < 0 ? REGEN_COLOR : CHART_COLORS.current;
+            ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+          }
+        }
+      } else {
+        ctx.beginPath();
+        ctx.strokeStyle = CHART_COLORS[s.key];
+        for (let i = 0; i < ts.length; i++) {
+          const x = pad.left + ((ts[i][0] - tMin) / tSpan) * cw;
+          const y = pad.top + ch - ((ts[i][s.idx] - r.min) / rSpan) * ch;
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
       }
-      ctx.stroke();
     }
     ctx.globalAlpha = 1;
 
-    canvas._chartData = { ts, activeSeries, ranges, tMin, tSpan, pad, cw, ch, w, h };
+    // GPS-speed companion line — dashed, on the wheel-speed axis.
+    if (hasGpsSpeed && ranges.speed) {
+      const r = ranges.speed;
+      const rSpan = r.max - r.min || 1;
+      ctx.save();
+      ctx.beginPath();
+      ctx.strokeStyle = GPS_SPEED_COLOR;
+      ctx.lineWidth = 1.1;
+      ctx.globalAlpha = 0.9;
+      ctx.setLineDash([3, 2]);
+      let started = false;
+      for (let i = 0; i < ts.length; i++) {
+        const v = ts[i][GPS_SPEED_IDX];
+        if (typeof v !== "number") { started = false; continue; }
+        const x = pad.left + ((ts[i][0] - tMin) / tSpan) * cw;
+        const y = pad.top + ch - ((v - r.min) / rSpan) * ch;
+        if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    canvas._chartData = { ts, activeSeries, ranges, tMin, tSpan, pad, cw, ch, w, h, hasGpsSpeed };
 
     // Re-apply persistent crosshair if one was stored
     if (canvas._persistCrosshair != null) {
@@ -1725,6 +1950,19 @@ document.addEventListener("DOMContentLoaded", function () {
       ctx.beginPath();
       ctx.arc(xPos, y, 3, 0, Math.PI * 2);
       ctx.fill();
+    }
+    // GPS-speed dot on the shared wheel-speed axis.
+    if (cd.hasGpsSpeed && cd.ranges.speed) {
+      const v = row[GPS_SPEED_IDX];
+      if (typeof v === "number") {
+        const r = cd.ranges.speed;
+        const rSpan = r.max - r.min || 1;
+        const y = cd.pad.top + cd.ch - ((v - r.min) / rSpan) * cd.ch;
+        ctx.fillStyle = GPS_SPEED_COLOR;
+        ctx.beginPath();
+        ctx.arc(xPos, y, 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
   }
 

@@ -1,1 +1,5 @@
 /.playwright-mcp
+
+# Local sample files — do not commit
+CSV_FORMAT_NOTES.md
+delete_later_sample.csv

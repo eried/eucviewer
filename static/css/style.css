@@ -248,8 +248,6 @@ body, html {
     cursor: pointer;
     background: rgba(10, 10, 15, 0.88);
     border-left: 1px solid rgba(0, 229, 255, 0.15);
-    border-top-left-radius: 8px;
-    border-bottom-left-radius: 8px;
     backdrop-filter: blur(12px);
     transition: background 0.2s;
 }
@@ -325,6 +323,25 @@ body, html {
 }
 .detail-row span:first-child { color: #888; }
 .detail-row span:last-child { color: #eee; font-weight: 500; }
+/* Click a series-row name on the trip card to toggle its line on the mini
+   chart. The colour swatch swaps fill for outline when toggled off. */
+.detail-row[data-toggle="1"] {
+    cursor: pointer;
+    user-select: none;
+    border-radius: 3px;
+}
+.detail-row[data-toggle="1"]:hover { background: rgba(255, 255, 255, 0.05); }
+.detail-row.series-off { opacity: 0.55; }
+.detail-row.series-off .clr {
+    background: transparent;
+    border: 1px solid var(--c, #888);
+}
+/* Invisible spacer so non-toggleable rows (Distance, Time) line up with the
+   metric rows even though they have no colour swatch. */
+.clr.clr-spacer {
+    background: transparent;
+    border: none;
+}
 
 /* Trip summary */
 .trip-summary {
@@ -589,7 +606,9 @@ body, html {
     backdrop-filter: blur(4px);
 }
 
-/* Color indicator squares */
+/* Color indicator squares — the colour is sourced from inline style="--c:…"
+   on detail rows so .series-off can swap fill for outline via CSS. The map
+   hover tooltip still uses inline style="background:…" which wins as before. */
 .clr {
     display: inline-block;
     width: 8px;
@@ -597,6 +616,8 @@ body, html {
     border-radius: 2px;
     margin-right: 4px;
     vertical-align: middle;
+    box-sizing: border-box;
+    background: var(--c, #888);
 }
 
 /* Mini chart */

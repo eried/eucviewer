@@ -58,11 +58,17 @@ shows **"Trip not found"**. Always read IndexedDB first in the inspector.
 ```
 {
   name, date, dateStart, dateEnd,
-  points:     [[lat, lon, speed, alt, volt, temp, battery], ...],
-  timeseries: [[sec, speed, voltage, temp, battery, altitude, lat, lon], ...],  // downsampled to <= 500
+  points:     [[lat, lon, speed, alt, volt, temp, battery, pwm, current, power, gpsSpeed], ...],
+  timeseries: [[sec, speed, voltage, temp, battery, altitude, lat, lon, mileageKm,
+                pwm, current, power, gpsSpeed, gForce, gForceX, gForceY], ...],  // downsampled to <= 500
   stats:      { points, rows, distanceKm, maxSpeed, avgSpeed, maxAlt, minAlt, maxVoltage, minVoltage, maxTemp }
 }
 ```
+
+Columns are **append-only** — legacy cached tracks lack the trailing fields, so
+every reader guards for `undefined`. `gpsSpeed` (timeseries 12 / points 10) and
+the three `gForce*` columns (timeseries 13-15) come from newer EUC Planet
+exports; a value of `0` for `gForce` means "no IMU sample for that row".
 
 Index `i` in `inspector.html?i=<i>` is the position in `allTracks` *after* sorting (newest
 first, by `dateStart` / `date`). The inspector trusts this order — any change to sort logic in
