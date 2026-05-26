@@ -25,14 +25,21 @@ sync unless told otherwise.
 | `static/js/app.js`       | `darknessbot-trip-viewer/web/static/js/app.js`              |
 | `static/js/parser-worker.js` | `darknessbot-trip-viewer/web/static/js/parser-worker.js` |
 | `static/js/inspector.js` | `darknessbot-trip-viewer/web/static/js/inspector.js`        |
+| `static/js/source-hints.js`     | _(not mirrored — eucviewer-only)_                    |
+| `static/js/euc-world-export.js` | _(not mirrored — eucviewer-only)_                    |
 
 ## Architecture at a glance
 
 - `app.js` boots Leaflet, loads cached tracks (IndexedDB → localStorage fallback), renders the
   trip tree. Paths are relative (`static/...`) so it works both at `/` and in a subfolder
   (`/<repo-name>/`) under GitHub Pages.
-- `parser-worker.js` is a Web Worker (uses `importScripts` for JSZip). Parses `.dbb`/`.csv`
-  off-thread and streams `progress` / `track` / `done` / `error` messages.
+- `parser-worker.js` is a Web Worker (uses `importScripts` for JSZip). Parses `.dbb`/`.csv`/`.gpx`/`.xlsx`
+  off-thread and streams `progress` / `track` / `done` / `error` messages. SheetJS is lazy-loaded
+  via `importScripts` only when the first `.xlsx` (direct or inside a `.dbb`) is encountered.
+- `source-hints.js` + `euc-world-export.js` power the modal "Export your trips from euc.world".
+  The modal hosts a draggable `javascript:` bookmarklet; clicking it inside a logged-in euc.world
+  tab loads `euc-world-export.js`, which paginates `POST /webapi/userTours` and fetches
+  `/xlsx/{key}` per tour, then triggers a `.dbb` download (store-mode ZIP, no external libs).
 - `inspector.html` + `inspector.js` is a standalone page. It reads the `?i=<index>` query param,
   fetches tracks from IndexedDB (store `eucplanet-trip-viewer/currentSession` key `"tracks"`),
   falls back to `localStorage["dbb_tracks"]`, then drives a MapLibre terrain map + 5 canvas
@@ -89,6 +96,7 @@ Worker + IndexedDB require `http(s)://`, not `file://`.
 - Leaflet 1.9.4 (main map)
 - MapLibre GL 4.7.1 (inspector 3D map + terrain)
 - JSZip 3.10.1 (loaded inside `parser-worker.js` via `importScripts`)
+- SheetJS (xlsx) 0.18.5 (lazy-loaded in `parser-worker.js` only on first `.xlsx` parse)
 - AWS terrarium DEM tiles for elevation: `s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png`
 
 ## Deploy
