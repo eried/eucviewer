@@ -1,0 +1,302 @@
+// Loaded as a script tag inside euc.world via the eucviewer bookmarklet.
+// Same-origin context, so /webapi/userTours pagination and /xlsx/{key}
+// fetches both inherit the user's session cookies. Output: a single .dbb
+// (zip of .xlsx) that eucviewer can read directly.
+(function () {
+  "use strict";
+
+  const ORIGIN = "https://euc.world";
+  if (location.origin !== ORIGIN) {
+    alert("Run this from a euc.world tab (log in first).");
+    return;
+  }
+
+  // If the overlay is already on the page (export still running, or finished
+  // but the user hasn't dismissed it), flash it to draw attention instead of
+  // alert()-ing or spinning up a second run on top of the first.
+  const existing = document.getElementById("eucviewer-export-overlay");
+  if (existing) {
+    pulse(existing);
+    return;
+  }
+  window.__eucviewerExportRunning = true;
+
+  const ui = buildOverlay();
+
+  run().catch((err) => {
+    ui.fail("Export failed: " + (err && err.message ? err.message : String(err)));
+  }).finally(() => {
+    window.__eucviewerExportRunning = false;
+  });
+
+  async function run() {
+    ui.setStatus("Listing tours");
+    const tours = await listAllTours(ui);
+    if (!tours.length) {
+      ui.fail("No tours found. Sure you're logged in?");
+      return;
+    }
+    ui.log("Found " + tours.length + " tours.");
+
+    const files = [];
+    for (let i = 0; i < tours.length; i += 1) {
+      if (ui.cancelled) { ui.log("Cancelled."); return; }
+      const t = tours[i];
+      ui.setProgress(i + 1, tours.length, "Tour " + t.key);
+      try {
+        const resp = await fetch("/xlsx/" + t.key, { credentials: "include" });
+        if (!resp.ok) {
+          ui.log("  skip " + t.key + " (HTTP " + resp.status + ")");
+          continue;
+        }
+        const buf = await resp.arrayBuffer();
+        if (!buf || buf.byteLength < 200) {
+          ui.log("  skip " + t.key + " (empty)");
+          continue;
+        }
+        files.push({
+          name: filenameFor(t),
+          data: new Uint8Array(buf),
+        });
+      } catch (e) {
+        ui.log("  skip " + t.key + ": " + (e && e.message ? e.message : e));
+      }
+      await sleep(120);
+    }
+
+    if (!files.length) {
+      ui.fail("Nothing downloaded.");
+      return;
+    }
+
+    ui.setStatus("Building " + files.length + "-file archive");
+    const blob = makeZip(files);
+    const url = URL.createObjectURL(blob);
+    const stamp = new Date().toISOString().slice(0, 10);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "euc-world_" + stamp + ".dbb";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+
+    ui.done(files.length, blob.size);
+  }
+
+  function filenameFor(tour) {
+    // dateStart is a unix timestamp in seconds.
+    let stamp = "";
+    if (tour.dateStart) {
+      const d = new Date(tour.dateStart * 1000);
+      const pad = (n) => String(n).padStart(2, "0");
+      stamp = d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+    }
+    return (stamp ? stamp + "_" : "") + tour.key + ".xlsx";
+  }
+
+  // --- tour list via JSON API ---
+
+  async function listAllTours(ui) {
+    const all = [];
+    let page = 1;
+    const pageSize = 100;
+    let totalPages = 1;
+
+    while (page <= totalPages) {
+      const resp = await fetch("/webapi/userTours", {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify({
+          page, count: pageSize,
+          sortBy: 0, sortOrder: 0,
+          filterByText: "", filterByModel: "",
+          filterByDateFrom: "", filterByDateTo: "",
+          s: "getList",
+        }),
+      });
+      if (!resp.ok) throw new Error("Tour list HTTP " + resp.status);
+      const json = await resp.json();
+      if (json.error) throw new Error("Tour list error " + json.error);
+      const data = json.data || {};
+      totalPages = data.pages || 1;
+      const items = data.items || [];
+      for (const item of items) {
+        if (item.key) all.push(item);
+      }
+      ui.log("  page " + page + "/" + totalPages + ": +" + items.length + " (" + all.length + " total)");
+      page += 1;
+    }
+
+    return all;
+  }
+
+  // --- overlay UI ---
+
+  function buildOverlay() {
+    const root = document.createElement("div");
+    root.id = "eucviewer-export-overlay";
+    root.style.cssText = [
+      "position:fixed", "inset:0", "z-index:2147483647",
+      "background:rgba(8,10,16,0.78)", "color:#e0e0e0",
+      "font:14px/1.4 -apple-system,Segoe UI,Roboto,sans-serif",
+      "display:flex", "align-items:center", "justify-content:center",
+      "backdrop-filter:blur(4px)", "-webkit-backdrop-filter:blur(4px)",
+    ].join(";");
+    root.innerHTML = `
+      <div style="background:linear-gradient(180deg,#1c2330,#141a26);border:1px solid rgba(255,255,255,0.1);border-radius:12px;width:min(580px,92vw);max-height:80vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 60px -10px rgba(0,0,0,0.6),0 4px 16px rgba(0,0,0,0.4)">
+        <div style="padding:16px 20px;border-bottom:1px solid rgba(255,255,255,0.06);display:flex;align-items:center;gap:14px">
+          <strong style="color:#fff;font-size:15px;letter-spacing:0.01em">euc.world export</strong>
+          <span data-status style="color:#9fb3c8;font-size:12px;flex:1">starting</span>
+          <button data-cancel type="button" style="background:rgba(255,255,255,0.06);color:#e0e0e0;border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:5px 12px;cursor:pointer;font-size:12px;transition:background 0.15s">Cancel</button>
+        </div>
+        <div style="height:5px;background:rgba(0,0,0,0.35);position:relative">
+          <div data-bar style="position:absolute;inset:0 100% 0 0;background:linear-gradient(90deg,#00e5ff,#80f5ff);transition:right .2s;box-shadow:0 0 8px rgba(0,229,255,0.5)"></div>
+        </div>
+        <pre data-log style="margin:0;padding:14px 20px;flex:1;overflow:auto;background:rgba(0,0,0,0.25);color:#7d96b3;font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap"></pre>
+      </div>
+    `;
+    document.documentElement.appendChild(root);
+
+    const statusEl = root.querySelector("[data-status]");
+    const barEl = root.querySelector("[data-bar]");
+    const logEl = root.querySelector("[data-log]");
+    const cancelBtn = root.querySelector("[data-cancel]");
+
+    const ui = {
+      cancelled: false,
+      setStatus(text) { statusEl.textContent = text; this.log(text); },
+      setProgress(cur, total, text) {
+        statusEl.textContent = text + "  (" + cur + "/" + total + ")";
+        barEl.style.right = (100 - Math.round((cur / total) * 100)) + "%";
+      },
+      log(line) {
+        logEl.textContent += line + "\n";
+        logEl.scrollTop = logEl.scrollHeight;
+      },
+      fail(msg) {
+        statusEl.textContent = msg;
+        statusEl.style.color = "#ff7676";
+        cancelBtn.textContent = "Close";
+      },
+      done(count, bytes) {
+        statusEl.textContent = "Done. " + count + " tours, " + Math.round(bytes / 1024) + " KB downloaded.";
+        statusEl.style.color = "#7af2a3";
+        barEl.style.right = "0%";
+        cancelBtn.textContent = "Close";
+      },
+    };
+
+    cancelBtn.addEventListener("click", () => {
+      ui.cancelled = true;
+      root.remove();
+    });
+
+    return ui;
+  }
+
+  // --- ZIP writer (store mode, no compression) ---
+
+  let crcTable = null;
+  function crc32(data) {
+    if (!crcTable) {
+      crcTable = new Uint32Array(256);
+      for (let n = 0; n < 256; n += 1) {
+        let c = n;
+        for (let k = 0; k < 8; k += 1) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+        crcTable[n] = c >>> 0;
+      }
+    }
+    let c = 0xffffffff;
+    for (let i = 0; i < data.length; i += 1) c = crcTable[(c ^ data[i]) & 0xff] ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  }
+
+  function makeZip(files) {
+    const enc = new TextEncoder();
+    const parts = [];
+    const central = [];
+    let offset = 0;
+
+    for (const f of files) {
+      const nameBytes = enc.encode(f.name);
+      const crc = crc32(f.data);
+      const size = f.data.length;
+
+      const lfh = new Uint8Array(30 + nameBytes.length);
+      const lv = new DataView(lfh.buffer);
+      lv.setUint32(0, 0x04034b50, true);
+      lv.setUint16(4, 20, true);
+      lv.setUint16(6, 0, true);
+      lv.setUint16(8, 0, true);
+      lv.setUint16(10, 0, true);
+      lv.setUint16(12, 0x21, true);
+      lv.setUint32(14, crc, true);
+      lv.setUint32(18, size, true);
+      lv.setUint32(22, size, true);
+      lv.setUint16(26, nameBytes.length, true);
+      lv.setUint16(28, 0, true);
+      lfh.set(nameBytes, 30);
+      parts.push(lfh, f.data);
+
+      const cd = new Uint8Array(46 + nameBytes.length);
+      const cv = new DataView(cd.buffer);
+      cv.setUint32(0, 0x02014b50, true);
+      cv.setUint16(4, 20, true);
+      cv.setUint16(6, 20, true);
+      cv.setUint16(8, 0, true);
+      cv.setUint16(10, 0, true);
+      cv.setUint16(12, 0, true);
+      cv.setUint16(14, 0x21, true);
+      cv.setUint32(16, crc, true);
+      cv.setUint32(20, size, true);
+      cv.setUint32(24, size, true);
+      cv.setUint16(28, nameBytes.length, true);
+      cv.setUint32(42, offset, true);
+      cd.set(nameBytes, 46);
+      central.push(cd);
+
+      offset += lfh.length + f.data.length;
+    }
+
+    const cdStart = offset;
+    let cdSize = 0;
+    for (const c of central) { parts.push(c); cdSize += c.length; }
+
+    const eocd = new Uint8Array(22);
+    const ev = new DataView(eocd.buffer);
+    ev.setUint32(0, 0x06054b50, true);
+    ev.setUint16(8, central.length, true);
+    ev.setUint16(10, central.length, true);
+    ev.setUint32(12, cdSize, true);
+    ev.setUint32(16, cdStart, true);
+    parts.push(eocd);
+
+    return new Blob(parts, { type: "application/zip" });
+  }
+
+  function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
+
+  // Briefly draw the eye to the already-open card. Plays a short border-glow
+  // + scale pop animation, so re-clicking the bookmarklet feels like
+  // "look here" instead of doing nothing.
+  function pulse(overlayRoot) {
+    const card = overlayRoot.firstElementChild;
+    if (!card) return;
+    if (!document.getElementById("eucviewer-pulse-style")) {
+      const s = document.createElement("style");
+      s.id = "eucviewer-pulse-style";
+      s.textContent =
+        "@keyframes eucviewerPulse{" +
+          "0%{transform:scale(1);box-shadow:0 24px 60px -10px rgba(0,0,0,0.6),0 4px 16px rgba(0,0,0,0.4)}" +
+          "30%{transform:scale(1.03);box-shadow:0 0 0 4px rgba(0,229,255,0.5),0 24px 60px -10px rgba(0,0,0,0.6)}" +
+          "100%{transform:scale(1);box-shadow:0 24px 60px -10px rgba(0,0,0,0.6),0 4px 16px rgba(0,0,0,0.4)}" +
+        "}";
+      document.head.appendChild(s);
+    }
+    card.style.animation = "none";
+    void card.offsetWidth;
+    card.style.animation = "eucviewerPulse 0.55s ease-out";
+  }
+})();

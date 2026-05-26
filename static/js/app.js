@@ -641,7 +641,7 @@ document.addEventListener("DOMContentLoaded", function () {
   // --- Upload with client-side parsing ---
   async function handleFile(file, append) {
     const lname = file.name.toLowerCase();
-    if (!lname.endsWith(".dbb") && !lname.endsWith(".csv")) return;
+    if (!lname.endsWith(".dbb") && !lname.endsWith(".csv") && !lname.endsWith(".gpx") && !lname.endsWith(".xlsx")) return;
 
     const addBtn = append ? document.querySelector("#panel-footer .add-more-btn") : null;
     const setProgress = (text, error) => {
@@ -686,7 +686,7 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function createParserWorker() {
-    return new Worker("static/js/parser-worker.js?v=8");
+    return new Worker("static/js/parser-worker.js?v=10");
   }
 
   function createRecentFilesUi() {
@@ -1474,7 +1474,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const addBtn = document.createElement("label");
     addBtn.className = "add-more-btn";
-    addBtn.innerHTML = `+ Add more <input type="file" accept=".dbb,.csv" style="display:none" />`;
+    addBtn.innerHTML = `+ Add more <input type="file" accept=".dbb,.csv,.gpx,.xlsx" style="display:none" />`;
     addBtn.querySelector("input").addEventListener("change", (e) => {
       if (e.target.files[0]) handleFile(e.target.files[0], true);
     });
@@ -2135,7 +2135,7 @@ document.addEventListener("DOMContentLoaded", function () {
       for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
       const file = new File([bytes], filename, { type: "application/octet-stream" });
       const lname = file.name.toLowerCase();
-      if (!lname.endsWith(".dbb") && !lname.endsWith(".csv")) return { success: false, error: "Unsupported file type" };
+      if (!lname.endsWith(".dbb") && !lname.endsWith(".csv") && !lname.endsWith(".gpx") && !lname.endsWith(".xlsx")) return { success: false, error: "Unsupported file type" };
 
       progressArea.classList.remove("hidden");
       progressFill.style.width = "0%";
@@ -2165,6 +2165,13 @@ document.addEventListener("DOMContentLoaded", function () {
   // --- Init ---
   const isEmbedded = new URLSearchParams(location.search).has("embedded");
   if (isEmbedded) {
+    // Android WebView's GPU compositor silently drops backdrop-filter
+    // (verified via an in-app diagnostic: Chrome browser blurs, WebView
+    // doesn't, even though CSS.supports claims it does). The frosted
+    // panels rendered as missing / broken elements inside the embed.
+    // Mark the body so style.css falls back to opaque panels for
+    // embedded riders; Chrome users keep the frosted look.
+    document.body.classList.add("embedded-no-blur");
     // Embedded mode: hide upload button and recents, keep progress visible
     uploadLabel.classList.add("hidden");
     recentUi.section.classList.add("hidden");

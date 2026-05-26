@@ -6,7 +6,7 @@
     <title>EUC Planet Trip Viewer</title>
     <link rel="icon" href="static/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="static/css/style.css?v=23" />
+    <link rel="stylesheet" href="static/css/style.css?v=26" />
 </head>
 <body>
     <div id="map"></div>
@@ -56,13 +56,14 @@
             <img id="upload-icon" src="static/favicon.svg" alt="" />
             <h1><a id="app-link" href="https://eucplanet.ried.no/" target="_blank" rel="noopener"><strong>EUC Planet</strong></a> Trip Viewer</h1>
             <div id="upload-hint">
-                <p>In EUC Planet, open <strong>Trips</strong> and share a ride (.csv), or pick <strong>Export all</strong> from the top-right menu (.dbb).</p>
-                <p class="upload-hint-aside">Exports from other apps like DarknessBot also work.</p>
+                <p>In EUC Planet, open <strong>Trips</strong> and share a ride, or pick <strong>Export all</strong> from the top-right menu.</p>
+                <p class="upload-hint-aside">Exports from <a href="#" class="hint-source" data-source="darknessbot">DarknessBot</a> or <a href="#" class="hint-source" data-source="eucworld">euc.world</a> also work.</p>
             </div>
             <label id="upload-label" for="file-input">
-                .dbb / .csv file
-                <input type="file" id="file-input" accept=".dbb,.csv" />
+                Load trips
+                <input type="file" id="file-input" accept=".dbb,.csv,.gpx,.xlsx" />
             </label>
+            <div id="source-instructions" class="hidden"></div>
             <div id="progress-area" class="hidden">
                 <div id="progress-bar"><div id="progress-fill"></div></div>
                 <div id="progress-text"></div>
@@ -101,6 +102,7 @@
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-    <script src="static/js/app.js?v=41"></script>
+    <script src="static/js/app.js?v=43"></script>
+    <script src="static/js/source-hints.js?v=10"></script>
 </body>
 </html>

@@ -40,8 +40,26 @@ self.addEventListener("message", async (event) => {
       return;
     }
 
+    if (lowerName.endsWith(".gpx")) {
+      self.postMessage({ type: "progress", current: 1, total: 1, name });
+      const text = await file.text();
+      const track = parseGpxText(text, name);
+      if (track) self.postMessage({ type: "track", track });
+      self.postMessage({ type: "done" });
+      return;
+    }
+
+    if (lowerName.endsWith(".xlsx")) {
+      self.postMessage({ type: "progress", current: 1, total: 1, name });
+      const buf = await file.arrayBuffer();
+      const track = await parseXlsxBuffer(buf, name);
+      if (track) self.postMessage({ type: "track", track });
+      self.postMessage({ type: "done" });
+      return;
+    }
+
     if (!lowerName.endsWith(".dbb")) {
-      throw new Error("Please upload a .dbb or .csv file");
+      throw new Error("Please upload a .dbb, .csv, .gpx or .xlsx file");
     }
 
     if (!self.JSZip) {
@@ -49,21 +67,35 @@ self.addEventListener("message", async (event) => {
     }
 
     const zip = await self.JSZip.loadAsync(file);
-    const csvNames = Object.keys(zip.files)
-      .filter((entryName) => entryName.endsWith(".csv") && !entryName.startsWith("__MACOSX") && !entryName.endsWith(".json"))
+    const entryNames = Object.keys(zip.files)
+      .filter((entryName) => {
+        if (entryName.startsWith("__MACOSX")) return false;
+        const lower = entryName.toLowerCase();
+        return lower.endsWith(".csv") || lower.endsWith(".gpx") || lower.endsWith(".xlsx");
+      })
       .sort();
 
-    if (!csvNames.length) {
-      throw new Error("No CSV files found in archive");
+    if (!entryNames.length) {
+      throw new Error("No CSV, GPX or XLSX files found in archive");
     }
 
-    for (let index = 0; index < csvNames.length; index += 1) {
-      const entryName = csvNames[index];
-      self.postMessage({ type: "progress", current: index + 1, total: csvNames.length, name: entryName });
+    for (let index = 0; index < entryNames.length; index += 1) {
+      const entryName = entryNames[index];
+      self.postMessage({ type: "progress", current: index + 1, total: entryNames.length, name: entryName });
 
       try {
-        const text = await zip.files[entryName].async("string");
-        const track = parseCsvText(text, entryName);
+        const lower = entryName.toLowerCase();
+        let track;
+        if (lower.endsWith(".gpx")) {
+          const text = await zip.files[entryName].async("string");
+          track = parseGpxText(text, entryName);
+        } else if (lower.endsWith(".xlsx")) {
+          const buf = await zip.files[entryName].async("arraybuffer");
+          track = await parseXlsxBuffer(buf, entryName);
+        } else {
+          const text = await zip.files[entryName].async("string");
+          track = parseCsvText(text, entryName);
+        }
         if (track) self.postMessage({ type: "track", track });
       } catch {
         // Skip invalid files to match the previous server behavior.
@@ -79,7 +111,10 @@ self.addEventListener("message", async (event) => {
 function parseCsvText(text, name) {
   const rows = parseCsvRows(text);
   if (!rows.length) return null;
+  return buildTrackFromRows(rows, name.replace(/\.csv$/i, ""));
+}
 
+function buildTrackFromRows(rows, displayName) {
   const points = [];
   let timeseries = [];
   const speeds = [];
@@ -200,11 +235,11 @@ function parseCsvText(text, name) {
     distanceKm = roundTo(Math.max(0, mileageLast - mileage0), 2);
   }
 
-  const dateMatch = name.match(DATE_RE);
+  const dateMatch = displayName.match(DATE_RE);
   return {
     points,
     timeseries,
-    name: name.replace(/\.csv$/i, ""),
+    name: displayName,
     date: dateMatch ? dateMatch[1] : "",
     dateStart,
     dateEnd,
@@ -221,6 +256,235 @@ function parseCsvText(text, name) {
       maxTemp: maxRounded(temperatures),
     },
   };
+}
+
+// GPX (from euc.world / generic GPS apps). Has only lat/lon/speed(m/s)/ele/time.
+// PWM, voltage, current, temp, battery are absent → recorded as 0. Schema stays
+// identical to CSV-derived tracks so existing readers don't need to change.
+function parseGpxText(text, name) {
+  if (!text || typeof text !== "string") return null;
+  const trkptRe = /<trkpt\b([^>]*)>([\s\S]*?)<\/trkpt>/g;
+  const latRe = /\blat\s*=\s*"([^"]+)"/;
+  const lonRe = /\blon\s*=\s*"([^"]+)"/;
+  const speedRe = /<speed[^>]*>\s*([-\d.eE+]+)\s*<\/speed>/;
+  const eleRe = /<ele[^>]*>\s*([-\d.eE+]+)\s*<\/ele>/;
+  const timeRe = /<time[^>]*>\s*([^<]+?)\s*<\/time>/;
+
+  const points = [];
+  const timeseries = [];
+  const speeds = [];
+  const altitudes = [];
+  let dateStart = "";
+  let dateEnd = "";
+  let t0 = null;
+  let rowCount = 0;
+
+  let m;
+  while ((m = trkptRe.exec(text)) !== null) {
+    rowCount += 1;
+    const attrs = m[1] || "";
+    const body = m[2] || "";
+    const latMatch = latRe.exec(attrs);
+    const lonMatch = lonRe.exec(attrs);
+    if (!latMatch || !lonMatch) continue;
+    const lat = safeFloat(latMatch[1]);
+    const lon = safeFloat(lonMatch[1]);
+    const speedMatch = speedRe.exec(body);
+    const eleMatch = eleRe.exec(body);
+    const timeMatch = timeRe.exec(body);
+    // GPX <speed> is meters/second per spec; convert to km/h to match CSV.
+    const speed = speedMatch ? safeFloat(speedMatch[1]) * 3.6 : 0;
+    const alt = eleMatch ? safeFloat(eleMatch[1]) : 0;
+    const timeStr = timeMatch ? timeMatch[1] : "";
+
+    let sec = 0;
+    if (timeStr) {
+      const ms = Date.parse(timeStr);
+      if (!Number.isNaN(ms)) {
+        if (t0 === null) t0 = ms;
+        sec = (ms - t0) / 1000;
+        if (!dateStart) {
+          const isoLocal = new Date(ms).toISOString().slice(0, 23);
+          dateStart = isoLocal;
+        }
+        dateEnd = new Date(ms).toISOString().slice(0, 23);
+      }
+    }
+
+    const hasGps = !(lat === 0 && lon === 0);
+    timeseries.push([
+      roundTo(sec, 1),
+      roundTo(speed, 1),
+      0, // voltage
+      0, // temp
+      0, // battery
+      roundTo(alt, 1),
+      hasGps ? roundTo(lat, 6) : 0,
+      hasGps ? roundTo(lon, 6) : 0,
+      0, // mileage delta — derived from haversine below for stats
+      0, // pwm
+      0, // current
+      0, // power
+      0, // gpsSpeed (we already put it in speed slot since wheel speed is unknown)
+      0, // gForce
+      0, // gForceX
+      0, // gForceY
+    ]);
+
+    if (speed > 0) speeds.push(speed);
+    if (alt !== 0) altitudes.push(alt);
+
+    if (hasGps) {
+      points.push([
+        roundTo(lat, 6),
+        roundTo(lon, 6),
+        roundTo(speed, 1),
+        roundTo(alt, 1),
+        0, // voltage
+        0, // temp
+        0, // battery
+        0, // pwm
+        0, // current
+        0, // power
+        0, // gpsSpeed
+      ]);
+    }
+  }
+
+  if (!timeseries.length) return null;
+
+  let downsampled = timeseries;
+  if (timeseries.length > TIMESERIES_LIMIT) {
+    const step = timeseries.length / TIMESERIES_LIMIT;
+    const sampled = [];
+    for (let idx = 0; idx < timeseries.length; idx += step) {
+      sampled.push(timeseries[Math.floor(idx)]);
+    }
+    downsampled = sampled;
+  }
+
+  // GPX has no Total mileage column — derive distance purely from GPS haversine.
+  let dist = 0;
+  for (let i = 1; i < points.length; i += 1) {
+    dist += haversine(points[i - 1][0], points[i - 1][1], points[i][0], points[i][1]);
+  }
+  const distanceKm = roundTo(dist / 1000, 2);
+
+  // Backfill mileage-delta column on the downsampled timeseries by integrating
+  // haversine between successive lat/lon pairs (col 6 / 7 of the row).
+  let cumKm = 0;
+  for (let i = 0; i < downsampled.length; i += 1) {
+    if (i > 0) {
+      const prev = downsampled[i - 1];
+      const cur = downsampled[i];
+      if (prev[6] && prev[7] && cur[6] && cur[7]) {
+        cumKm += haversine(prev[6], prev[7], cur[6], cur[7]) / 1000;
+      }
+    }
+    downsampled[i][8] = roundTo(cumKm, 3);
+  }
+
+  const dateMatch = name.match(DATE_RE);
+  return {
+    points,
+    timeseries: downsampled,
+    name: name.replace(/\.gpx$/i, ""),
+    date: dateMatch ? dateMatch[1] : "",
+    dateStart,
+    dateEnd,
+    stats: {
+      points: points.length,
+      rows: rowCount,
+      distanceKm,
+      maxSpeed: maxRounded(speeds),
+      avgSpeed: speeds.length ? roundTo(speeds.reduce((sum, v) => sum + v, 0) / speeds.length, 1) : 0,
+      maxAlt: maxRounded(altitudes),
+      minAlt: minRounded(altitudes),
+      maxVoltage: 0,
+      minVoltage: 0,
+      maxTemp: 0,
+    },
+  };
+}
+
+// XLSX (from euc.world). Carries 15 columns including wheel speed, voltage,
+// current, power, battery, temperature - the rich variant. SheetJS is
+// lazy-loaded the first time an XLSX file is seen so the worker stays cheap
+// for the common CSV/GPX cases.
+let sheetJsPromise = null;
+function ensureSheetJs() {
+  if (self.XLSX) return Promise.resolve();
+  if (!sheetJsPromise) {
+    sheetJsPromise = new Promise((resolve, reject) => {
+      try {
+        importScripts("https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js");
+        if (!self.XLSX) reject(new Error("SheetJS failed to load"));
+        else resolve();
+      } catch (e) {
+        reject(e);
+      }
+    });
+  }
+  return sheetJsPromise;
+}
+
+// Excel cell dates come back as JS Date objects whose UTC fields match the
+// cell's visible wall-clock time (SheetJS quirk). Format as a naive ISO
+// string so the CSV-side parser (which treats unsuffixed ISO as local time)
+// renders the same instant the user saw in their export.
+function dateToLocalIso(d) {
+  const pad = (n) => String(n).padStart(2, "0");
+  return d.getUTCFullYear() + "-" + pad(d.getUTCMonth() + 1) + "-" + pad(d.getUTCDate()) +
+    "T" + pad(d.getUTCHours()) + ":" + pad(d.getUTCMinutes()) + ":" + pad(d.getUTCSeconds()) + ".000";
+}
+
+async function parseXlsxBuffer(buffer, name) {
+  await ensureSheetJs();
+  const wb = self.XLSX.read(buffer, { type: "array", cellDates: true });
+  const sheetName = wb.SheetNames[0];
+  if (!sheetName) return null;
+  const ws = wb.Sheets[sheetName];
+  const rows2d = self.XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: "" });
+  if (rows2d.length < 2) return null;
+
+  const headers = (rows2d[0] || []).map((h) => String(h || "").trim().toLowerCase());
+  const colMap = {};
+  for (let i = 0; i < headers.length; i += 1) {
+    const h = headers[i];
+    if (!h) continue;
+    if (h.includes("date") && h.includes("time")) colMap[i] = "Date";
+    else if (h.startsWith("gps latitude")) colMap[i] = "Latitude";
+    else if (h.startsWith("gps longitude")) colMap[i] = "Longitude";
+    else if (h.startsWith("gps altitude")) colMap[i] = "Altitude";
+    else if (h.startsWith("gps speed")) colMap[i] = "GPS speed";
+    else if (h === "speed" || h.startsWith("speed [")) colMap[i] = "Speed";
+    else if (h.startsWith("battery [%]") || h === "battery") colMap[i] = "Battery level";
+    else if (h.startsWith("voltage")) colMap[i] = "Voltage";
+    else if (h.startsWith("current")) colMap[i] = "Current";
+    else if (h.startsWith("power")) colMap[i] = "Power";
+    else if (h.startsWith("temperature")) colMap[i] = "Temperature";
+    else if (h.startsWith("distance [")) colMap[i] = "Total mileage";
+  }
+
+  const rows = [];
+  for (let r = 1; r < rows2d.length; r += 1) {
+    const arr = rows2d[r];
+    if (!arr || !arr.length) continue;
+    const obj = {};
+    for (const idx in colMap) {
+      const key = colMap[idx];
+      let val = arr[idx];
+      if (val === undefined || val === null) val = "";
+      if (key === "Date") {
+        if (val instanceof Date) val = dateToLocalIso(val);
+        else val = String(val);
+      }
+      obj[key] = val;
+    }
+    rows.push(obj);
+  }
+  if (!rows.length) return null;
+  return buildTrackFromRows(rows, name.replace(/\.xlsx$/i, ""));
 }
 
 function parseCsvRows(text) {
