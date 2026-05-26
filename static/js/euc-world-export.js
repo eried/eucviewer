@@ -39,6 +39,7 @@
     ui.log("Found " + tours.length + " tours.");
 
     const files = [];
+    const usedNames = new Set();
     for (let i = 0; i < tours.length; i += 1) {
       if (ui.cancelled) { ui.log("Cancelled."); return; }
       const t = tours[i];
@@ -55,7 +56,7 @@
           continue;
         }
         files.push({
-          name: filenameFor(t),
+          name: uniqueName(filenameFor(t), usedNames),
           data: new Uint8Array(buf),
         });
       } catch (e) {
@@ -69,8 +70,8 @@
       return;
     }
 
-    ui.setStatus("Building " + files.length + "-file archive");
-    const blob = makeZip(files);
+    ui.setStatus("Compressing " + files.length + "-file archive");
+    const blob = await makeZip(files);
     const url = URL.createObjectURL(blob);
     const stamp = new Date().toISOString().slice(0, 10);
     const a = document.createElement("a");
@@ -84,15 +85,26 @@
     ui.done(files.length, blob.size);
   }
 
+  // DD.MM.YYYY matches eucviewer's DATE_RE so the trip displays as the date
+  // instead of a 15-digit tour key. Same convention as the original Python
+  // converter (F4E0...05.11.2025.csv).
   function filenameFor(tour) {
-    // dateStart is a unix timestamp in seconds.
-    let stamp = "";
-    if (tour.dateStart) {
-      const d = new Date(tour.dateStart * 1000);
-      const pad = (n) => String(n).padStart(2, "0");
-      stamp = d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+    if (!tour.dateStart) return tour.key + ".xlsx";
+    const d = new Date(tour.dateStart * 1000);
+    const pad = (n) => String(n).padStart(2, "0");
+    return pad(d.getDate()) + "." + pad(d.getMonth() + 1) + "." + d.getFullYear() + ".xlsx";
+  }
+
+  function uniqueName(base, used) {
+    if (!used.has(base)) { used.add(base); return base; }
+    const dot = base.lastIndexOf(".");
+    const stem = dot > 0 ? base.slice(0, dot) : base;
+    const ext = dot > 0 ? base.slice(dot) : "";
+    for (let n = 2; n < 1000; n += 1) {
+      const candidate = stem + "_" + n + ext;
+      if (!used.has(candidate)) { used.add(candidate); return candidate; }
     }
-    return (stamp ? stamp + "_" : "") + tour.key + ".xlsx";
+    return base;
   }
 
   // --- tour list via JSON API ---
@@ -213,7 +225,20 @@
     return (c ^ 0xffffffff) >>> 0;
   }
 
-  function makeZip(files) {
+  // Deflate via the browser-native CompressionStream API. Available since
+  // Chrome 80, Firefox 113, Safari 16.4. Returns the raw DEFLATE payload
+  // (no zlib header) which is what the ZIP method-8 entries expect.
+  async function deflateRaw(bytes) {
+    if (typeof CompressionStream === "undefined") return null;
+    const cs = new CompressionStream("deflate-raw");
+    const writer = cs.writable.getWriter();
+    writer.write(bytes);
+    writer.close();
+    const buf = await new Response(cs.readable).arrayBuffer();
+    return new Uint8Array(buf);
+  }
+
+  async function makeZip(files) {
     const enc = new TextEncoder();
     const parts = [];
     const central = [];
@@ -222,23 +247,34 @@
     for (const f of files) {
       const nameBytes = enc.encode(f.name);
       const crc = crc32(f.data);
-      const size = f.data.length;
+      const rawSize = f.data.length;
+
+      // Try DEFLATE; fall back to STORE if the deflate output ends up larger
+      // (rare for XLSX since it's already internally compressed).
+      let stored = f.data;
+      let method = 0;
+      const deflated = await deflateRaw(f.data);
+      if (deflated && deflated.length < rawSize) {
+        stored = deflated;
+        method = 8;
+      }
+      const compSize = stored.length;
 
       const lfh = new Uint8Array(30 + nameBytes.length);
       const lv = new DataView(lfh.buffer);
       lv.setUint32(0, 0x04034b50, true);
       lv.setUint16(4, 20, true);
       lv.setUint16(6, 0, true);
-      lv.setUint16(8, 0, true);
+      lv.setUint16(8, method, true);
       lv.setUint16(10, 0, true);
       lv.setUint16(12, 0x21, true);
       lv.setUint32(14, crc, true);
-      lv.setUint32(18, size, true);
-      lv.setUint32(22, size, true);
+      lv.setUint32(18, compSize, true);
+      lv.setUint32(22, rawSize, true);
       lv.setUint16(26, nameBytes.length, true);
       lv.setUint16(28, 0, true);
       lfh.set(nameBytes, 30);
-      parts.push(lfh, f.data);
+      parts.push(lfh, stored);
 
       const cd = new Uint8Array(46 + nameBytes.length);
       const cv = new DataView(cd.buffer);
@@ -246,18 +282,18 @@
       cv.setUint16(4, 20, true);
       cv.setUint16(6, 20, true);
       cv.setUint16(8, 0, true);
-      cv.setUint16(10, 0, true);
+      cv.setUint16(10, method, true);
       cv.setUint16(12, 0, true);
       cv.setUint16(14, 0x21, true);
       cv.setUint32(16, crc, true);
-      cv.setUint32(20, size, true);
-      cv.setUint32(24, size, true);
+      cv.setUint32(20, compSize, true);
+      cv.setUint32(24, rawSize, true);
       cv.setUint16(28, nameBytes.length, true);
       cv.setUint32(42, offset, true);
       cd.set(nameBytes, 46);
       central.push(cd);
 
-      offset += lfh.length + f.data.length;
+      offset += lfh.length + stored.length;
     }
 
     const cdStart = offset;
