@@ -85,6 +85,22 @@ document.addEventListener("DOMContentLoaded", function () {
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   }
 
+  // Compact trip label for the list. Uses the browser's locale so US users see
+  // "11/5/2025, 7:08 PM" while NO/DE/UK users see "05.11.2025, 19:08" etc.
+  // Falls back to the filename-derived date or raw name if dateStart is bad.
+  const TRIP_LABEL_FMT = new Intl.DateTimeFormat(undefined, {
+    year: "numeric", month: "numeric", day: "numeric",
+    hour: "numeric", minute: "2-digit",
+  });
+  function formatTripLabel(t) {
+    const iso = t.dateStart || "";
+    if (iso) {
+      const d = new Date(iso);
+      if (!isNaN(d.getTime())) return TRIP_LABEL_FMT.format(d);
+    }
+    return t.date || t.name || "Trip";
+  }
+
   // Cumulative distance arrays (km) cached per track
   function getCumDistPts(track) {
     if (track._cumDistPts) return track._cumDistPts;
@@ -686,7 +702,7 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function createParserWorker() {
-    return new Worker("static/js/parser-worker.js?v=10");
+    return new Worker("static/js/parser-worker.js?v=11");
   }
 
   function createRecentFilesUi() {
@@ -1271,7 +1287,7 @@ document.addEventListener("DOMContentLoaded", function () {
         <div class="trip-header">
           <input type="checkbox" class="trip-check" data-idx="${i}" ${trackVisible.has(i) ? "checked" : ""}>
           <div class="trip-info">
-            <div class="trip-date">${t.date || t.name}</div>
+            <div class="trip-date">${formatTripLabel(t)}</div>
             <div class="trip-meta">${meta}</div>
           </div>
           <a class="inspect-btn" href="inspector.html?i=${i}" title="Open trip inspector">

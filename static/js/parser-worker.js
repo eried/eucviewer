@@ -15,6 +15,15 @@ function parseDateParts(str) {
       (m[4] !== undefined ? `T${m[4]}:${m[5]}:${m[6]}.${(m[7] || '000').padEnd(3, '0')}` : 'T00:00:00.000');
     return { ms: new Date(iso).getTime(), iso };
   }
+  // Naive ISO-like "YYYY-MM-DD HH:MM:SS[.SSS]" — preserve the wall-clock so
+  // the displayed time matches what the rider actually saw at ride time. Going
+  // via Date.parse + toISOString would round-trip through UTC and shift hours
+  // when the browser timezone differs from the ride timezone.
+  const iso = str.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?Z?\s*$/);
+  if (iso) {
+    const naive = `${iso[1]}-${iso[2]}-${iso[3]}T${iso[4]}:${iso[5]}:${iso[6]}.${(iso[7] || '000').padEnd(3, '0')}`;
+    return { ms: new Date(naive).getTime(), iso: naive };
+  }
   const ms = Date.parse(str);
   return { ms, iso: isNaN(ms) ? str : new Date(ms).toISOString().slice(0, 23) };
 }

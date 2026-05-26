@@ -85,14 +85,31 @@
     ui.done(files.length, blob.size);
   }
 
-  // DD.MM.YYYY matches eucviewer's DATE_RE so the trip displays as the date
-  // instead of a 15-digit tour key. Same convention as the original Python
-  // converter (F4E0...05.11.2025.csv).
+  // DD.MM.YYYY_HH-MM-SS matches eucviewer's DATE_RE so the trip still displays
+  // as the date, plus the start time (down to seconds) disambiguates rides
+  // when files are extracted from the .dbb. No colon — Windows treats it as
+  // drive separator. Time is rendered in the ride's local timezone via tzId,
+  // not the user's current laptop timezone, so a Tromsø ride is always
+  // "18-08-19" not "08-08-19" when exported from a laptop in LA.
   function filenameFor(tour) {
     if (!tour.dateStart) return tour.key + ".xlsx";
     const d = new Date(tour.dateStart * 1000);
-    const pad = (n) => String(n).padStart(2, "0");
-    return pad(d.getDate()) + "." + pad(d.getMonth() + 1) + "." + d.getFullYear() + ".xlsx";
+    const tz = tour.tzId || undefined;
+    const opts = {
+      hour12: false,
+      year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", second: "2-digit",
+    };
+    let parts;
+    try {
+      parts = new Intl.DateTimeFormat("en-GB", Object.assign({ timeZone: tz }, opts)).formatToParts(d);
+    } catch (_) {
+      // Invalid tzId — fall back to laptop-local time.
+      parts = new Intl.DateTimeFormat("en-GB", opts).formatToParts(d);
+    }
+    const get = (type) => (parts.find((p) => p.type === type) || {}).value || "00";
+    return get("day") + "." + get("month") + "." + get("year") +
+      "_" + get("hour") + "-" + get("minute") + "-" + get("second") + ".xlsx";
   }
 
   function uniqueName(base, used) {
