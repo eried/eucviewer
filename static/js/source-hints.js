@@ -54,7 +54,15 @@
 
   function detectBrowser() {
     const ua = navigator.userAgent;
-    const mac = /Mac|iPhone|iPad|iPod/.test(navigator.platform || ua);
+    // Mobile check first — bookmarklets don't drag-and-drop on phones.
+    // iPad in Safari Desktop mode reports as Macintosh but has touch points.
+    const isMobile =
+      /Android|iPhone|iPad|iPod|Opera Mini/i.test(ua) ||
+      (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+    if (isMobile) {
+      return { name: "Mobile", howTo: "use a desktop browser for batch export all the trips." };
+    }
+    const mac = /Mac/.test(navigator.platform || ua);
     const mod = mac ? "⌘⇧B" : "Ctrl+Shift+B";
     if (/OPR\//.test(ua) || /Opera/.test(ua)) {
       return { name: "Opera", howTo: "View menu → Show bookmarks bar (or " + mod + ")." };
