@@ -150,6 +150,31 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
     color: #fff;
     background: rgba(255, 255, 255, 0.08);
 }
+#source-instructions .src-sub {
+    margin: 0.8rem 1.3rem 0;
+    padding-top: 0.7rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.07);
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: rgba(224, 232, 240, 0.55);
+}
+#source-instructions .src-sub:first-of-type {
+    border-top: none;
+    padding-top: 0.2rem;
+}
+#source-instructions .src-sub-tag {
+    margin-left: 0.4rem;
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: rgba(0, 229, 255, 0.15);
+    color: #80f5ff;
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
 #source-instructions .src-steps {
     margin: 0;
     padding: 0.5rem 1.4rem 1.2rem 2.7rem;

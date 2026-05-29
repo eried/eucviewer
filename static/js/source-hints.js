@@ -89,6 +89,7 @@
         <h3>Export your trips from euc.world</h3>
         <button type="button" class="src-close" aria-label="Close">&times;</button>
       </header>
+      <p class="src-sub">All trips at once <span class="src-sub-tag">recommended</span></p>
       <ol class="src-steps">
         <li>Make sure the bookmarks bar is visible.
           <div class="src-hint">${browser.name}: ${browser.howTo}</div></li>
@@ -101,8 +102,15 @@
           </div></li>
         <li>Open <a href="https://euc.world/account/tours" target="_blank" rel="noopener">euc.world</a>, sign in.</li>
         <li>Click the <strong>Takeout my trips</strong> toolbar button.</li>
-        <li>Now you own all your trips, enjoy!
-          <div class="src-hint">You can import the file into the EUC Planet app, or open it at <a href="https://eucviewer.ried.no/" target="_blank" rel="noopener">eucviewer.ried.no</a>.</div></li>
+        <li>Drop the downloaded <code>.dbb</code> here.</li>
+      </ol>
+      <p class="src-sub">A single ride</p>
+      <ol class="src-steps">
+        <li>Open <a href="https://euc.world/account/tours" target="_blank" rel="noopener">euc.world</a>, sign in.</li>
+        <li>Open a tour from the list.</li>
+        <li>Use the tour's <strong>Menu</strong> &rarr; <strong>Export to XLSX</strong> or <strong>Export to GPX</strong>.
+          <div class="src-hint">XLSX is richer: speed, voltage, temperature, battery and more. GPX is the GPS track only.</div></li>
+        <li>Drop the file here.</li>
       </ol>
     `;
   }
@@ -113,12 +121,18 @@
         <h3>From DarknessBot</h3>
         <button type="button" class="src-close" aria-label="Close">&times;</button>
       </header>
+      <p class="src-sub">All trips at once <span class="src-sub-tag">recommended</span></p>
       <ol class="src-steps">
-        <li>Open a ride, tap <strong>Share</strong>.</li>
-        <li>Pick CSV. Send it to Files or email.</li>
-        <li>Drop it here.</li>
+        <li>Open <strong>Settings</strong> &rarr; <strong>Application</strong> &rarr; <strong>App data</strong>.</li>
+        <li>Tap <strong>Export trips</strong> and save the <code>.dbb</code> file.</li>
+        <li>Drop the <code>.dbb</code> here.</li>
       </ol>
-      <div class="src-note">One ride at a time. No bulk export.</div>
+      <p class="src-sub">A single ride</p>
+      <ol class="src-steps">
+        <li>Open <strong>Trips</strong> and select a ride from the list.</li>
+        <li>Tap <strong>Share</strong>, pick <strong>CSV</strong>. Send it to Files or email.</li>
+        <li>Drop the <code>.csv</code> here.</li>
+      </ol>
     `;
   }
 
