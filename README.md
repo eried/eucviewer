@@ -1,7 +1,16 @@
 # EUC Planet Trip Viewer
 
-Fully client-side web viewer for DarknessBot scooter trip logs (`.dbb` / `.csv`).
-Runs as static pages, no backend.
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
+[![Donate](https://img.shields.io/badge/Donate-PayPal-00457C?logo=paypal&logoColor=white)](http://paypal.me/erwinried)
+
+Drag-and-drop web viewer for EUC trip logs (`.dbb`, `.csv`, `.gpx`, `.xlsx`): a 3D
+map with terrain, playback, and charts, all client-side. No backend, no upload to
+anyone's server. Your files are parsed in your browser and never leave it.
+
+Pairs with the [EUC Planet](https://github.com/eried/eucplanet) app, which records
+the logs directly, but exports from DarknessBot or euc.world work too.
+
+If it's useful to you, [paypal.me/erwinried](http://paypal.me/erwinried) keeps it going.
 
 ## Structure
 
@@ -25,10 +34,10 @@ External libraries (all loaded from CDN):
 
 ## Data storage
 
-- **IndexedDB** `eucplanet-trip-viewer` — primary storage
+- **IndexedDB** `eucplanet-trip-viewer`, primary storage
   - `recentFiles` store: up to 5 recently uploaded files with their parsed tracks
   - `currentSession` store: last-loaded `allTracks` array (key `"tracks"`)
-- **localStorage** `dbb_tracks` — fallback/fast cache for small datasets (silently fails over quota)
+- **localStorage** `dbb_tracks`, fallback/fast cache for small datasets (silently fails over quota)
 
 The inspector (`inspector.html?i=<index>`) reads from IndexedDB first, then falls back to localStorage.
 
@@ -50,7 +59,7 @@ The viewer can be embedded in any app (Android, iOS, Electron, iframe). A JavaSc
 
 ## Local development
 
-It's static — any static file server works:
+It's static, so any static file server works:
 ```
 python -m http.server 8000
 # then open http://localhost:8000/
