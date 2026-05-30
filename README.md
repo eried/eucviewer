@@ -1,7 +1,7 @@
 # EUC Planet Trip Viewer
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
-[![Donate](https://img.shields.io/badge/Donate-PayPal-00457C?logo=paypal&logoColor=white)](http://paypal.me/erwinried)
+[![Donate](https://img.shields.io/badge/Donate-PayPal-00457C?logo=paypal&logoColor=white)](https://www.paypal.com/donate/?hosted_button_id=AEB2RPZHNRTKG)
 
 Drag-and-drop web viewer for EUC trip logs (`.dbb`, `.csv`, `.gpx`, `.xlsx`): a 3D
 map with terrain, playback, and charts, all client-side. No backend, no upload to
@@ -10,7 +10,7 @@ anyone's server. Your files are parsed in your browser and never leave it.
 Pairs with the [EUC Planet](https://github.com/eried/eucplanet) app, which records
 the logs directly, but exports from DarknessBot or euc.world work too.
 
-If it's useful to you, [paypal.me/erwinried](http://paypal.me/erwinried) keeps it going.
+If it's useful to you, a [PayPal donation](https://www.paypal.com/donate/?hosted_button_id=AEB2RPZHNRTKG) keeps it going.
 
 ## Structure
 
