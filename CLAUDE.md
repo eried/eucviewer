@@ -4,29 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Notes for Claude (project context)
 
-This repo is the **GitHub Pages deployment target** for the EUC Planet Trip Viewer.
-The *working / development* repo is at `D:\GitHub\darknessbot-trip-viewer\` (FastAPI scaffold
-remnants + `web/` assets). Historically that repo was deployed as a Python server; it has since
-been converted to fully client-side, with the static assets living under `web/`.
+This repo (`eucviewer`) is the canonical, authoritative source for the EUC Planet Trip Viewer
+and also serves it via GitHub Pages from `main` / root. It's fully client-side: HTML, CSS, JS,
+no build step.
 
-When the user asks for changes here, they usually mean: edit the originals in
-`darknessbot-trip-viewer/web/`, then mirror the files into this repo's root. Keep the two in
-sync unless told otherwise.
-
-## File correspondence
-
-| This repo (GitHub Pages) | Source (dev repo)                                           |
-|--------------------------|-------------------------------------------------------------|
-| `index.html`             | `darknessbot-trip-viewer/web/index.html`                    |
-| `inspector.html`         | `darknessbot-trip-viewer/web/inspector.html`                |
-| `static/favicon.svg`     | `darknessbot-trip-viewer/web/static/favicon.svg`            |
-| `static/css/style.css`   | `darknessbot-trip-viewer/web/static/css/style.css`          |
-| `static/css/inspector.css` | `darknessbot-trip-viewer/web/static/css/inspector.css`    |
-| `static/js/app.js`       | `darknessbot-trip-viewer/web/static/js/app.js`              |
-| `static/js/parser-worker.js` | `darknessbot-trip-viewer/web/static/js/parser-worker.js` |
-| `static/js/inspector.js` | `darknessbot-trip-viewer/web/static/js/inspector.js`        |
-| `static/js/source-hints.js`     | _(not mirrored — eucviewer-only)_                    |
-| `static/js/euc-world-export.js` | _(not mirrored — eucviewer-only)_                    |
+(Historical note: a sibling `darknessbot-trip-viewer` repo used to host these assets under
+`web/` while a FastAPI server fronted them. That setup is retired; if you ever see references
+to mirroring into that repo, ignore them.)
 
 ## Architecture at a glance
 
@@ -115,6 +99,4 @@ displayed date updates automatically on each deploy — no manual version bump n
 
 ## Don't forget
 
-- The dev repo also has `deploy_all.py` / DigitalOcean config — that path is now legacy
-  (pre-GitHub-Pages). Don't deploy there unless asked.
 - The user prefers local testing for non-trivial features before any deploy.
