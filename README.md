@@ -1,6 +1,7 @@
 # EUC Planet Trip Viewer
 
 [![License: MIT](https://img.shields.io/github/license/eried/eucviewer)](LICENSE)
+[![Live](https://img.shields.io/badge/Live-eucviewer.ried.no-39d98a)](https://eucviewer.ried.no)
 [![App: EUC Planet](https://img.shields.io/badge/App-EUC_Planet-3DDC84?logo=googleplay&logoColor=white)](https://github.com/eried/eucplanet)
 [![Stats](https://img.shields.io/badge/Web-Stats-39d98a)](https://github.com/eried/eucstats)
 [![Telegram](https://img.shields.io/badge/Telegram-EUCPlanetApp-26A5E4?logo=telegram&logoColor=white)](https://t.me/EUCPlanetApp)
@@ -33,6 +34,8 @@ static/
   js/app.js                Main app (Leaflet map, trip tree, recent files)
   js/inspector.js          Inspector (MapLibre GL 3D map, charts, playback)
   js/parser-worker.js      Web Worker: parses .dbb/.csv client-side with JSZip
+  js/euc-world-export.js   euc.world bookmarklet: exports your tours as a .dbb
+  js/source-hints.js       upload-screen "how to export from DarknessBot / euc.world"
 ```
 
 External libraries (all loaded from CDN):
