@@ -649,6 +649,7 @@ document.addEventListener("DOMContentLoaded", function () {
   const RECENT_DB_NAME = "eucplanet-trip-viewer";
   const RECENT_STORE_NAME = "recentFiles";
   const SESSION_STORE_NAME = "currentSession";
+  const WEATHER_STORE_NAME = "weatherCache";
   const SESSION_KEY = "tracks";
   const MAX_RECENT_FILES = 5;
   let recentDbPromise = null;
@@ -793,7 +794,7 @@ document.addEventListener("DOMContentLoaded", function () {
     if (!("indexedDB" in window)) return Promise.resolve(null);
     if (!recentDbPromise) {
       recentDbPromise = new Promise((resolve, reject) => {
-        const request = indexedDB.open(RECENT_DB_NAME, 2);
+        const request = indexedDB.open(RECENT_DB_NAME, 3);
         request.onupgradeneeded = () => {
           const db = request.result;
           if (!db.objectStoreNames.contains(RECENT_STORE_NAME)) {
@@ -801,6 +802,11 @@ document.addEventListener("DOMContentLoaded", function () {
           }
           if (!db.objectStoreNames.contains(SESSION_STORE_NAME)) {
             db.createObjectStore(SESSION_STORE_NAME);
+          }
+          // v3: per-location historical weather cache used by analytics.html.
+          // Upgrade logic must stay in sync with openWeatherDb() in analytics.js.
+          if (!db.objectStoreNames.contains(WEATHER_STORE_NAME)) {
+            db.createObjectStore(WEATHER_STORE_NAME);
           }
         };
         request.onsuccess = () => resolve(request.result);
@@ -1510,6 +1516,14 @@ document.addEventListener("DOMContentLoaded", function () {
     navRow.appendChild(homeBtn);
 
     footer.appendChild(navRow);
+
+    const analyticsBtn = document.createElement("a");
+    analyticsBtn.className = "analytics-btn";
+    analyticsBtn.href = "analytics.html";
+    analyticsBtn.innerHTML = `
+      <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M1.5 13.5 5.5 8l3 3 6-8"/><circle cx="5.5" cy="8" r="1.2" fill="currentColor"/><circle cx="8.5" cy="11" r="1.2" fill="currentColor"/></svg>
+      Analyze history`;
+    footer.appendChild(analyticsBtn);
 
     const selSummary = document.createElement("div");
     selSummary.className = "trip-summary selected-summary hidden";

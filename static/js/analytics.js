@@ -1,0 +1,1173 @@
+(async function () {
+  "use strict";
+
+  // Imperial unit toggle — drives display labels and converters everywhere
+  // values are shown. Override with ?units=imperial / ?units=metric.
+  const UNITS = (() => {
+    const force = new URLSearchParams(location.search).get("units");
+    let imperial = force === "imperial";
+    if (!force) {
+      try {
+        const loc = new Intl.Locale(navigator.language || "en").maximize();
+        if (loc.region === "US") imperial = true;
+      } catch (_) {}
+    }
+    return imperial
+      ? {
+          imperial: true,
+          dist:  (km) => km * 0.621371,
+          speed: (kmh) => kmh * 0.621371,
+          temp:  (c) => c * 9 / 5 + 32,
+          alt:   (m) => m * 3.28084,
+          distUnit: "mi", speedUnit: "mph", tempUnit: "°F", altUnit: "ft",
+        }
+      : {
+          imperial: false,
+          dist:  (km) => km, speed: (kmh) => kmh, temp: (c) => c, alt: (m) => m,
+          distUnit: "km", speedUnit: "km/h", tempUnit: "°C", altUnit: "m",
+        };
+  })();
+  // Temperature *differences* scale by 9/5 but must not get the +32 offset.
+  const tempDelta = (c) => (UNITS.imperial ? c * 9 / 5 : c);
+
+  // ---------- DOM ----------
+  const errorBanner = document.getElementById("error-banner");
+  const subtitleEl = document.getElementById("page-subtitle");
+  const groupSel = document.getElementById("group-select");
+  const battMinSel = document.getElementById("batt-min-select");
+  const rollingCheck = document.getElementById("rolling-check");
+  const normalizeCheck = document.getElementById("normalize-check");
+  const weatherBtn = document.getElementById("weather-btn");
+  const weatherStatus = document.getElementById("weather-status");
+  const progressStrip = document.getElementById("progress-strip");
+  const progressFill = document.getElementById("progress-strip-fill");
+
+  function showError(msg) {
+    errorBanner.textContent = msg;
+    errorBanner.classList.remove("hidden");
+  }
+
+  // ---------- Load tracks (IndexedDB first — see CLAUDE.md) ----------
+  const DB_NAME = "eucplanet-trip-viewer";
+  const RECENT_STORE_NAME = "recentFiles";
+  const SESSION_STORE_NAME = "currentSession";
+  const WEATHER_STORE_NAME = "weatherCache";
+  const SESSION_KEY = "tracks";
+
+  // Same v3 schema as openRecentDb() in app.js — whichever page opens the DB
+  // first creates the weatherCache store; the upgrade blocks must match.
+  let dbPromise = null;
+  function openDb() {
+    if (!("indexedDB" in window)) return Promise.resolve(null);
+    if (!dbPromise) {
+      dbPromise = new Promise((resolve, reject) => {
+        const request = indexedDB.open(DB_NAME, 3);
+        request.onupgradeneeded = () => {
+          const db = request.result;
+          if (!db.objectStoreNames.contains(RECENT_STORE_NAME)) {
+            db.createObjectStore(RECENT_STORE_NAME, { keyPath: "id" });
+          }
+          if (!db.objectStoreNames.contains(SESSION_STORE_NAME)) {
+            db.createObjectStore(SESSION_STORE_NAME);
+          }
+          if (!db.objectStoreNames.contains(WEATHER_STORE_NAME)) {
+            db.createObjectStore(WEATHER_STORE_NAME);
+          }
+        };
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error || new Error("Failed to open database"));
+      }).catch((e) => { dbPromise = null; throw e; });
+    }
+    return dbPromise;
+  }
+
+  async function loadFromIDB() {
+    try {
+      const db = await openDb();
+      if (!db) return null;
+      return await new Promise((resolve) => {
+        try {
+          const tx = db.transaction(SESSION_STORE_NAME, "readonly");
+          const getReq = tx.objectStore(SESSION_STORE_NAME).get(SESSION_KEY);
+          getReq.onsuccess = () => resolve(getReq.result || null);
+          getReq.onerror = () => resolve(null);
+        } catch { resolve(null); }
+      });
+    } catch { return null; }
+  }
+
+  function loadFromLocalStorage() {
+    try {
+      const raw = localStorage.getItem("dbb_tracks") || sessionStorage.getItem("dbb_tracks");
+      if (raw) return JSON.parse(raw);
+    } catch {}
+    return null;
+  }
+
+  let tracks = await loadFromIDB();
+  if (!tracks || !Array.isArray(tracks) || !tracks.length) {
+    tracks = loadFromLocalStorage();
+  }
+  if (!tracks || !Array.isArray(tracks) || !tracks.length) {
+    showError("No trips found. Open the main viewer, load your trips, then come back here.");
+    return;
+  }
+
+  // Timeseries layout: [sec, speed, voltage, temp, battery, altitude, lat, lon, mileageKm,
+  //                     pwm, current, power, gpsSpeed, gForce, gForceX, gForceY]
+  const SEC = 0, SPD = 1, VOLT = 2, TEMP = 3, BATT = 4, LAT = 6, LON = 7, MILEAGE = 8;
+  const CURRENT = 10, POWER = 11;
+
+  // ---------- Small stats helpers ----------
+  function median(values) {
+    if (!values.length) return null;
+    const s = values.slice().sort((a, b) => a - b);
+    const mid = s.length >> 1;
+    return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+  }
+  function percentile(values, p) {
+    if (!values.length) return null;
+    const s = values.slice().sort((a, b) => a - b);
+    const idx = (s.length - 1) * p;
+    const lo = Math.floor(idx), hi = Math.ceil(idx);
+    return s[lo] + (s[hi] - s[lo]) * (idx - lo);
+  }
+  // Median of `values` where each value carries a weight (we weight trips by
+  // distance so one long ride counts more than five around-the-block hops).
+  function weightedMedian(values, weights) {
+    if (!values.length) return null;
+    const order = values.map((v, i) => i).sort((a, b) => values[a] - values[b]);
+    let total = 0;
+    for (const w of weights) total += w;
+    if (total <= 0) return median(values);
+    let acc = 0;
+    for (const i of order) {
+      acc += weights[i];
+      if (acc >= total / 2) return values[i];
+    }
+    return values[order[order.length - 1]];
+  }
+  // Theil–Sen robust regression: slope = median of pairwise slopes. Resistant
+  // to outliers, no library needed. Caps the sample so n² stays bounded.
+  function theilSen(xs, ys) {
+    let n = xs.length;
+    if (n < 8) return null;
+    let ix = xs.map((_, i) => i);
+    if (n > 400) {
+      for (let i = ix.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [ix[i], ix[j]] = [ix[j], ix[i]];
+      }
+      ix = ix.slice(0, 400);
+      n = 400;
+    }
+    const slopes = [];
+    for (let a = 0; a < n; a++) {
+      for (let b = a + 1; b < n; b++) {
+        const dx = xs[ix[b]] - xs[ix[a]];
+        if (dx === 0) continue;
+        slopes.push((ys[ix[b]] - ys[ix[a]]) / dx);
+      }
+    }
+    const slope = median(slopes);
+    if (slope == null) return null;
+    const intercept = median(ix.map((i) => ys[i] - slope * xs[i]));
+    return { slope, intercept };
+  }
+  // Ordinary least-squares slope (used per trip for the V~I sag fit, where
+  // n is small and the samples are already filtered).
+  function lsSlope(xs, ys) {
+    const n = xs.length;
+    let sx = 0, sy = 0, sxx = 0, sxy = 0;
+    for (let i = 0; i < n; i++) {
+      sx += xs[i]; sy += ys[i];
+      sxx += xs[i] * xs[i]; sxy += xs[i] * ys[i];
+    }
+    const denom = n * sxx - sx * sx;
+    if (denom === 0) return null;
+    return (n * sxy - sx * sy) / denom;
+  }
+
+  // ---------- Per-trip metric extraction ----------
+  function parseTripDate(t) {
+    const ds = t.dateStart || "";
+    if (ds) {
+      const d = new Date(ds);
+      if (!isNaN(d.getTime())) return d;
+    }
+    if (t.date) {
+      // "DD.MM.YYYY" filename-derived date — same fallback app.js sorting uses.
+      const parts = t.date.split(".");
+      if (parts.length === 3) {
+        const d = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+        if (!isNaN(d.getTime())) return d;
+      }
+    }
+    return null;
+  }
+
+  function tripDistanceKm(t) {
+    if (t.stats && t.stats.distanceKm > 0) return t.stats.distanceKm;
+    const ts = t.timeseries;
+    if (!Array.isArray(ts) || ts.length < 2) return 0;
+    // Mileage odometer column if present, else integrate speed over time —
+    // the same fallbacks loadTracks() in app.js applies for legacy tracks.
+    if (ts[0].length > MILEAGE) {
+      let last = 0;
+      for (let i = 0; i < ts.length; i++) { const mi = ts[i][MILEAGE] || 0; if (mi > last) last = mi; }
+      if (last > 0) return Math.round(last * 100) / 100;
+    }
+    let running = 0;
+    for (let i = 1; i < ts.length; i++) {
+      const dtSec = Math.max(0, ts[i][SEC] - ts[i - 1][SEC]);
+      const avgSpd = ((ts[i][SPD] || 0) + (ts[i - 1][SPD] || 0)) / 2;
+      running += (avgSpd * dtSec) / 3600;
+    }
+    return Math.round(running * 100) / 100;
+  }
+
+  function computeTripMetrics(t) {
+    const ts = Array.isArray(t.timeseries) ? t.timeseries : [];
+    const date = parseTripDate(t);
+    const m = {
+      date,
+      dateStr: date ? localDateStr(date) : null,
+      label: t.date || t.name || "Trip",
+      distKm: tripDistanceKm(t),
+      durH: 0,
+      battStart: null, battEnd: null, battDelta: null,
+      kmPerPct: null,
+      energyWh: null, whPerKm: null,
+      avgMovingSpeed: null, avgCurrent: null, avgPower: null,
+      ohmIR: null,
+      tempMax: null, tempStart: null,
+      ambientC: null,
+      centroid: null,
+    };
+    if (t.dateStart && t.dateEnd) {
+      const s = new Date(t.dateStart).getTime();
+      const e = new Date(t.dateEnd).getTime();
+      if (s && e && e > s) m.durH = (e - s) / 3600000;
+    }
+    if (!m.durH && ts.length > 1) {
+      m.durH = Math.max(0, (ts[ts.length - 1][SEC] - ts[0][SEC]) / 3600);
+    }
+    if (ts.length < 2) return m;
+
+    // Battery start/end: median of the first/last 10 non-zero samples —
+    // robust against the load-sag dips a single reading can show.
+    const battSamples = [];
+    for (const row of ts) {
+      const v = row[BATT];
+      if (typeof v === "number" && v > 0) battSamples.push(v);
+    }
+    if (battSamples.length >= 4) {
+      m.battStart = median(battSamples.slice(0, 10));
+      m.battEnd = median(battSamples.slice(-10));
+      m.battDelta = m.battStart - m.battEnd;
+    }
+
+    // Energy: prefer the logged power column, else reconstruct V×I.
+    let hasPower = false, hasVolt = false, hasCurrent = false;
+    for (const row of ts) {
+      if ((row[POWER] || 0) !== 0) hasPower = true;
+      if ((row[VOLT] || 0) !== 0) hasVolt = true;
+      if ((row[CURRENT] || 0) !== 0) hasCurrent = true;
+    }
+    if (hasPower || (hasVolt && hasCurrent)) {
+      let wh = 0;
+      for (let i = 1; i < ts.length; i++) {
+        const dtSec = Math.max(0, ts[i][SEC] - ts[i - 1][SEC]);
+        if (dtSec === 0 || dtSec > 300) continue; // gap in the log — skip
+        const pNow = hasPower ? (ts[i][POWER] || 0) : (ts[i][VOLT] || 0) * (ts[i][CURRENT] || 0);
+        const pPrev = hasPower ? (ts[i - 1][POWER] || 0) : (ts[i - 1][VOLT] || 0) * (ts[i - 1][CURRENT] || 0);
+        wh += ((pNow + pPrev) / 2) * dtSec / 3600;
+      }
+      if (wh > 0) {
+        m.energyWh = wh;
+        if (m.distKm >= 1) m.whPerKm = wh / m.distKm;
+      }
+    }
+
+    // Averages over "moving" samples.
+    let spdSum = 0, spdCnt = 0, curSum = 0, curCnt = 0, powSum = 0, powCnt = 0;
+    for (const row of ts) {
+      const s = row[SPD] || 0;
+      if (s > 2) { spdSum += s; spdCnt++; }
+      const c = row[CURRENT] || 0;
+      if (c > 0) { curSum += c; curCnt++; }
+      const p = row[POWER] || 0;
+      if (p > 0) { powSum += p; powCnt++; }
+    }
+    if (spdCnt >= 10) m.avgMovingSpeed = spdSum / spdCnt;
+    if (curCnt >= 10) m.avgCurrent = curSum / curCnt;
+    if (powCnt >= 10) m.avgPower = powSum / powCnt;
+
+    // Internal-resistance proxy: how much pack voltage sags per amp of load.
+    // Slope of V over I across loaded samples; sign-flipped so positive = ohms.
+    if (hasVolt && hasCurrent) {
+      const xs = [], ys = [];
+      for (const row of ts) {
+        const v = row[VOLT] || 0, c = row[CURRENT] || 0;
+        if (v > 10 && Math.abs(c) > 1) { xs.push(c); ys.push(v); }
+      }
+      if (xs.length >= 30) {
+        const slope = lsSlope(xs, ys);
+        // Sanity window: a pack's effective IR seen at the wheel is well under
+        // 2 Ω; a positive slope means the fit was dominated by SoC drift.
+        if (slope != null && slope < 0 && -slope < 2) m.ohmIR = -slope;
+      }
+    }
+
+    // Temperatures.
+    const temps = [];
+    for (const row of ts) {
+      const v = row[TEMP];
+      if (typeof v === "number" && v !== 0) temps.push(v);
+    }
+    if (temps.length >= 4) {
+      m.tempMax = Math.max(...temps);
+      m.tempStart = median(temps.slice(0, 5));
+    }
+
+    // GPS centroid rounded to 0.1° (~11 km) — coarse on purpose, both for
+    // weather-cache hits and so precise locations never leave the browser.
+    let latSum = 0, lonSum = 0, gpsCnt = 0;
+    for (const row of ts) {
+      const lat = row[LAT] || 0, lon = row[LON] || 0;
+      if (lat !== 0 || lon !== 0) { latSum += lat; lonSum += lon; gpsCnt++; }
+    }
+    if (gpsCnt >= 3) {
+      m.centroid = [Math.round((latSum / gpsCnt) * 10) / 10, Math.round((lonSum / gpsCnt) * 10) / 10];
+    }
+    return m;
+  }
+
+  function localDateStr(d) {
+    const p = (n) => String(n).padStart(2, "0");
+    return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
+  }
+
+  // Gated derivations that depend on the "min battery use" control.
+  function applyRangeGating(m, minBattUse) {
+    if (m.battDelta != null && m.battDelta >= minBattUse && m.distKm >= 2) {
+      m.kmPerPct = m.distKm / m.battDelta;
+      m.estRangeKm = m.kmPerPct * 100;
+    } else {
+      m.kmPerPct = null;
+      m.estRangeKm = null;
+    }
+  }
+
+  // ---------- Compute all metrics (chunked so the UI paints) ----------
+  progressStrip.classList.remove("hidden");
+  const tripMetrics = [];
+  for (let i = 0; i < tracks.length; i++) {
+    tripMetrics.push(computeTripMetrics(tracks[i]));
+    if (i % 200 === 199) {
+      progressFill.style.width = Math.round((i / tracks.length) * 100) + "%";
+      await new Promise((r) => setTimeout(r, 0));
+    }
+  }
+  progressStrip.classList.add("hidden");
+
+  // Analysis works oldest → newest; undated trips can't be placed on a
+  // timeline, so they're dropped (counted in the subtitle).
+  const dated = tripMetrics.filter((m) => m.date).sort((a, b) => a.date - b.date);
+  const undatedCount = tripMetrics.length - dated.length;
+  if (!dated.length) {
+    showError("None of the loaded trips carry a date, so a history timeline can't be built.");
+    return;
+  }
+  // Epoch position 0..1 for the old→new colour ramp on scatter charts.
+  dated.forEach((m, i) => { m.epoch = dated.length > 1 ? i / (dated.length - 1) : 0.5; });
+
+  {
+    let totalKm = 0;
+    for (const m of dated) totalKm += m.distKm;
+    const fmt = new Intl.DateTimeFormat(undefined, { month: "short", year: "numeric" });
+    let sub = `${dated.length} trips · ${UNITS.dist(totalKm).toFixed(0)} ${UNITS.distUnit} · ` +
+              `${fmt.format(dated[0].date)} – ${fmt.format(dated[dated.length - 1].date)}`;
+    if (undatedCount) sub += ` · ${undatedCount} undated skipped`;
+    subtitleEl.textContent = sub;
+  }
+
+  // ---------- Binning ----------
+  const MONTH_FMT = new Intl.DateTimeFormat(undefined, { month: "short", year: "2-digit" });
+  function binKeyAndLabel(mode, d) {
+    const y = d.getFullYear(), mo = d.getMonth();
+    if (mode === "month") return { key: y + "-" + String(mo).padStart(2, "0"), label: MONTH_FMT.format(d) };
+    if (mode === "quarter") { const q = Math.floor(mo / 3) + 1; return { key: y + "-Q" + q, label: "Q" + q + " '" + String(y).slice(2) }; }
+    return { key: String(y), label: String(y) };
+  }
+  function nextCalendarKey(mode, key) {
+    if (mode === "month") {
+      let [y, m] = key.split("-").map(Number);
+      m++; if (m > 11) { m = 0; y++; }
+      return y + "-" + String(m).padStart(2, "0");
+    }
+    if (mode === "quarter") {
+      let [y, q] = key.split("-Q").map(Number);
+      q++; if (q > 4) { q = 1; y++; }
+      return y + "-Q" + q;
+    }
+    return String(Number(key) + 1);
+  }
+  function calendarKeyToLabel(mode, key) {
+    if (mode === "month") {
+      const [y, m] = key.split("-").map(Number);
+      return MONTH_FMT.format(new Date(y, m, 1));
+    }
+    if (mode === "quarter") {
+      const [y, q] = key.split("-Q");
+      return "Q" + q + " '" + String(y).slice(2);
+    }
+    return key;
+  }
+
+  function makeBins(metrics, mode) {
+    const bins = [];
+    if (mode === "month" || mode === "quarter" || mode === "year") {
+      const map = new Map();
+      for (const m of metrics) {
+        const { key, label } = binKeyAndLabel(mode, m.date);
+        if (!map.has(key)) map.set(key, { key, label, trips: [] });
+        map.get(key).trips.push(m);
+      }
+      // Contiguous calendar axis: empty periods stay visible as gaps so a
+      // winter pause doesn't get visually stitched out of the trend.
+      const keys = [...map.keys()].sort();
+      let key = keys[0];
+      const last = keys[keys.length - 1];
+      let guard = 0;
+      while (guard++ < 1000) {
+        bins.push(map.get(key) || { key, label: calendarKeyToLabel(mode, key), trips: [] });
+        if (key === last) break;
+        key = nextCalendarKey(mode, key);
+      }
+      return bins;
+    }
+    // Cumulative odometer / riding-hours bins, oldest → newest.
+    const byKm = mode.startsWith("km");
+    const size = Number(mode.replace(/^(km|h)/, ""));
+    let acc = 0, edge = size, cur = { key: "0", label: "", trips: [], from: 0 };
+    const unitTotal = (m) => (byKm ? m.distKm : m.durH);
+    for (const m of metrics) {
+      cur.trips.push(m);
+      acc += unitTotal(m);
+      if (acc >= edge) {
+        cur.to = acc;
+        bins.push(cur);
+        cur = { key: String(bins.length), label: "", trips: [], from: acc };
+        while (edge <= acc) edge += size;
+      }
+    }
+    if (cur.trips.length) { cur.to = acc; bins.push(cur); }
+    for (const b of bins) {
+      const from = byKm ? UNITS.dist(b.from) : b.from;
+      const to = byKm ? UNITS.dist(b.to) : b.to;
+      b.label = Math.round(from) + "–" + Math.round(to) + (byKm ? " " + UNITS.distUnit : " h");
+    }
+    return bins;
+  }
+
+  // Per-bin robust summary of one metric: distance-weighted median + IQR.
+  function binStats(bins, getter) {
+    return bins.map((b) => {
+      const vals = [], weights = [];
+      for (const m of b.trips) {
+        const v = getter(m);
+        if (v != null && isFinite(v)) { vals.push(v); weights.push(Math.max(0.1, m.distKm)); }
+      }
+      if (!vals.length) return null;
+      return {
+        med: weightedMedian(vals, weights),
+        p25: percentile(vals, 0.25),
+        p75: percentile(vals, 0.75),
+        n: vals.length,
+      };
+    });
+  }
+  function rollingMedians(stats, win) {
+    const half = Math.floor(win / 2);
+    return stats.map((_, i) => {
+      const window = [];
+      for (let j = i - half; j <= i + half; j++) {
+        if (stats[j] && stats[j].med != null) window.push(stats[j].med);
+      }
+      return window.length ? window.reduce((a, b) => a + b, 0) / window.length : null;
+    });
+  }
+
+  // ---------- Weather (Open-Meteo archive, free, no key) ----------
+  async function readWeatherCache(key) {
+    try {
+      const db = await openDb();
+      if (!db) return null;
+      return await new Promise((resolve) => {
+        try {
+          const tx = db.transaction(WEATHER_STORE_NAME, "readonly");
+          const req = tx.objectStore(WEATHER_STORE_NAME).get(key);
+          req.onsuccess = () => resolve(req.result || null);
+          req.onerror = () => resolve(null);
+        } catch { resolve(null); }
+      });
+    } catch { return null; }
+  }
+  async function writeWeatherCache(key, value) {
+    try {
+      const db = await openDb();
+      if (!db) return;
+      await new Promise((resolve) => {
+        try {
+          const tx = db.transaction(WEATHER_STORE_NAME, "readwrite");
+          tx.objectStore(WEATHER_STORE_NAME).put(value, key);
+          tx.oncomplete = resolve;
+          tx.onabort = resolve;
+          tx.onerror = resolve;
+        } catch { resolve(); }
+      });
+    } catch {}
+  }
+
+  let weatherLoaded = false;
+
+  function weatherClusters() {
+    // One cluster per rounded 0.1° centroid; a single archive request spans
+    // that cluster's whole date range at daily resolution.
+    const map = new Map();
+    for (const m of dated) {
+      if (!m.centroid || !m.dateStr) continue;
+      const key = m.centroid[0] + "|" + m.centroid[1];
+      if (!map.has(key)) map.set(key, { key, lat: m.centroid[0], lon: m.centroid[1], dates: new Set(), trips: [] });
+      const c = map.get(key);
+      c.dates.add(m.dateStr);
+      c.trips.push(m);
+    }
+    return [...map.values()];
+  }
+
+  async function fetchWeather() {
+    const clusters = weatherClusters();
+    if (!clusters.length) {
+      weatherStatus.textContent = "No GPS data in these trips.";
+      weatherStatus.className = "error";
+      return;
+    }
+    weatherBtn.disabled = true;
+    weatherStatus.className = "";
+    let done = 0, failed = 0;
+    for (const c of clusters) {
+      weatherStatus.textContent = `Fetching ${++done}/${clusters.length}…`;
+      const cached = (await readWeatherCache(c.key)) || { days: {} };
+      const missing = [...c.dates].filter((d) => !(d in cached.days));
+      if (missing.length) {
+        missing.sort();
+        // The ERA5 archive lags ~5 days; clamp so the request never 400s.
+        const maxDate = localDateStr(new Date(Date.now() - 6 * 86400000));
+        const start = missing[0];
+        const end = missing[missing.length - 1] < maxDate ? missing[missing.length - 1] : maxDate;
+        if (start <= end) {
+          try {
+            const url = "https://archive-api.open-meteo.com/v1/archive" +
+              `?latitude=${c.lat}&longitude=${c.lon}` +
+              `&start_date=${start}&end_date=${end}` +
+              "&daily=temperature_2m_mean,temperature_2m_max&timezone=auto";
+            const resp = await fetch(url);
+            if (!resp.ok) throw new Error("HTTP " + resp.status);
+            const data = await resp.json();
+            const times = (data.daily && data.daily.time) || [];
+            const means = (data.daily && data.daily.temperature_2m_mean) || [];
+            const maxes = (data.daily && data.daily.temperature_2m_max) || [];
+            for (let i = 0; i < times.length; i++) {
+              if (means[i] != null) cached.days[times[i]] = { mean: means[i], max: maxes[i] != null ? maxes[i] : means[i] };
+            }
+            cached.fetchedAt = new Date().toISOString();
+            await writeWeatherCache(c.key, cached);
+          } catch (e) {
+            failed++;
+          }
+        }
+      }
+      for (const m of c.trips) {
+        const day = cached.days[m.dateStr];
+        if (day) m.ambientC = day.mean;
+      }
+    }
+    const withAmbient = dated.filter((m) => m.ambientC != null).length;
+    if (withAmbient) {
+      weatherLoaded = true;
+      weatherStatus.textContent = `Ambient temp for ${withAmbient} of ${dated.length} trips` + (failed ? ` (${failed} location${failed > 1 ? "s" : ""} failed)` : "");
+      weatherStatus.className = failed ? "error" : "ok";
+      weatherBtn.textContent = "Weather loaded";
+    } else {
+      weatherStatus.textContent = "Weather fetch failed — check your connection.";
+      weatherStatus.className = "error";
+      weatherBtn.disabled = false;
+    }
+    renderAll();
+  }
+  weatherBtn.addEventListener("click", fetchWeather);
+
+  // ---------- Chart drawing ----------
+  const COLORS = {
+    range: "#69f0ae",
+    rangeNorm: "#fff176",
+    whPerKm: "#7c4dff",
+    kmPerPct: "#00e5ff",
+    ampsPerKmh: "#ffd740",
+    tempRise: "#ffa000",
+    ohmIR: "#ff5252",
+    rolling: "#ffffff",
+  };
+  const AXIS_COLOR = "rgba(255,255,255,0.35)";
+  const GRID_COLOR = "rgba(255,255,255,0.06)";
+  const FONT = "10px -apple-system, sans-serif";
+
+  const tooltip = document.createElement("div");
+  tooltip.id = "an-tooltip";
+  tooltip.style.display = "none";
+  document.body.appendChild(tooltip);
+  function showTooltip(html, x, y) {
+    tooltip.innerHTML = html;
+    tooltip.style.display = "block";
+    const w = tooltip.offsetWidth, h = tooltip.offsetHeight, m = 8;
+    let left = x + 14, top = y - 10;
+    if (left + w + m > window.innerWidth) left = x - w - 14;
+    if (top + h + m > window.innerHeight) top = window.innerHeight - h - m;
+    if (top < m) top = m;
+    tooltip.style.left = left + "px";
+    tooltip.style.top = top + "px";
+  }
+  function hideTooltip() { tooltip.style.display = "none"; }
+
+  function setupCanvas(canvas) {
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return null;
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    const ctx = canvas.getContext("2d");
+    ctx.scale(dpr, dpr);
+    return { ctx, w: rect.width, h: rect.height };
+  }
+
+  function niceTicks(min, max, count) {
+    const span = max - min || 1;
+    const step0 = span / count;
+    const mag = Math.pow(10, Math.floor(Math.log10(step0)));
+    let step = mag;
+    for (const k of [1, 2, 2.5, 5, 10]) {
+      if (mag * k >= step0) { step = mag * k; break; }
+    }
+    const ticks = [];
+    for (let v = Math.ceil(min / step) * step; v <= max + step * 0.001; v += step) ticks.push(v);
+    return ticks;
+  }
+
+  function fmtVal(v, dp) {
+    if (v == null || !isFinite(v)) return "—";
+    if (dp != null) return v.toFixed(dp);
+    const a = Math.abs(v);
+    return v.toFixed(a >= 100 ? 0 : a >= 10 ? 1 : 2);
+  }
+
+  // Trend chart over bins: each series is {stats, color, label, unit, band}.
+  // `rolling` adds a white moving-average overlay per series.
+  function drawTrendChart(canvas, bins, series, opts = {}) {
+    const cv = setupCanvas(canvas);
+    if (!cv) return;
+    const { ctx, w, h } = cv;
+    const pad = { top: 12, bottom: 22, left: 44, right: series.length > 1 ? 44 : 14 };
+    const cw = w - pad.left - pad.right;
+    const ch = h - pad.top - pad.bottom;
+    const n = bins.length;
+    const xAt = (i) => pad.left + (n > 1 ? (i / (n - 1)) * cw : cw / 2);
+
+    // Each series gets its own y-scale (left axis = first, right = second).
+    const scales = series.map((s) => {
+      let min = Infinity, max = -Infinity;
+      for (const st of s.stats) {
+        if (!st) continue;
+        const lo = s.band && st.p25 != null ? st.p25 : st.med;
+        const hi = s.band && st.p75 != null ? st.p75 : st.med;
+        if (lo < min) min = lo;
+        if (hi > max) max = hi;
+      }
+      if (s.extra) {
+        for (const v of s.extra) {
+          if (v == null) continue;
+          if (v < min) min = v;
+          if (v > max) max = v;
+        }
+      }
+      if (!isFinite(min)) return null;
+      const span = max - min || Math.abs(max) || 1;
+      min -= span * 0.12; max += span * 0.12;
+      if (opts.zeroBase && min > 0) min = 0;
+      return { min, max };
+    });
+
+    ctx.font = FONT;
+    // Grid + left axis labels off the first series' scale.
+    const s0 = scales.find((s) => s);
+    if (s0) {
+      const ticks = niceTicks(s0.min, s0.max, 4);
+      ctx.fillStyle = AXIS_COLOR;
+      ctx.strokeStyle = GRID_COLOR;
+      ctx.textAlign = "right";
+      ctx.textBaseline = "middle";
+      const i0 = scales.indexOf(s0);
+      for (const tv of ticks) {
+        const y = pad.top + ch - ((tv - s0.min) / (s0.max - s0.min)) * ch;
+        ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(w - pad.right, y); ctx.stroke();
+        ctx.fillStyle = series[i0].color;
+        ctx.fillText(fmtVal(tv), pad.left - 6, y);
+      }
+      // Right axis for a second scaled series.
+      if (scales.length > 1 && scales[1] && scales[1] !== s0) {
+        const t2 = niceTicks(scales[1].min, scales[1].max, 4);
+        ctx.textAlign = "left";
+        ctx.fillStyle = series[1].color;
+        for (const tv of t2) {
+          const y = pad.top + ch - ((tv - scales[1].min) / (scales[1].max - scales[1].min)) * ch;
+          ctx.fillText(fmtVal(tv), w - pad.right + 6, y);
+        }
+      }
+    }
+
+    // X labels — thin to at most ~8.
+    ctx.fillStyle = AXIS_COLOR;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    const labelStep = Math.max(1, Math.ceil(n / 8));
+    for (let i = 0; i < n; i += labelStep) {
+      ctx.fillText(bins[i].label, xAt(i), pad.top + ch + 6);
+    }
+
+    series.forEach((s, si) => {
+      const sc = scales[si];
+      if (!sc) return;
+      const yAt = (v) => pad.top + ch - ((v - sc.min) / (sc.max - sc.min)) * ch;
+
+      // IQR band.
+      if (s.band) {
+        ctx.beginPath();
+        let started = false;
+        for (let i = 0; i < n; i++) {
+          const st = s.stats[i];
+          if (!st || st.p25 == null) { started = false; continue; }
+          const x = xAt(i), y = yAt(st.p75);
+          if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+        }
+        for (let i = n - 1; i >= 0; i--) {
+          const st = s.stats[i];
+          if (!st || st.p25 == null) continue;
+          ctx.lineTo(xAt(i), yAt(st.p25));
+        }
+        ctx.closePath();
+        ctx.fillStyle = s.color + "22";
+        ctx.fill();
+      }
+
+      // Median line (broken across empty bins) + dots.
+      ctx.strokeStyle = s.color;
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      let started = false;
+      for (let i = 0; i < n; i++) {
+        const st = s.stats[i];
+        if (!st || st.med == null) { started = false; continue; }
+        const x = xAt(i), y = yAt(st.med);
+        if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.fillStyle = s.color;
+      for (let i = 0; i < n; i++) {
+        const st = s.stats[i];
+        if (!st || st.med == null) continue;
+        ctx.beginPath();
+        ctx.arc(xAt(i), yAt(st.med), 2.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      if (opts.rolling) {
+        const roll = rollingMedians(s.stats, 3);
+        ctx.strokeStyle = COLORS.rolling;
+        ctx.globalAlpha = 0.65;
+        ctx.lineWidth = 1.2;
+        ctx.setLineDash([5, 3]);
+        ctx.beginPath();
+        started = false;
+        for (let i = 0; i < n; i++) {
+          if (roll[i] == null) { started = false; continue; }
+          const x = xAt(i), y = yAt(roll[i]);
+          if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 1;
+      }
+    });
+
+    // Legend.
+    ctx.textBaseline = "alphabetic";
+    let lx = pad.left + 4;
+    for (const s of series) {
+      ctx.fillStyle = s.color;
+      ctx.fillRect(lx, 6, 8, 3);
+      ctx.fillStyle = "rgba(255,255,255,0.6)";
+      ctx.textAlign = "left";
+      ctx.fillText(s.label, lx + 12, 11);
+      lx += 12 + ctx.measureText(s.label).width + 16;
+    }
+
+    canvas._an = { type: "trend", bins, series, pad, cw, ch, w, h, xAt };
+  }
+
+  // Scatter: points {x, y, epoch, meta}; old→new colour ramp.
+  function epochColor(t) {
+    const r = Math.round(70 + (255 - 70) * t);
+    const g = Math.round(130 + (90 - 130) * t);
+    const b = Math.round(255 + (70 - 255) * t);
+    return `rgb(${r},${g},${b})`;
+  }
+  function drawScatter(canvas, pts, opts) {
+    const cv = setupCanvas(canvas);
+    if (!cv) return;
+    const { ctx, w, h } = cv;
+    const pad = { top: 14, bottom: 26, left: 44, right: 14 };
+    const cw = w - pad.left - pad.right;
+    const ch = h - pad.top - pad.bottom;
+    let xMin = Infinity, xMax = -Infinity, yMin = Infinity, yMax = -Infinity;
+    for (const p of pts) {
+      if (p.x < xMin) xMin = p.x;
+      if (p.x > xMax) xMax = p.x;
+      if (p.y < yMin) yMin = p.y;
+      if (p.y > yMax) yMax = p.y;
+    }
+    const xSpan = (xMax - xMin) || 1, ySpan = (yMax - yMin) || 1;
+    xMin -= xSpan * 0.06; xMax += xSpan * 0.06;
+    yMin -= ySpan * 0.1; yMax += ySpan * 0.1;
+    const xAt = (v) => pad.left + ((v - xMin) / (xMax - xMin)) * cw;
+    const yAt = (v) => pad.top + ch - ((v - yMin) / (yMax - yMin)) * ch;
+
+    ctx.font = FONT;
+    ctx.strokeStyle = GRID_COLOR;
+    ctx.fillStyle = AXIS_COLOR;
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    for (const tv of niceTicks(yMin, yMax, 4)) {
+      const y = yAt(tv);
+      ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(w - pad.right, y); ctx.stroke();
+      ctx.fillText(fmtVal(tv), pad.left - 6, y);
+    }
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    // The x-axis title sits on the same line at the right edge — skip tick
+    // labels that would collide with it.
+    const xTitleW = ctx.measureText(opts.xLabel).width;
+    for (const tv of niceTicks(xMin, xMax, 6)) {
+      const x = xAt(tv);
+      ctx.beginPath(); ctx.moveTo(x, pad.top); ctx.lineTo(x, pad.top + ch); ctx.stroke();
+      if (x < w - pad.right - xTitleW - 16) ctx.fillText(fmtVal(tv), x, pad.top + ch + 6);
+    }
+    // Axis titles.
+    ctx.fillStyle = "rgba(255,255,255,0.55)";
+    ctx.textAlign = "left";
+    ctx.fillText(opts.yLabel, pad.left + 4, 2);
+    ctx.textAlign = "right";
+    ctx.fillText(opts.xLabel, w - pad.right, pad.top + ch + 6);
+
+    const drawn = [];
+    for (const p of pts) {
+      const x = xAt(p.x), y = yAt(p.y);
+      ctx.fillStyle = epochColor(p.epoch);
+      ctx.globalAlpha = 0.8;
+      ctx.beginPath();
+      ctx.arc(x, y, 3.2, 0, Math.PI * 2);
+      ctx.fill();
+      drawn.push({ x, y, p });
+    }
+    ctx.globalAlpha = 1;
+
+    // Old→new ramp legend.
+    const lw = 60, lx = w - pad.right - lw - 4, ly = 6;
+    for (let i = 0; i < lw; i++) {
+      ctx.fillStyle = epochColor(i / lw);
+      ctx.fillRect(lx + i, ly, 1, 4);
+    }
+    ctx.fillStyle = "rgba(255,255,255,0.55)";
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    ctx.fillText("old", lx - 4, ly + 2);
+    ctx.textAlign = "left";
+    ctx.fillText("new", lx + lw + 4, ly + 2);
+
+    canvas._an = { type: "scatter", drawn, opts };
+  }
+
+  // One delegated hover handler for all charts.
+  document.addEventListener("mousemove", (e) => {
+    const canvas = e.target.closest && e.target.closest("canvas");
+    if (!canvas || !canvas._an) { hideTooltip(); return; }
+    const an = canvas._an;
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    if (an.type === "trend") {
+      const n = an.bins.length;
+      let best = -1, bestD = Infinity;
+      for (let i = 0; i < n; i++) {
+        const d = Math.abs(an.xAt(i) - mx);
+        if (d < bestD) { bestD = d; best = i; }
+      }
+      if (best < 0 || bestD > 40) { hideTooltip(); return; }
+      const bin = an.bins[best];
+      let html = `<b>${bin.label}</b> · ${bin.trips.length} trip${bin.trips.length === 1 ? "" : "s"}`;
+      for (const s of an.series) {
+        const st = s.stats[best];
+        if (!st || st.med == null) continue;
+        html += `<br>${s.label}: <b>${fmtVal(st.med, s.dp)}</b> ${s.unit || ""}`;
+        if (s.band && st.p25 != null) html += ` <span style="color:#888">(${fmtVal(st.p25, s.dp)}–${fmtVal(st.p75, s.dp)})</span>`;
+      }
+      showTooltip(html, e.clientX, e.clientY);
+    } else {
+      let best = null, bestD = Infinity;
+      for (const d of an.drawn) {
+        const dx = d.x - mx, dy = d.y - my;
+        const dist = dx * dx + dy * dy;
+        if (dist < bestD) { bestD = dist; best = d; }
+      }
+      if (!best || bestD > 18 * 18) { hideTooltip(); return; }
+      showTooltip(best.p.meta, e.clientX, e.clientY);
+    }
+  });
+  document.addEventListener("mouseleave", hideTooltip, true);
+
+  // ---------- Sections ----------
+  function sectionEl(name) { return document.querySelector(`.chart-section[data-section="${name}"]`); }
+  function setSectionEmpty(name, msg) {
+    const sec = sectionEl(name);
+    sec.classList.add("no-data");
+    let note = sec.querySelector(".no-data-msg");
+    if (!note) {
+      note = document.createElement("div");
+      note.className = "no-data-msg";
+      sec.querySelector("h2").after(note);
+    }
+    note.textContent = msg;
+  }
+  function setSectionActive(name) {
+    const sec = sectionEl(name);
+    sec.classList.remove("no-data");
+    const note = sec.querySelector(".no-data-msg");
+    if (note) note.remove();
+  }
+
+  // Theil–Sen range-vs-ambient fit, recomputed whenever weather lands.
+  let tempFit = null;
+  function computeTempFit() {
+    const xs = [], ys = [];
+    for (const m of dated) {
+      if (m.estRangeKm != null && m.ambientC != null) { xs.push(m.ambientC); ys.push(m.estRangeKm); }
+    }
+    tempFit = xs.length >= 10 ? theilSen(xs, ys) : null;
+    normalizeCheck.disabled = !tempFit;
+    if (!tempFit) normalizeCheck.checked = false;
+  }
+
+  function normalizedRange(m) {
+    if (m.estRangeKm == null) return null;
+    if (!normalizeCheck.checked || !tempFit || m.ambientC == null) return m.estRangeKm;
+    return m.estRangeKm + tempFit.slope * (20 - m.ambientC);
+  }
+
+  // ---------- Render pipeline ----------
+  function renderAll() {
+    const minBattUse = Number(battMinSel.value);
+    for (const m of dated) applyRangeGating(m, minBattUse);
+    computeTempFit();
+
+    const bins = makeBins(dated, groupSel.value);
+    const rolling = rollingCheck.checked;
+
+    // 1. Range.
+    {
+      const usable = dated.filter((m) => m.estRangeKm != null).length;
+      const meta = document.getElementById("range-meta");
+      if (!usable) {
+        setSectionEmpty("range", "No trips with battery data used ≥ " + minBattUse + "% — lower the threshold, or these exports carry no battery level.");
+        meta.textContent = "";
+      } else {
+        setSectionActive("range");
+        const series = [{
+          stats: binStats(bins, (m) => m.estRangeKm == null ? null : UNITS.dist(normalizedRange(m))),
+          color: normalizeCheck.checked ? COLORS.rangeNorm : COLORS.range,
+          label: normalizeCheck.checked ? "Est. range (20 °C norm.)" : "Est. full range",
+          unit: UNITS.distUnit, band: true, dp: 1,
+        }];
+        drawTrendChart(document.getElementById("chart-range"), bins, series, { rolling, zeroBase: false });
+        let metaTxt = usable + " of " + dated.length + " trips usable";
+        if (tempFit) {
+          // km/°C → mi/°F: distance converts forward, but a per-°C rate
+          // *divides* by 1.8 to become per-°F.
+          const slopeDisp = UNITS.dist(tempFit.slope) / (UNITS.imperial ? 1.8 : 1);
+          metaTxt += ` · temp sensitivity ${fmtVal(slopeDisp, 2)} ${UNITS.distUnit}/${UNITS.tempUnit}`;
+        }
+        meta.textContent = metaTxt;
+      }
+    }
+
+    // 2. Efficiency.
+    {
+      const hasWh = dated.some((m) => m.whPerKm != null);
+      const hasKmPct = dated.some((m) => m.kmPerPct != null);
+      const meta = document.getElementById("efficiency-meta");
+      if (!hasWh && !hasKmPct) {
+        setSectionEmpty("efficiency", "These exports carry no power/current or battery columns, so efficiency can't be computed.");
+        meta.textContent = "";
+      } else {
+        setSectionActive("efficiency");
+        const series = [];
+        if (hasWh) series.push({
+          stats: binStats(bins, (m) => m.whPerKm == null ? null : m.whPerKm / UNITS.dist(1)),
+          color: COLORS.whPerKm, label: "Wh/" + UNITS.distUnit, unit: "Wh/" + UNITS.distUnit, band: true, dp: 1,
+        });
+        if (hasKmPct) series.push({
+          stats: binStats(bins, (m) => m.kmPerPct == null ? null : UNITS.dist(m.kmPerPct)),
+          color: COLORS.kmPerPct, label: UNITS.distUnit + "/%", unit: UNITS.distUnit + "/%", band: false, dp: 2,
+        });
+        drawTrendChart(document.getElementById("chart-efficiency"), bins, series, { rolling });
+        meta.textContent = "";
+      }
+    }
+
+    // 3. Motor: speed vs current scatter + amps-per-km/h trend.
+    {
+      const pts = [];
+      for (const m of dated) {
+        if (m.avgMovingSpeed == null || m.avgCurrent == null) continue;
+        pts.push({
+          x: UNITS.speed(m.avgMovingSpeed),
+          y: m.avgCurrent,
+          epoch: m.epoch,
+          meta: `<b>${m.label}</b><br>Avg speed: <b>${fmtVal(UNITS.speed(m.avgMovingSpeed), 1)}</b> ${UNITS.speedUnit}` +
+                `<br>Avg current: <b>${fmtVal(m.avgCurrent, 1)}</b> A` +
+                `<br>Distance: <b>${fmtVal(UNITS.dist(m.distKm), 1)}</b> ${UNITS.distUnit}`,
+        });
+      }
+      const meta = document.getElementById("motor-meta");
+      if (pts.length < 5) {
+        setSectionEmpty("motor", "Not enough trips with current data for this analysis.");
+        meta.textContent = "";
+      } else {
+        setSectionActive("motor");
+        drawScatter(document.getElementById("chart-motor"), pts, {
+          xLabel: "avg speed (" + UNITS.speedUnit + ")", yLabel: "avg current (A)",
+        });
+        const series = [{
+          stats: binStats(bins, (m) => (m.avgMovingSpeed != null && m.avgCurrent != null && m.avgMovingSpeed > 5)
+            ? m.avgCurrent / UNITS.speed(m.avgMovingSpeed) : null),
+          color: COLORS.ampsPerKmh, label: "A per " + UNITS.speedUnit, unit: "A/(" + UNITS.speedUnit + ")", band: true, dp: 3,
+        }];
+        drawTrendChart(document.getElementById("chart-motor-trend"), bins, series, { rolling });
+        meta.textContent = pts.length + " trips";
+      }
+    }
+
+    // 4. Thermal.
+    {
+      const useAmbient = weatherLoaded && dated.some((m) => m.ambientC != null && m.tempMax != null);
+      const tempRiseOf = (m) => {
+        if (m.tempMax == null) return null;
+        if (useAmbient) return m.ambientC != null ? m.tempMax - m.ambientC : null;
+        return m.tempStart != null ? m.tempMax - m.tempStart : null;
+      };
+      const pts = [];
+      for (const m of dated) {
+        const rise = tempRiseOf(m);
+        if (rise == null || m.avgPower == null) continue;
+        pts.push({
+          x: m.avgPower,
+          y: tempDelta(rise),
+          epoch: m.epoch,
+          meta: `<b>${m.label}</b><br>Temp rise: <b>${fmtVal(tempDelta(rise), 1)}</b> ${UNITS.tempUnit}` +
+                `<br>Avg power: <b>${fmtVal(m.avgPower, 0)}</b> W` +
+                (m.ambientC != null ? `<br>Ambient: <b>${fmtVal(UNITS.temp(m.ambientC), 1)}</b> ${UNITS.tempUnit}` : ""),
+        });
+      }
+      const meta = document.getElementById("thermal-meta");
+      if (pts.length < 5) {
+        setSectionEmpty("thermal", "Not enough trips with temperature + power data for this analysis.");
+        meta.textContent = "";
+      } else {
+        setSectionActive("thermal");
+        drawScatter(document.getElementById("chart-thermal"), pts, {
+          xLabel: "avg power (W)", yLabel: "temp rise (" + UNITS.tempUnit + ")",
+        });
+        const series = [{
+          stats: binStats(bins, (m) => {
+            const r = tempRiseOf(m);
+            return r == null ? null : tempDelta(r);
+          }),
+          color: COLORS.tempRise, label: "Median temp rise", unit: UNITS.tempUnit, band: true, dp: 1,
+        }];
+        drawTrendChart(document.getElementById("chart-thermal-trend"), bins, series, { rolling });
+        meta.textContent = useAmbient ? "vs ambient (weather)" : "vs trip-start temp — fetch weather for ambient baseline";
+      }
+    }
+
+    // 5. Battery health (IR).
+    {
+      const usable = dated.filter((m) => m.ohmIR != null).length;
+      const meta = document.getElementById("health-meta");
+      if (usable < 5) {
+        setSectionEmpty("health", "Not enough trips with voltage + current data to estimate internal resistance.");
+        meta.textContent = "";
+      } else {
+        setSectionActive("health");
+        const series = [{
+          stats: binStats(bins, (m) => m.ohmIR == null ? null : m.ohmIR * 1000),
+          color: COLORS.ohmIR, label: "Effective IR", unit: "mΩ", band: true, dp: 0,
+        }];
+        drawTrendChart(document.getElementById("chart-health"), bins, series, { rolling, zeroBase: true });
+        meta.textContent = usable + " trips";
+      }
+    }
+  }
+
+  groupSel.addEventListener("change", renderAll);
+  battMinSel.addEventListener("change", renderAll);
+  rollingCheck.addEventListener("change", renderAll);
+  normalizeCheck.addEventListener("change", renderAll);
+  let resizeTimer = null;
+  window.addEventListener("resize", () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(renderAll, 150);
+  });
+
+  renderAll();
+
+  // Pre-fill ambient temps from the cache (no network) so a returning user
+  // gets the weather-based view without pressing the button again.
+  (async () => {
+    const clusters = weatherClusters();
+    let hits = 0;
+    for (const c of clusters) {
+      const cached = await readWeatherCache(c.key);
+      if (!cached) continue;
+      for (const m of c.trips) {
+        const day = cached.days[m.dateStr];
+        if (day) { m.ambientC = day.mean; hits++; }
+      }
+    }
+    if (hits) {
+      weatherLoaded = true;
+      weatherStatus.textContent = `Ambient temp for ${hits} trips (cached)`;
+      weatherStatus.className = "ok";
+      const allCovered = dated.every((m) => m.ambientC != null || !m.centroid);
+      if (allCovered) weatherBtn.textContent = "Weather loaded";
+    }
+    renderAll();
+  })();
+})();

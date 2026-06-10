@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>History Analytics &mdash; EUC Planet</title>
+    <link rel="icon" href="static/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="static/css/analytics.css?v=1" />
+    <script type="text/javascript">
+        (function(c,l,a,r,i,t,y){
+            c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+            t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+            y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+        })(window, document, "clarity", "script", "x1vx2i22n8");
+    </script>
+</head>
+<body>
+    <div id="analytics">
+        <header id="topbar">
+            <a class="back-link" href="index.html#view" title="Back to trip list">&larr;</a>
+            <div class="page-title">
+                <div id="page-name">History Analytics</div>
+                <div id="page-subtitle">&mdash;</div>
+            </div>
+
+            <div class="controls">
+                <label>
+                    <span>Group by</span>
+                    <select id="group-select">
+                        <option value="month" selected>Month</option>
+                        <option value="quarter">Quarter</option>
+                        <option value="year">Year</option>
+                        <option value="km250">Every 250 km</option>
+                        <option value="km500">Every 500 km</option>
+                        <option value="km1000">Every 1000 km</option>
+                        <option value="h10">Every 10 h</option>
+                        <option value="h50">Every 50 h</option>
+                    </select>
+                </label>
+                <label>
+                    <span>Min battery use</span>
+                    <select id="batt-min-select">
+                        <option value="5">5%</option>
+                        <option value="10" selected>10%</option>
+                        <option value="20">20%</option>
+                    </select>
+                </label>
+                <label class="check-label">
+                    <input type="checkbox" id="rolling-check" />
+                    <span>Smooth (rolling 3 bins)</span>
+                </label>
+                <label class="check-label">
+                    <input type="checkbox" id="normalize-check" disabled />
+                    <span>Normalize range to 20&nbsp;&deg;C</span>
+                </label>
+                <button type="button" id="weather-btn" title="Downloads historical daily temperatures from open-meteo.com for the (coarsely rounded) locations of your trips.">Fetch weather</button>
+                <span id="weather-status"></span>
+            </div>
+        </header>
+
+        <div id="progress-strip" class="hidden"><div id="progress-strip-fill"></div></div>
+
+        <main id="sections">
+            <section class="chart-section" data-section="range">
+                <h2>Estimated full range <span class="sec-meta" id="range-meta"></span></h2>
+                <div class="chart-host"><canvas id="chart-range"></canvas></div>
+                <p class="sec-hint">Each trip's range is extrapolated from distance vs battery used
+                   (<i>distance / battery% &times; 100</i>). Dots are the distance-weighted median per group,
+                   the band spans the 25th&ndash;75th percentile. Trips using less battery than the
+                   threshold above are excluded.</p>
+            </section>
+
+            <section class="chart-section" data-section="efficiency">
+                <h2>Efficiency <span class="sec-meta" id="efficiency-meta"></span></h2>
+                <div class="chart-host"><canvas id="chart-efficiency"></canvas></div>
+                <p class="sec-hint">Energy per distance (Wh/km, computed from logged power or voltage&times;current)
+                   and distance per battery percent (km/%). Rising Wh/km or falling km/% means the wheel
+                   needs more energy for the same ride.</p>
+            </section>
+
+            <section class="chart-section" data-section="motor">
+                <h2>Motor &mdash; speed vs current <span class="sec-meta" id="motor-meta"></span></h2>
+                <div class="chart-host tall"><canvas id="chart-motor"></canvas></div>
+                <div class="chart-host"><canvas id="chart-motor-trend"></canvas></div>
+                <p class="sec-hint">Top: each dot is one trip &mdash; average moving speed against average (positive)
+                   current, coloured from oldest (blue) to newest (red). If recent dots sit above older ones at the
+                   same speed, the drivetrain is drawing more amps than it used to. Bottom: median amps per km/h per
+                   group &mdash; a speed-independent view of the same drift.</p>
+            </section>
+
+            <section class="chart-section" data-section="thermal">
+                <h2>Thermal <span class="sec-meta" id="thermal-meta"></span></h2>
+                <div class="chart-host tall"><canvas id="chart-thermal"></canvas></div>
+                <div class="chart-host"><canvas id="chart-thermal-trend"></canvas></div>
+                <p class="sec-hint" id="thermal-hint">Top: peak board temperature rise above ambient versus average power,
+                   one dot per trip (oldest blue &rarr; newest red). Bottom: median temperature rise per group.
+                   A drifting-up trend at similar power means the wheel is heating more than it used to.</p>
+            </section>
+
+            <section class="chart-section" data-section="health">
+                <h2>Battery health &mdash; voltage sag <span class="sec-meta" id="health-meta"></span></h2>
+                <div class="chart-host"><canvas id="chart-health"></canvas></div>
+                <p class="sec-hint">Effective internal resistance estimated per trip from how much the pack
+                   voltage sags per amp of load (robust fit of voltage against current). A rising trend
+                   indicates an aging battery pack.</p>
+            </section>
+        </main>
+
+        <div id="error-banner" class="hidden"></div>
+    </div>
+
+    <script src="static/js/analytics.js?v=1"></script>
+</body>
+</html>
