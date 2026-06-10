@@ -879,7 +879,7 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
 .add-more-btn:hover, .add-more-btn.dragover,
 .main-screen-btn:hover { background: rgba(0, 229, 255, 0.06); }
 
-/* Analyze history button — opens analytics.html */
+/* Wheel Forensics button — opens analytics.html */
 .analytics-btn {
     display: flex;
     align-items: center;
@@ -894,6 +894,23 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
     transition: background 0.15s;
 }
 .analytics-btn:hover { background: rgba(179, 136, 255, 0.08); }
+
+/* Header variant: prominent card under the summary stats. Always applies
+   to the whole library, so it lives outside of selection-dependent UI. */
+.analytics-btn-header {
+    margin: 8px 12px 4px;
+    padding: 10px 14px;
+    border: 1px solid rgba(179, 136, 255, 0.32);
+    border-bottom: 1px solid rgba(179, 136, 255, 0.32);
+    border-radius: 8px;
+    background: linear-gradient(180deg, rgba(179, 136, 255, 0.10), rgba(179, 136, 255, 0.04));
+    font-weight: 600;
+    font-size: 0.85rem;
+    letter-spacing: 0.3px;
+}
+.analytics-btn-header:hover {
+    background: linear-gradient(180deg, rgba(179, 136, 255, 0.18), rgba(179, 136, 255, 0.08));
+}
 
 /* Export button */
 .export-btn {
