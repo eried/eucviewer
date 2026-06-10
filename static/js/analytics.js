@@ -2,16 +2,26 @@
   "use strict";
 
   // Imperial unit toggle — drives display labels and converters everywhere
-  // values are shown. Override with ?units=imperial / ?units=metric.
-  const UNITS = (() => {
+  // values are shown. Resolution order: ?units= URL param, then localStorage
+  // (set by the cogwheel toggle on the main viewer), then locale-based
+  // default for first visit. Keep this block in sync with app.js / inspector.js.
+  const UNITS_STORAGE_KEY = "eucviewer-units";
+  const IMPERIAL_REGIONS = ["US", "LR", "MM", "GB"];
+  function detectUnits() {
     const force = new URLSearchParams(location.search).get("units");
-    let imperial = force === "imperial";
-    if (!force) {
-      try {
-        const loc = new Intl.Locale(navigator.language || "en").maximize();
-        if (loc.region === "US") imperial = true;
-      } catch (_) {}
-    }
+    if (force === "imperial" || force === "metric") return force;
+    try {
+      const stored = localStorage.getItem(UNITS_STORAGE_KEY);
+      if (stored === "imperial" || stored === "metric") return stored;
+    } catch (_) {}
+    try {
+      const loc = new Intl.Locale(navigator.language || "en").maximize();
+      if (IMPERIAL_REGIONS.includes(loc.region)) return "imperial";
+    } catch (_) {}
+    return "metric";
+  }
+  const UNITS = (() => {
+    const imperial = detectUnits() === "imperial";
     return imperial
       ? {
           imperial: true,
@@ -50,6 +60,52 @@
     errorBanner.textContent = msg;
     errorBanner.classList.remove("hidden");
   }
+
+  // ---------- Tabs / layout ----------
+  // Tab membership comes from data-tab attributes on sections. The active tab
+  // gets a `.tab-active` class so CSS in [data-tab]:not(.tab-active) hides the
+  // siblings in tabs mode. Single-page mode shows everything.
+  const LAYOUT_KEY = "wheel-forensics-layout";
+  let activeTab = "overview";
+  function applyLayout(layout) {
+    document.body.setAttribute("data-layout", layout);
+    document.querySelectorAll(".layout-btn").forEach((b) => {
+      b.classList.toggle("active", b.dataset.layout === layout);
+    });
+    try { localStorage.setItem(LAYOUT_KEY, layout); } catch (_) {}
+    // Layout swap exposes previously-hidden canvases; redraw them at full size.
+    if (typeof renderAll === "function") renderAll();
+  }
+  function applyTab(tab) {
+    activeTab = tab;
+    document.querySelectorAll(".tab-btn").forEach((b) => {
+      b.classList.toggle("active", b.dataset.tab === tab);
+    });
+    document.querySelectorAll("[data-tab]").forEach((el) => {
+      if (el.classList.contains("tab-btn")) return;
+      el.classList.toggle("tab-active", el.dataset.tab === tab);
+    });
+    if (typeof renderAll === "function") renderAll();
+  }
+  // `renderAll` is a function declaration further down — it's hoisted into
+  // this scope already, so applyTab/applyLayout above can reference it.
+  (function initLayoutControls() {
+    let saved = "tabs";
+    try { saved = localStorage.getItem(LAYOUT_KEY) || "tabs"; } catch (_) {}
+    document.body.setAttribute("data-layout", saved);
+    document.querySelectorAll(".layout-btn").forEach((b) => {
+      b.classList.toggle("active", b.dataset.layout === saved);
+      b.addEventListener("click", () => applyLayout(b.dataset.layout));
+    });
+    document.querySelectorAll("[data-tab]").forEach((el) => {
+      if (el.classList.contains("tab-btn")) return;
+      el.classList.toggle("tab-active", el.dataset.tab === activeTab);
+    });
+    document.querySelectorAll(".tab-btn").forEach((b) => {
+      b.classList.toggle("active", b.dataset.tab === activeTab);
+      b.addEventListener("click", () => applyTab(b.dataset.tab));
+    });
+  })();
 
   // ---------- Load tracks (IndexedDB first — see CLAUDE.md) ----------
   const DB_NAME = "eucplanet-trip-viewer";
@@ -617,9 +673,9 @@
       weatherLoaded = true;
       weatherStatus.textContent = `Ambient temp for ${withAmbient} of ${dated.length} trips` + (failed ? ` (${failed} location${failed > 1 ? "s" : ""} failed)` : "");
       weatherStatus.className = failed ? "error" : "ok";
-      weatherBtn.textContent = "Weather loaded";
+      weatherBtn.textContent = "Weather added";
     } else {
-      weatherStatus.textContent = "Weather fetch failed — check your connection.";
+      weatherStatus.textContent = "Weather fetch failed. Check your connection.";
       weatherStatus.className = "error";
       weatherBtn.disabled = false;
     }
@@ -1068,7 +1124,7 @@
     }
     const fmtPct = (a, b) => ((b - a) / a) * 100;
 
-    // Range drift, ideally on temp-normalized values so a winter→summer move
+    // Range drift, ideally on temp-normalized values so a winter/summer mix
     // doesn't masquerade as battery health.
     const useNorm = !!tempFit;
     const rangeGetter = (m) => {
@@ -1083,9 +1139,9 @@
       const dispA = UNITS.dist(r0), dispB = UNITS.dist(r1);
       out.push({
         kind: pct < -5 ? "warn" : pct > 5 ? "good" : "info",
-        html: `Estimated range ${pct >= 0 ? "up" : "down"} <b>${Math.abs(pct).toFixed(0)}%</b> from first to last third` +
-              ` (<b>${dispA.toFixed(1)}</b> → <b>${dispB.toFixed(1)}</b> ${UNITS.distUnit})` +
-              (useNorm ? ", temperature-normalized to 20 °C." : ". Load weather to remove temperature effects."),
+        html: `Estimated range ${pct >= 0 ? "up" : "down"} <b>${Math.abs(pct).toFixed(0)}%</b> ` +
+              `(<b>${dispA.toFixed(1)}</b> to <b>${dispB.toFixed(1)}</b> ${UNITS.distUnit})` +
+              (useNorm ? ", normalized to 20 °C." : ". Add weather to factor out temperature."),
       });
     }
 
@@ -1094,15 +1150,10 @@
     const ir1 = pick(late, (m) => m.ohmIR);
     if (ir0 && ir1) {
       const pct = fmtPct(ir0, ir1);
-      const trailing = pct > 15
-        ? "Battery aging is the usual culprit."
-        : pct < -10
-          ? "Likely a measurement-noise improvement (firmware / sensor) rather than a real recovery."
-          : "Pack health looks stable.";
       out.push({
         kind: pct > 15 ? "warn" : pct < -10 ? "good" : "info",
-        html: `Effective internal resistance ${pct >= 0 ? "rose" : "fell"} from <b>${(ir0 * 1000).toFixed(0)}</b> mΩ to ` +
-              `<b>${(ir1 * 1000).toFixed(0)}</b> mΩ (${pct >= 0 ? "+" : ""}${pct.toFixed(0)}%). ${trailing}`,
+        html: `Internal resistance ${pct >= 0 ? "rose" : "fell"} from <b>${(ir0 * 1000).toFixed(0)}</b> mΩ to ` +
+              `<b>${(ir1 * 1000).toFixed(0)}</b> mΩ (${pct >= 0 ? "+" : ""}${pct.toFixed(0)}%).`,
       });
     }
 
@@ -1114,8 +1165,8 @@
       const dA = e0 / UNITS.dist(1), dB = e1 / UNITS.dist(1);
       out.push({
         kind: pct > 8 ? "warn" : pct < -5 ? "good" : "info",
-        html: `Energy use ${pct >= 0 ? "up" : "down"} <b>${Math.abs(pct).toFixed(0)}%</b>` +
-              ` (<b>${dA.toFixed(1)}</b> → <b>${dB.toFixed(1)}</b> Wh/${UNITS.distUnit}).`,
+        html: `Energy use ${pct >= 0 ? "up" : "down"} <b>${Math.abs(pct).toFixed(0)}%</b> ` +
+              `(<b>${dA.toFixed(1)}</b> to <b>${dB.toFixed(1)}</b> Wh/${UNITS.distUnit}).`,
       });
     }
 
@@ -1124,9 +1175,8 @@
       const slopeDisp = UNITS.dist(tempFit.slope) / (UNITS.imperial ? 1.8 : 1);
       out.push({
         kind: "info",
-        html: `Cold-weather cost: each <b>10 ${UNITS.tempUnit}</b> drop in ambient takes ` +
-              `<b>${Math.abs(slopeDisp * 10).toFixed(1)}</b> ${UNITS.distUnit}` +
-              ` ${slopeDisp >= 0 ? "off" : "on"} the estimated range.`,
+        html: `Every <b>10 ${UNITS.tempUnit}</b> drop in ambient costs ` +
+              `<b>${Math.abs(slopeDisp * 10).toFixed(1)}</b> ${UNITS.distUnit} of range.`,
       });
     }
 
@@ -1342,7 +1392,7 @@
       const usable = dated.filter((m) => m.estRangeKm != null).length;
       const meta = document.getElementById("range-meta");
       if (!usable) {
-        setSectionEmpty("range", "No trips with battery data used ≥ " + minBattUse + "% — lower the threshold, or these exports carry no battery level.");
+        setSectionEmpty("range", "No trips used at least " + minBattUse + "% battery. Lower the threshold, or these exports may carry no battery level.");
         meta.textContent = "";
         rangeTempHost.classList.add("hidden");
       } else {
@@ -1463,7 +1513,7 @@
           color: COLORS.tempRise, label: "Median temp rise", unit: UNITS.tempUnit, band: true, dp: 1,
         }];
         drawTrendChart(document.getElementById("chart-thermal-trend"), bins, series, { rolling });
-        meta.textContent = useAmbient ? "vs ambient (weather)" : "vs trip-start temp — fetch weather for ambient baseline";
+        meta.textContent = useAmbient ? "vs ambient (weather)" : "vs trip-start temp. Add weather for an ambient baseline.";
       }
     }
 
@@ -1517,7 +1567,7 @@
       weatherStatus.textContent = `Ambient temp for ${hits} trips (cached)`;
       weatherStatus.className = "ok";
       const allCovered = dated.every((m) => m.ambientC != null || !m.centroid);
-      if (allCovered) weatherBtn.textContent = "Weather loaded";
+      if (allCovered) weatherBtn.textContent = "Weather added";
     }
     renderAll();
   })();

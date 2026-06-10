@@ -1,15 +1,25 @@
 document.addEventListener("DOMContentLoaded", function () {
   // Imperial unit toggle — drives display labels and converters everywhere
-  // values are shown. Override with ?units=imperial / ?units=metric.
-  const UNITS = (() => {
+  // values are shown. Resolution order: ?units= URL param, then localStorage
+  // (the cogwheel toggle persists here), then a locale-based first-visit
+  // default (imperial only for known imperial-using regions).
+  const UNITS_STORAGE_KEY = "eucviewer-units";
+  const IMPERIAL_REGIONS = ["US", "LR", "MM", "GB"];
+  function detectUnits() {
     const force = new URLSearchParams(location.search).get("units");
-    let imperial = force === "imperial";
-    if (!force) {
-      try {
-        const loc = new Intl.Locale(navigator.language || "en").maximize();
-        if (loc.region === "US") imperial = true;
-      } catch (_) {}
-    }
+    if (force === "imperial" || force === "metric") return force;
+    try {
+      const stored = localStorage.getItem(UNITS_STORAGE_KEY);
+      if (stored === "imperial" || stored === "metric") return stored;
+    } catch (_) {}
+    try {
+      const loc = new Intl.Locale(navigator.language || "en").maximize();
+      if (IMPERIAL_REGIONS.includes(loc.region)) return "imperial";
+    } catch (_) {}
+    return "metric";
+  }
+  const UNITS = (() => {
+    const imperial = detectUnits() === "imperial";
     return imperial
       ? {
           imperial: true,
@@ -25,6 +35,23 @@ document.addEventListener("DOMContentLoaded", function () {
           distUnit: "km", speedUnit: "km/h", tempUnit: "°C", altUnit: "m",
         };
   })();
+
+  // Wire up the cogwheel's Metric/Imperial toggle. Persists to localStorage
+  // and reloads — UNITS is captured into countless render closures, so a
+  // hot-swap would mean re-rendering everything; reload is simpler & cleaner.
+  (function setupUnitsToggle() {
+    const current = UNITS.imperial ? "imperial" : "metric";
+    document.querySelectorAll(".units-btn").forEach((btn) => {
+      if (btn.dataset.units === current) btn.classList.add("active");
+      btn.addEventListener("click", () => {
+        const next = btn.dataset.units;
+        if (next === current) return;
+        try { localStorage.setItem(UNITS_STORAGE_KEY, next); } catch (_) {}
+        location.reload();
+      });
+    });
+  })();
+
   // --- Map setup with multiple tile layers ---
   const standardLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
@@ -670,6 +697,19 @@ document.addEventListener("DOMContentLoaded", function () {
         if (error) progressText.classList.add("error");
       }
     };
+    // While the post-parse IDB write churns, swap the determinate progress bar
+    // for a shimmering "almost ready" marquee so it doesn't feel like a hang.
+    const setProgressMarquee = (text) => {
+      if (append && addBtn) { addBtn.textContent = text; return; }
+      progressText.textContent = text;
+      progressFill.classList.add("marquee");
+      progressFill.style.width = "100%";
+    };
+    const clearProgressMarquee = () => {
+      if (append) return;
+      progressFill.classList.remove("marquee");
+      progressArea.classList.add("hidden");
+    };
 
     if (!append) {
       uploadLabel.classList.add("hidden");
@@ -696,12 +736,15 @@ document.addEventListener("DOMContentLoaded", function () {
       // Show the trip list immediately so the post-parse IDB write doesn't
       // look like the parser hung at "trip N of N" — for 100+ trips the
       // synchronous JSON.stringify + IDB put can take several seconds.
-      setProgress("Saving " + parsedTracks.length + " trips…");
+      setProgressMarquee("Almost ready, finishing up…");
       loadTracks(append ? [...allTracks, ...parsedTracks] : parsedTracks);
       saveTracks(allTracks);
-      saveRecentFile(file.name, parsedTracks).catch((err) => {
-        console.warn("Failed to save recent file:", err);
-      });
+      saveRecentFile(file.name, parsedTracks)
+        .then(() => clearProgressMarquee())
+        .catch((err) => {
+          console.warn("Failed to save recent file:", err);
+          clearProgressMarquee();
+        });
     } catch (e) {
       setProgress("Error: " + e.message, true);
       if (!append) uploadLabel.classList.remove("hidden");
@@ -1152,11 +1195,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const footer = document.getElementById("panel-footer");
     if (!footer) return;
     const exportBtn = footer.querySelector(".export-btn");
-    if (exportBtn) {
-      const n = trackVisible.size;
-      exportBtn.textContent = n > 0 ? `Export selected (${n})` : "Export selected";
-      exportBtn.style.opacity = n > 0 ? "" : "0.3";
-    }
+    if (exportBtn) renderExportButton(exportBtn);
     // Update selected summary — hide if all or none selected
     const selSummary = footer.querySelector(".selected-summary");
     if (selSummary) {
@@ -1531,7 +1570,7 @@ document.addEventListener("DOMContentLoaded", function () {
     analyticsBtn.href = "analytics.html";
     analyticsBtn.innerHTML = `
       <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M1.5 13.5 5.5 8l3 3 6-8"/><circle cx="5.5" cy="8" r="1.2" fill="currentColor"/><circle cx="8.5" cy="11" r="1.2" fill="currentColor"/></svg>
-      Analyze history`;
+      Wheel Forensics`;
     // The background currentSession write from handleFile() may not have
     // landed yet when the user clicks here — flush it synchronously so
     // analytics.html never opens against an empty store.
@@ -1539,9 +1578,13 @@ document.addEventListener("DOMContentLoaded", function () {
       if (!allTracks.length) return;
       e.preventDefault();
       const orig = analyticsBtn.innerHTML;
-      analyticsBtn.innerHTML = orig.replace("Analyze history", "Preparing…");
+      analyticsBtn.innerHTML = orig.replace("Wheel Forensics", "Preparing…");
       analyticsBtn.style.pointerEvents = "none";
-      try { await saveSessionTracks(allTracks); } catch (_) {}
+      try {
+        await saveSessionTracks(allTracks);
+      } catch (err) {
+        console.warn("Failed to flush session before opening Wheel Forensics:", err);
+      }
       location.href = "analytics.html";
     });
     footer.appendChild(analyticsBtn);
@@ -1552,11 +1595,46 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const exportBtn = document.createElement("div");
     exportBtn.className = "export-btn";
-    exportBtn.textContent = `Export selected (${trackVisible.size})`;
-    exportBtn.addEventListener("click", exportSelected);
+    renderExportButton(exportBtn);
     footer.appendChild(exportBtn);
 
     updateVisibilityUI();
+  }
+
+  // Selection-aware export bar. Idempotent: safe to call on every UI refresh.
+  //   0 selected → static "Export selected" label, dimmed
+  //   1 selected → .csv / .xlsx / .gpx format chips
+  //   n>1       → single .dbb chip that bundles every selected trip's CSV
+  function renderExportButton(exportBtn) {
+    const n = trackVisible.size;
+    exportBtn.onclick = null;
+    if (n === 0) {
+      exportBtn.classList.remove("single-mode");
+      exportBtn.textContent = "Export selected";
+      exportBtn.style.opacity = "0.3";
+      return;
+    }
+    exportBtn.style.opacity = "";
+    exportBtn.classList.add("single-mode");
+    const chips = n === 1
+      ? [["csv", ".csv"], ["xlsx", ".xlsx"], ["gpx", ".gpx"]]
+      : [["dbb", `.dbb (${n})`]];
+    exportBtn.innerHTML =
+      '<span class="export-label">Export selected</span>' +
+      chips.map(([f, lbl]) => `<span class="export-fmt" data-fmt="${f}">${lbl}</span>`).join("");
+    exportBtn.querySelectorAll(".export-fmt").forEach((chip) => {
+      chip.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        if (chip.getAttribute("aria-busy") === "true") return;
+        chip.setAttribute("aria-busy", "true");
+        try {
+          if (chip.dataset.fmt === "dbb") await exportSelected();
+          else await exportSingle(chip.dataset.fmt);
+        } finally {
+          chip.removeAttribute("aria-busy");
+        }
+      });
+    });
   }
 
   // --- Export ---
@@ -1573,6 +1651,98 @@ document.addEventListener("DOMContentLoaded", function () {
       csv += [dateStr, row[1], row[2], "", "", "", row[4], "", row[3], "", "", row[6], row[7], row[5]].join(",") + "\n";
     }
     return csv;
+  }
+
+  // Minimal GPX 1.1: one trkseg, every point with optional time / ele / speed.
+  // Drops rows without lat/lon — euc.world's first samples often lack a fix.
+  function trackToGPX(track) {
+    const xmlEsc = (s) => String(s).replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&apos;" }[c]));
+    const name = xmlEsc(track.name || "trip");
+    const t0 = track.dateStart ? new Date(track.dateStart).getTime() : 0;
+    const lines = [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<gpx version="1.1" creator="eucviewer" xmlns="http://www.topografix.com/GPX/1/1">',
+      `<trk><name>${name}</name><trkseg>`,
+    ];
+    for (const row of track.timeseries) {
+      const lat = row[6], lon = row[7];
+      if (typeof lat !== "number" || typeof lon !== "number" || (lat === 0 && lon === 0)) continue;
+      const ele = row[5];
+      const speed = row[1];
+      const t = t0 ? new Date(t0 + row[0] * 1000).toISOString() : null;
+      lines.push(
+        `<trkpt lat="${lat}" lon="${lon}">` +
+          (typeof ele === "number" ? `<ele>${ele.toFixed(1)}</ele>` : "") +
+          (t ? `<time>${t}</time>` : "") +
+          (typeof speed === "number" ? `<extensions><speed>${(speed / 3.6).toFixed(2)}</speed></extensions>` : "") +
+        "</trkpt>"
+      );
+    }
+    lines.push("</trkseg></trk></gpx>");
+    return lines.join("\n");
+  }
+
+  let xlsxLibPromise = null;
+  function loadXlsxLib() {
+    // SheetJS is only fetched the first time a user actually wants .xlsx out.
+    if (xlsxLibPromise) return xlsxLibPromise;
+    xlsxLibPromise = new Promise((resolve, reject) => {
+      if (typeof XLSX !== "undefined") return resolve(XLSX);
+      const s = document.createElement("script");
+      s.src = "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js";
+      s.onload = () => (typeof XLSX !== "undefined" ? resolve(XLSX) : reject(new Error("xlsx not available")));
+      s.onerror = () => reject(new Error("failed to load xlsx library"));
+      document.head.appendChild(s);
+    }).catch((e) => { xlsxLibPromise = null; throw e; });
+    return xlsxLibPromise;
+  }
+
+  async function trackToXlsxBlob(track) {
+    const XLSXLib = await loadXlsxLib();
+    const t0 = track.dateStart ? new Date(track.dateStart).getTime() : 0;
+    const rows = [["Date", "Speed", "Voltage", "PWM", "Current", "Power", "Battery level",
+                   "Total mileage", "Temperature", "Latitude", "Longitude", "Altitude", "GPS speed"]];
+    for (const r of track.timeseries) {
+      rows.push([
+        t0 ? new Date(t0 + r[0] * 1000).toISOString().replace("Z", "") : "",
+        r[1] || "", r[2] || "", r[9] || "", r[10] || "", r[11] || "",
+        r[4] || "", r[8] || "", r[3] || "", r[6] || "", r[7] || "", r[5] || "",
+        r[12] || "",
+      ]);
+    }
+    const ws = XLSXLib.utils.aoa_to_sheet(rows);
+    const wb = XLSXLib.utils.book_new();
+    XLSXLib.utils.book_append_sheet(wb, ws, "trip");
+    const buf = XLSXLib.write(wb, { type: "array", bookType: "xlsx" });
+    return new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  }
+
+  function downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
+
+  async function exportSingle(format) {
+    const indices = [...trackVisible];
+    if (indices.length !== 1) return;
+    const track = allTracks[indices[0]];
+    const baseName = track.name || "trip";
+    try {
+      if (format === "csv") {
+        downloadBlob(new Blob([trackToCSV(track)], { type: "text/csv" }), baseName + ".csv");
+      } else if (format === "gpx") {
+        downloadBlob(new Blob([trackToGPX(track)], { type: "application/gpx+xml" }), baseName + ".gpx");
+      } else if (format === "xlsx") {
+        const blob = await trackToXlsxBlob(track);
+        downloadBlob(blob, baseName + ".xlsx");
+      }
+    } catch (e) {
+      alert("Export failed: " + (e.message || e));
+    }
   }
 
   async function exportSelected() {

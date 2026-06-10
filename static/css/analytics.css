@@ -107,6 +107,66 @@ html, body {
 #weather-status.ok { color: #69f0ae; }
 #weather-status.error { color: #ff5252; }
 
+/* Tabs vs single-page layout toggle (mini segmented control) */
+.layout-toggle {
+    display: inline-flex;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 5px;
+    overflow: hidden;
+    margin-left: 4px;
+}
+.layout-btn {
+    background: transparent;
+    color: #888;
+    border: none;
+    padding: 5px 10px;
+    font-size: 0.72rem;
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s;
+}
+.layout-btn:hover { color: #ddd; }
+.layout-btn.active {
+    background: rgba(179, 136, 255, 0.18);
+    color: #fff;
+}
+
+/* Tab navigation bar (only visible in tabs layout) */
+#tab-bar {
+    display: flex;
+    gap: 2px;
+    padding: 6px 16px;
+    background: rgba(10, 10, 15, 0.7);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    overflow-x: auto;
+    scrollbar-width: thin;
+    position: sticky;
+    top: 0;
+    z-index: 9;
+}
+.tab-btn {
+    background: transparent;
+    color: #888;
+    border: none;
+    padding: 8px 14px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    border-radius: 6px;
+    border-bottom: 2px solid transparent;
+    transition: color 0.12s, background 0.12s, border-color 0.12s;
+    white-space: nowrap;
+}
+.tab-btn:hover { color: #ddd; background: rgba(255, 255, 255, 0.03); }
+.tab-btn.active {
+    color: #fff;
+    border-bottom-color: #b388ff;
+}
+
+body[data-layout="single"] #tab-bar { display: none; }
+/* Only hide content sections, never the tab buttons themselves.
+   !important is needed to beat #lifetime-bar's own `display: grid` rule. */
+body[data-layout="tabs"] [data-tab]:not(.tab-btn):not(.tab-active) { display: none !important; }
+
 /* ---------- Progress strip ---------- */
 #progress-strip {
     height: 2px;
