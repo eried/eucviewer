@@ -1009,11 +1009,18 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   // --- Storage cache (IndexedDB primary, localStorage fallback) ---
+  // The Wheel Forensics button awaits `pendingSessionWrite` so it doesn't
+  // start a duplicate transaction behind the one already in flight from
+  // saveTracks(). For a 169-trip library each round trip is ~15 MB of IDB
+  // serialization — serialising them was making "Preparing…" take 5–10 s.
+  let pendingSessionWrite = Promise.resolve();
   function saveTracks(tracks) {
     const data = JSON.stringify(tracks);
     try { localStorage.setItem("dbb_tracks", data); } catch {}
     try { sessionStorage.setItem("dbb_tracks", data); } catch {}
-    saveSessionTracks(tracks).catch(() => {});
+    pendingSessionWrite = saveSessionTracks(tracks).catch((err) => {
+      console.warn("Failed to write session tracks:", err);
+    });
   }
 
   async function saveSessionTracks(tracks) {
@@ -1073,6 +1080,11 @@ document.addEventListener("DOMContentLoaded", function () {
       panel.classList.add("hidden");
       panel.classList.remove("open");
       resetUploadUI();
+      // Re-render the recent files panel each time we land here. The
+      // background saveRecentFile() from the previous upload may have
+      // completed after we navigated away, so the cached panel state is
+      // stale until we refresh it.
+      renderRecentFiles().catch((err) => console.warn("renderRecentFiles:", err));
     }
   }
 
@@ -1580,11 +1592,10 @@ document.addEventListener("DOMContentLoaded", function () {
       const orig = analyticsBtn.innerHTML;
       analyticsBtn.innerHTML = orig.replace("Wheel Forensics", "Preparing…");
       analyticsBtn.style.pointerEvents = "none";
-      try {
-        await saveSessionTracks(allTracks);
-      } catch (err) {
-        console.warn("Failed to flush session before opening Wheel Forensics:", err);
-      }
+      // Wait on the existing background write instead of queueing another
+      // 15 MB IDB transaction behind it. If the bg write already finished,
+      // this resolves immediately and navigation is instant.
+      try { await pendingSessionWrite; } catch (_) {}
       location.href = "analytics.html";
     });
     footer.appendChild(analyticsBtn);
