@@ -693,9 +693,15 @@ document.addEventListener("DOMContentLoaded", function () {
         return;
       }
 
-      await saveRecentFile(file.name, parsedTracks);
+      // Show the trip list immediately so the post-parse IDB write doesn't
+      // look like the parser hung at "trip N of N" — for 100+ trips the
+      // synchronous JSON.stringify + IDB put can take several seconds.
+      setProgress("Saving " + parsedTracks.length + " trips…");
       loadTracks(append ? [...allTracks, ...parsedTracks] : parsedTracks);
       saveTracks(allTracks);
+      saveRecentFile(file.name, parsedTracks).catch((err) => {
+        console.warn("Failed to save recent file:", err);
+      });
     } catch (e) {
       setProgress("Error: " + e.message, true);
       if (!append) uploadLabel.classList.remove("hidden");
@@ -811,6 +817,9 @@ document.addEventListener("DOMContentLoaded", function () {
         };
         request.onsuccess = () => resolve(request.result);
         request.onerror = () => reject(request.error || new Error("Failed to open recent files database"));
+        // If another tab still holds the DB at the old version, the upgrade
+        // would hang silently — surface it so the user can close the other tab.
+        request.onblocked = () => reject(new Error("Another tab is holding an older database version. Close other tabs to this site and reload."));
       }).catch((error) => {
         recentDbPromise = null;
         throw error;
