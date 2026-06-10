@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Wheel Forensics &middot; EUC Planet</title>
     <link rel="icon" href="static/favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="static/css/analytics.css?v=6" />
+    <link rel="stylesheet" href="static/css/analytics.css?v=8" />
     <script type="text/javascript">
         (function(c,l,a,r,i,t,y){
             c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
@@ -64,10 +64,17 @@
                 </label>
                 <button type="button" id="weather-btn" title="Pulls historical daily temperatures from open-meteo.com for the coarsely-rounded locations of your trips, then unlocks ambient-aware analyses.">Enrich with weather</button>
                 <span id="weather-status"></span>
-                <div class="layout-toggle" title="Switch between tabs (focus on one section) and one-page (everything stacked).">
-                    <button type="button" class="layout-btn active" data-layout="tabs">Tabs</button>
-                    <button type="button" class="layout-btn" data-layout="single">One page</button>
-                </div>
+                <button type="button" id="layout-toggle" class="layout-toggle-btn" title="Switch layout">
+                    <svg class="layout-icon-tabs" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                        <rect x="1" y="2" width="5" height="12" rx="1" fill="none" stroke="currentColor" stroke-width="1.4"/>
+                        <rect x="10" y="2" width="5" height="12" rx="1" fill="none" stroke="currentColor" stroke-width="1.4"/>
+                    </svg>
+                    <svg class="layout-icon-single" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                        <rect x="2" y="2" width="12" height="3" rx="0.6" fill="none" stroke="currentColor" stroke-width="1.4"/>
+                        <rect x="2" y="6.5" width="12" height="3" rx="0.6" fill="none" stroke="currentColor" stroke-width="1.4"/>
+                        <rect x="2" y="11" width="12" height="3" rx="0.6" fill="none" stroke="currentColor" stroke-width="1.4"/>
+                    </svg>
+                </button>
             </div>
         </header>
 
@@ -101,15 +108,27 @@
 
             <section class="chart-section" data-section="activity" data-tab="overview">
                 <h2>Riding activity <span class="sec-meta" id="activity-meta"></span></h2>
-                <div class="chart-host tall"><canvas id="chart-activity"></canvas></div>
+                <div class="chart-host tall">
+                    <div class="chart-title">Distance per group &amp; cumulative lifetime</div>
+                    <canvas id="chart-activity"></canvas>
+                </div>
+                <div class="chart-takeaway" id="activity-takeaway"></div>
                 <p class="sec-hint">Bars are distance per group, the line is cumulative lifetime distance.
                    Empty bars mean a period where you didn't ride.</p>
             </section>
 
             <section class="chart-section" data-section="range" data-tab="range">
                 <h2>Estimated full range <span class="sec-meta" id="range-meta"></span></h2>
-                <div class="chart-host"><canvas id="chart-range"></canvas></div>
-                <div class="chart-host hidden" id="range-temp-host"><canvas id="chart-range-temp"></canvas></div>
+                <div class="chart-host">
+                    <div class="chart-title">Range over time <span class="chart-title-axes">(median per group)</span></div>
+                    <canvas id="chart-range"></canvas>
+                </div>
+                <div class="chart-takeaway" id="range-takeaway"></div>
+                <div class="chart-host hidden" id="range-temp-host">
+                    <div class="chart-title">Range vs ambient temperature <span class="chart-title-axes">(one dot per trip)</span></div>
+                    <canvas id="chart-range-temp"></canvas>
+                </div>
+                <div class="chart-takeaway" id="range-temp-takeaway"></div>
                 <p class="sec-hint">Each trip's range is extrapolated from distance vs battery used
                    (<i>distance / battery% &times; 100</i>). Dots are the distance-weighted median per group,
                    the band spans the 25th to 75th percentile. Trips using less battery than the
@@ -119,7 +138,11 @@
 
             <section class="chart-section" data-section="efficiency" data-tab="efficiency">
                 <h2>Efficiency <span class="sec-meta" id="efficiency-meta"></span></h2>
-                <div class="chart-host"><canvas id="chart-efficiency"></canvas></div>
+                <div class="chart-host">
+                    <div class="chart-title">Energy use over time <span class="chart-title-axes">(median per group)</span></div>
+                    <canvas id="chart-efficiency"></canvas>
+                </div>
+                <div class="chart-takeaway" id="efficiency-takeaway"></div>
                 <p class="sec-hint">Energy per distance (Wh/km, computed from logged power or voltage&times;current)
                    and distance per battery percent (km/%). Rising Wh/km or falling km/% means the wheel
                    needs more energy for the same ride.</p>
@@ -127,8 +150,16 @@
 
             <section class="chart-section" data-section="motor" data-tab="motor">
                 <h2>Motor: speed vs current <span class="sec-meta" id="motor-meta"></span></h2>
-                <div class="chart-host tall"><canvas id="chart-motor"></canvas></div>
-                <div class="chart-host"><canvas id="chart-motor-trend"></canvas></div>
+                <div class="chart-host tall">
+                    <div class="chart-title">Avg speed vs avg current <span class="chart-title-axes">(one dot per trip, old → new)</span></div>
+                    <canvas id="chart-motor"></canvas>
+                </div>
+                <div class="chart-takeaway" id="motor-takeaway"></div>
+                <div class="chart-host">
+                    <div class="chart-title">Current efficiency over time <span class="chart-title-axes">(amps per unit of speed)</span></div>
+                    <canvas id="chart-motor-trend"></canvas>
+                </div>
+                <div class="chart-takeaway" id="motor-trend-takeaway"></div>
                 <p class="sec-hint">Top: each dot is one trip, average moving speed against average (positive)
                    current, coloured from oldest (blue) to newest (red). If recent dots sit above older ones at the
                    same speed, the drivetrain is drawing more amps than it used to. Bottom: median amps per km/h per
@@ -137,8 +168,16 @@
 
             <section class="chart-section" data-section="thermal" data-tab="thermal">
                 <h2>Thermal <span class="sec-meta" id="thermal-meta"></span></h2>
-                <div class="chart-host tall"><canvas id="chart-thermal"></canvas></div>
-                <div class="chart-host"><canvas id="chart-thermal-trend"></canvas></div>
+                <div class="chart-host tall">
+                    <div class="chart-title">Temperature rise vs power draw <span class="chart-title-axes">(one dot per trip, old → new)</span></div>
+                    <canvas id="chart-thermal"></canvas>
+                </div>
+                <div class="chart-takeaway" id="thermal-takeaway"></div>
+                <div class="chart-host">
+                    <div class="chart-title">Temperature rise over time <span class="chart-title-axes">(median per group)</span></div>
+                    <canvas id="chart-thermal-trend"></canvas>
+                </div>
+                <div class="chart-takeaway" id="thermal-trend-takeaway"></div>
                 <p class="sec-hint" id="thermal-hint">Top: peak board temperature rise above ambient versus average power,
                    one dot per trip (oldest blue, newest red). Bottom: median temperature rise per group.
                    A drifting-up trend at similar power means the wheel is heating more than it used to.</p>
@@ -146,7 +185,11 @@
 
             <section class="chart-section" data-section="health" data-tab="health">
                 <h2>Battery health: voltage sag <span class="sec-meta" id="health-meta"></span></h2>
-                <div class="chart-host"><canvas id="chart-health"></canvas></div>
+                <div class="chart-host">
+                    <div class="chart-title">Effective internal resistance over time <span class="chart-title-axes">(median per group, mΩ)</span></div>
+                    <canvas id="chart-health"></canvas>
+                </div>
+                <div class="chart-takeaway" id="health-takeaway"></div>
                 <p class="sec-hint">Effective internal resistance estimated per trip from how much the pack
                    voltage sags per amp of load (robust fit of voltage against current). A rising trend
                    indicates an aging battery pack.</p>
@@ -156,6 +199,6 @@
         <div id="error-banner" class="hidden"></div>
     </div>
 
-    <script src="static/js/analytics.js?v=5"></script>
+    <script src="static/js/analytics.js?v=7"></script>
 </body>
 </html>

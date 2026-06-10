@@ -69,11 +69,9 @@
   let activeTab = "overview";
   function applyLayout(layout) {
     document.body.setAttribute("data-layout", layout);
-    document.querySelectorAll(".layout-btn").forEach((b) => {
-      b.classList.toggle("active", b.dataset.layout === layout);
-    });
+    const btn = document.getElementById("layout-toggle");
+    if (btn) btn.title = layout === "tabs" ? "Switch to one-page layout" : "Switch to tabbed layout";
     try { localStorage.setItem(LAYOUT_KEY, layout); } catch (_) {}
-    // Layout swap exposes previously-hidden canvases; redraw them at full size.
     if (typeof renderAll === "function") renderAll();
   }
   function applyTab(tab) {
@@ -93,10 +91,14 @@
     let saved = "tabs";
     try { saved = localStorage.getItem(LAYOUT_KEY) || "tabs"; } catch (_) {}
     document.body.setAttribute("data-layout", saved);
-    document.querySelectorAll(".layout-btn").forEach((b) => {
-      b.classList.toggle("active", b.dataset.layout === saved);
-      b.addEventListener("click", () => applyLayout(b.dataset.layout));
-    });
+    const btn = document.getElementById("layout-toggle");
+    if (btn) {
+      btn.title = saved === "tabs" ? "Switch to one-page layout" : "Switch to tabbed layout";
+      btn.addEventListener("click", () => {
+        const current = document.body.getAttribute("data-layout") || "tabs";
+        applyLayout(current === "tabs" ? "single" : "tabs");
+      });
+    }
     document.querySelectorAll("[data-tab]").forEach((el) => {
       if (el.classList.contains("tab-btn")) return;
       el.classList.toggle("tab-active", el.dataset.tab === activeTab);
@@ -1211,6 +1213,29 @@
     ).join("");
   }
 
+  // Populate the green-bordered takeaway strip below a chart with the
+  // headline number for that chart. `parts` is an array of HTML strings
+  // joined with a visual separator.
+  function setTakeaway(id, parts, kind) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.classList.remove("warn");
+    if (kind === "warn") el.classList.add("warn");
+    const filtered = (parts || []).filter(Boolean);
+    el.innerHTML = filtered.length ? filtered.join('<span class="ta-sep">·</span>') : "";
+  }
+  // Find peak / trough labels in a stats array (skipping null bins).
+  function statsPeakTrough(stats, bins, label) {
+    let peak = null, trough = null;
+    for (let i = 0; i < stats.length; i++) {
+      const st = stats[i];
+      if (!st || st.med == null) continue;
+      if (!peak || st.med > peak.v) peak = { v: st.med, label: bins[i].label };
+      if (!trough || st.med < trough.v) trough = { v: st.med, label: bins[i].label };
+    }
+    return { peak, trough };
+  }
+
   // Riding activity: bar = distance per bin, line = cumulative lifetime.
   function drawActivityChart(canvas, bins) {
     const cv = setupCanvas(canvas);
@@ -1385,6 +1410,17 @@
       document.getElementById("activity-meta").textContent =
         `${bins.length} groups · ${UNITS.dist(totalKm).toFixed(0)} ${UNITS.distUnit} total`;
       drawActivityChart(document.getElementById("chart-activity"), bins);
+      // Headline numbers under the chart: biggest group + average pace.
+      let peak = null;
+      for (const b of bins) {
+        const km = b.trips.reduce((s, m) => s + m.distKm, 0);
+        if (km > 0 && (!peak || km > peak.km)) peak = { km, label: b.label };
+      }
+      const nonEmpty = bins.filter((b) => b.trips.length > 0).length;
+      const parts = [];
+      if (peak) parts.push(`Biggest group: <b>${peak.label}</b> with <b>${UNITS.dist(peak.km).toFixed(0)}</b> ${UNITS.distUnit}`);
+      if (nonEmpty) parts.push(`Active in <b>${nonEmpty}</b> of ${bins.length} groups (avg <b>${UNITS.dist(totalKm / nonEmpty).toFixed(0)}</b> ${UNITS.distUnit} per active group)`);
+      setTakeaway("activity-takeaway", parts);
     }
 
     // 1. Range.
@@ -1395,10 +1431,13 @@
         setSectionEmpty("range", "No trips used at least " + minBattUse + "% battery. Lower the threshold, or these exports may carry no battery level.");
         meta.textContent = "";
         rangeTempHost.classList.add("hidden");
+        setTakeaway("range-takeaway", []);
+        setTakeaway("range-temp-takeaway", []);
       } else {
         setSectionActive("range");
+        const rangeStats = binStats(bins, (m) => m.estRangeKm == null ? null : UNITS.dist(normalizedRange(m)), minPerBin);
         const series = [{
-          stats: binStats(bins, (m) => m.estRangeKm == null ? null : UNITS.dist(normalizedRange(m)), minPerBin),
+          stats: rangeStats,
           color: normalizeCheck.checked ? COLORS.rangeNorm : COLORS.range,
           label: normalizeCheck.checked ? "Est. range (20 °C norm.)" : "Est. full range",
           unit: UNITS.distUnit, band: true, dp: 1,
@@ -1410,10 +1449,30 @@
           metaTxt += ` · temp sensitivity ${fmtVal(slopeDisp, 2)} ${UNITS.distUnit}/${UNITS.tempUnit}`;
         }
         meta.textContent = metaTxt;
+        // Takeaway: peak / trough range by group.
+        const { peak, trough } = statsPeakTrough(rangeStats, bins);
+        const trendParts = [];
+        if (peak) trendParts.push(`Best range: <b>${peak.v.toFixed(0)} ${UNITS.distUnit}</b> in <b>${peak.label}</b>`);
+        if (trough && peak && trough.label !== peak.label) trendParts.push(`Lowest: <b>${trough.v.toFixed(0)} ${UNITS.distUnit}</b> in <b>${trough.label}</b>`);
+        if (!normalizeCheck.checked && !tempFit) trendParts.push('Enrich with weather to control for temperature');
+        setTakeaway("range-takeaway", trendParts);
         if (weatherLoaded) {
           drawRangeTempScatter(document.getElementById("chart-range-temp"));
+          if (tempFit) {
+            const slopeDisp = UNITS.dist(tempFit.slope) / (UNITS.imperial ? 1.8 : 1);
+            // Show the per-degree cost and the 10-degree headline so readers
+            // who think in big swings get the practical number too.
+            const perStep = Math.abs(slopeDisp);
+            setTakeaway("range-temp-takeaway", [
+              `Each <b>1 ${UNITS.tempUnit}</b> colder costs about <b>${perStep.toFixed(2)} ${UNITS.distUnit}</b> of range`,
+              `A <b>10 ${UNITS.tempUnit}</b> swing is worth <b>${(perStep * 10).toFixed(1)} ${UNITS.distUnit}</b>`,
+            ]);
+          } else {
+            setTakeaway("range-temp-takeaway", ["Not enough trips with both battery use and ambient temp to fit a slope yet"]);
+          }
         } else {
           rangeTempHost.classList.add("hidden");
+          setTakeaway("range-temp-takeaway", []);
         }
       }
     }
@@ -1426,19 +1485,33 @@
       if (!hasWh && !hasKmPct) {
         setSectionEmpty("efficiency", "These exports carry no power/current or battery columns, so efficiency can't be computed.");
         meta.textContent = "";
+        setTakeaway("efficiency-takeaway", []);
       } else {
         setSectionActive("efficiency");
         const series = [];
-        if (hasWh) series.push({
-          stats: binStats(bins, (m) => m.whPerKm == null ? null : m.whPerKm / UNITS.dist(1), minPerBin),
-          color: COLORS.whPerKm, label: "Wh/" + UNITS.distUnit, unit: "Wh/" + UNITS.distUnit, band: true, dp: 1,
-        });
+        let whStats = null;
+        if (hasWh) {
+          whStats = binStats(bins, (m) => m.whPerKm == null ? null : m.whPerKm / UNITS.dist(1), minPerBin);
+          series.push({
+            stats: whStats,
+            color: COLORS.whPerKm, label: "Wh/" + UNITS.distUnit, unit: "Wh/" + UNITS.distUnit, band: true, dp: 1,
+          });
+        }
         if (hasKmPct) series.push({
           stats: binStats(bins, (m) => m.kmPerPct == null ? null : UNITS.dist(m.kmPerPct), minPerBin),
           color: COLORS.kmPerPct, label: UNITS.distUnit + "/%", unit: UNITS.distUnit + "/%", band: false, dp: 2,
         });
         drawTrendChart(document.getElementById("chart-efficiency"), bins, series, { rolling });
         meta.textContent = "";
+        if (whStats) {
+          const { peak, trough } = statsPeakTrough(whStats, bins);
+          const parts = [];
+          if (peak && trough && peak.label !== trough.label) {
+            parts.push(`Best: <b>${trough.v.toFixed(1)} Wh/${UNITS.distUnit}</b> in <b>${trough.label}</b>`);
+            parts.push(`Worst: <b>${peak.v.toFixed(1)} Wh/${UNITS.distUnit}</b> in <b>${peak.label}</b>`);
+          }
+          setTakeaway("efficiency-takeaway", parts);
+        }
       }
     }
 
@@ -1460,18 +1533,36 @@
       if (pts.length < 5) {
         setSectionEmpty("motor", "Not enough trips with current data for this analysis.");
         meta.textContent = "";
+        setTakeaway("motor-takeaway", []);
+        setTakeaway("motor-trend-takeaway", []);
       } else {
         setSectionActive("motor");
         drawScatter(document.getElementById("chart-motor"), pts, {
           xLabel: "avg speed (" + UNITS.speedUnit + ")", yLabel: "avg current (A)",
         });
+        // Slope of current vs speed across all trips (single fit).
+        const xsAll = pts.map((p) => p.x), ysAll = pts.map((p) => p.y);
+        const fit = theilSen(xsAll, ysAll);
+        const scatterParts = [];
+        if (fit) scatterParts.push(`Slope: <b>${fit.slope.toFixed(2)} A per ${UNITS.speedUnit}</b>`);
+        scatterParts.push(`<b>${pts.length}</b> trips plotted`);
+        setTakeaway("motor-takeaway", scatterParts);
+        const trendStats = binStats(bins, (m) => (m.avgMovingSpeed != null && m.avgCurrent != null && m.avgMovingSpeed > 5)
+          ? m.avgCurrent / UNITS.speed(m.avgMovingSpeed) : null, minPerBin);
         const series = [{
-          stats: binStats(bins, (m) => (m.avgMovingSpeed != null && m.avgCurrent != null && m.avgMovingSpeed > 5)
-            ? m.avgCurrent / UNITS.speed(m.avgMovingSpeed) : null, minPerBin),
+          stats: trendStats,
           color: COLORS.ampsPerKmh, label: "A per " + UNITS.speedUnit, unit: "A/(" + UNITS.speedUnit + ")", band: true, dp: 3,
         }];
         drawTrendChart(document.getElementById("chart-motor-trend"), bins, series, { rolling });
         meta.textContent = pts.length + " trips";
+        const { peak, trough } = statsPeakTrough(trendStats, bins);
+        const trendParts = [];
+        if (peak && trough && peak.label !== trough.label) {
+          const pct = ((peak.v - trough.v) / trough.v) * 100;
+          trendParts.push(`Lowest draw: <b>${trough.v.toFixed(3)} A/${UNITS.speedUnit}</b> in <b>${trough.label}</b>`);
+          trendParts.push(`Highest: <b>${peak.v.toFixed(3)}</b> in <b>${peak.label}</b> (+${pct.toFixed(0)}%)`);
+        }
+        setTakeaway("motor-trend-takeaway", trendParts);
       }
     }
 
@@ -1500,20 +1591,36 @@
       if (pts.length < 5) {
         setSectionEmpty("thermal", "Not enough trips with temperature + power data for this analysis.");
         meta.textContent = "";
+        setTakeaway("thermal-takeaway", []);
+        setTakeaway("thermal-trend-takeaway", []);
       } else {
         setSectionActive("thermal");
         drawScatter(document.getElementById("chart-thermal"), pts, {
           xLabel: "avg power (W)", yLabel: "temp rise (" + UNITS.tempUnit + ")",
         });
+        const xsAll = pts.map((p) => p.x), ysAll = pts.map((p) => p.y);
+        const fit = theilSen(xsAll, ysAll);
+        const scatterParts = [];
+        if (fit) scatterParts.push(`Slope: <b>${(fit.slope * 1000).toFixed(2)} ${UNITS.tempUnit} per kW</b>`);
+        scatterParts.push(useAmbient ? "Rise measured vs ambient" : "Rise measured vs trip-start temp");
+        setTakeaway("thermal-takeaway", scatterParts);
+        const trendStats = binStats(bins, (m) => {
+          const r = tempRiseOf(m);
+          return r == null ? null : tempDelta(r);
+        }, minPerBin);
         const series = [{
-          stats: binStats(bins, (m) => {
-            const r = tempRiseOf(m);
-            return r == null ? null : tempDelta(r);
-          }, minPerBin),
+          stats: trendStats,
           color: COLORS.tempRise, label: "Median temp rise", unit: UNITS.tempUnit, band: true, dp: 1,
         }];
         drawTrendChart(document.getElementById("chart-thermal-trend"), bins, series, { rolling });
         meta.textContent = useAmbient ? "vs ambient (weather)" : "vs trip-start temp. Add weather for an ambient baseline.";
+        const { peak, trough } = statsPeakTrough(trendStats, bins);
+        const trendParts = [];
+        if (peak && trough && peak.label !== trough.label) {
+          trendParts.push(`Coolest: <b>${trough.v.toFixed(1)} ${UNITS.tempUnit}</b> in <b>${trough.label}</b>`);
+          trendParts.push(`Hottest: <b>${peak.v.toFixed(1)} ${UNITS.tempUnit}</b> in <b>${peak.label}</b>`);
+        }
+        setTakeaway("thermal-trend-takeaway", trendParts);
       }
     }
 
@@ -1524,14 +1631,24 @@
       if (usable < 5) {
         setSectionEmpty("health", "Not enough trips with voltage + current data to estimate internal resistance.");
         meta.textContent = "";
+        setTakeaway("health-takeaway", []);
       } else {
         setSectionActive("health");
+        const irStats = binStats(bins, (m) => m.ohmIR == null ? null : m.ohmIR * 1000, Math.max(2, minPerBin));
         const series = [{
-          stats: binStats(bins, (m) => m.ohmIR == null ? null : m.ohmIR * 1000, Math.max(2, minPerBin)),
+          stats: irStats,
           color: COLORS.ohmIR, label: "Effective IR", unit: "mΩ", band: true, dp: 0,
         }];
         drawTrendChart(document.getElementById("chart-health"), bins, series, { rolling, zeroBase: true });
         meta.textContent = usable + " trips";
+        const { peak, trough } = statsPeakTrough(irStats, bins);
+        const parts = [];
+        if (peak && trough && peak.label !== trough.label) {
+          const pct = ((peak.v - trough.v) / trough.v) * 100;
+          parts.push(`Lowest IR: <b>${trough.v.toFixed(0)} mΩ</b> in <b>${trough.label}</b>`);
+          parts.push(`Highest: <b>${peak.v.toFixed(0)} mΩ</b> in <b>${peak.label}</b> (+${pct.toFixed(0)}%)`);
+        }
+        setTakeaway("health-takeaway", parts, peak && trough && ((peak.v - trough.v) / trough.v) > 0.25 ? "warn" : null);
       }
     }
   }
