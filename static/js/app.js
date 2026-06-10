@@ -1620,11 +1620,13 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   // Selection-aware export bar. Idempotent: safe to call on every UI refresh.
-  //   0 selected → static "Export selected" label, dimmed
-  //   1 selected → .csv / .xlsx / .gpx format chips
-  //   n>1       → single .dbb chip that bundles every selected trip's CSV
+  //   0 selected     → static "Export selected" label, dimmed
+  //   1 selected     → "Export trip" + .csv / .xlsx / .gpx chips
+  //   1<n<total      → "Export selected (N)" + .dbb chip
+  //   n === total    → "Export all"          + .dbb chip
   function renderExportButton(exportBtn) {
     const n = trackVisible.size;
+    const total = allTracks.length;
     exportBtn.onclick = null;
     if (n === 0) {
       exportBtn.classList.remove("single-mode");
@@ -1634,11 +1636,20 @@ document.addEventListener("DOMContentLoaded", function () {
     }
     exportBtn.style.opacity = "";
     exportBtn.classList.add("single-mode");
-    const chips = n === 1
-      ? [["csv", ".csv"], ["xlsx", ".xlsx"], ["gpx", ".gpx"]]
-      : [["dbb", `.dbb (${n})`]];
+    let label;
+    let chips;
+    if (n === 1) {
+      label = "Export trip";
+      chips = [["csv", ".csv"], ["xlsx", ".xlsx"], ["gpx", ".gpx"]];
+    } else if (n === total) {
+      label = "Export all";
+      chips = [["dbb", ".dbb"]];
+    } else {
+      label = `Export selected (${n})`;
+      chips = [["dbb", ".dbb"]];
+    }
     exportBtn.innerHTML =
-      '<span class="export-label">Export selected</span>' +
+      `<span class="export-label">${label}</span>` +
       chips.map(([f, lbl]) => `<span class="export-fmt" data-fmt="${f}">${lbl}</span>`).join("");
     exportBtn.querySelectorAll(".export-fmt").forEach((chip) => {
       chip.addEventListener("click", async (e) => {
