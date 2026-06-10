@@ -600,15 +600,15 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 22px;
-    height: 22px;
+    width: 24px;
+    height: 24px;
     border-radius: 4px;
     cursor: pointer;
-    color: #666;
-    font-size: 0.7rem;
+    color: #8aa;
     transition: background 0.15s, color 0.15s;
     user-select: none;
 }
+.tree-btn svg { width: 14px; height: 14px; }
 .tree-btn:hover {
     background: rgba(0, 229, 255, 0.08);
     color: #00e5ff;

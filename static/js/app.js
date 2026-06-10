@@ -1318,8 +1318,18 @@ document.addEventListener("DOMContentLoaded", function () {
     allRow.innerHTML = `
       <label><input type="checkbox" class="all-check" checked> All trips</label>
       <div class="tree-actions">
-        <span class="tree-btn expand-all" title="Expand all">&#9662;</span>
-        <span class="tree-btn collapse-all" title="Collapse all">&#9652;</span>
+        <span class="tree-btn expand-all" title="Expand all">
+          <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="4 6 8 2 12 6"/>
+            <polyline points="4 10 8 14 12 10"/>
+          </svg>
+        </span>
+        <span class="tree-btn collapse-all" title="Collapse all">
+          <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="4 2 8 6 12 2"/>
+            <polyline points="4 14 8 10 12 14"/>
+          </svg>
+        </span>
       </div>
     `;
     allRow.querySelector(".all-check").addEventListener("change", (e) => {
