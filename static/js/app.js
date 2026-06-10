@@ -1016,8 +1016,19 @@ document.addEventListener("DOMContentLoaded", function () {
   let pendingSessionWrite = Promise.resolve();
   function saveTracks(tracks) {
     const data = JSON.stringify(tracks);
-    try { localStorage.setItem("dbb_tracks", data); } catch {}
-    try { sessionStorage.setItem("dbb_tracks", data); } catch {}
+    // Best-effort localStorage. For libraries > ~5 MB this throws
+    // QuotaExceededError — if it does, wipe any old smaller payload that
+    // would otherwise survive and get loaded back on refresh as "1 trip".
+    try {
+      localStorage.setItem("dbb_tracks", data);
+    } catch {
+      try { localStorage.removeItem("dbb_tracks"); } catch {}
+    }
+    try {
+      sessionStorage.setItem("dbb_tracks", data);
+    } catch {
+      try { sessionStorage.removeItem("dbb_tracks"); } catch {}
+    }
     pendingSessionWrite = saveSessionTracks(tracks).catch((err) => {
       console.warn("Failed to write session tracks:", err);
     });
@@ -1066,15 +1077,15 @@ document.addEventListener("DOMContentLoaded", function () {
       panel.classList.remove("hidden");
       updateGlow();
     } else if (hash === "#view") {
-      const cached = loadCachedTracks();
-      if (cached && cached.length) {
-        loadTracks(cached, true);
-      } else {
-        loadSessionTracks().then((idbTracks) => {
-          if (idbTracks && idbTracks.length) loadTracks(idbTracks, true);
-          else navigate("#load", true);
-        });
-      }
+      // IndexedDB is the source of truth — for libraries > ~5 MB the
+      // localStorage cache silently truncated (or got wiped) and would
+      // otherwise show a stale 1-trip remnant on refresh.
+      loadSessionTracks().then((idbTracks) => {
+        if (idbTracks && idbTracks.length) { loadTracks(idbTracks, true); return; }
+        const cached = loadCachedTracks();
+        if (cached && cached.length) loadTracks(cached, true);
+        else navigate("#load", true);
+      });
     } else {
       overlay.classList.remove("hidden");
       panel.classList.add("hidden");
@@ -1630,7 +1641,7 @@ document.addEventListener("DOMContentLoaded", function () {
     exportBtn.onclick = null;
     if (n === 0) {
       exportBtn.classList.remove("single-mode");
-      exportBtn.textContent = "Export selected";
+      exportBtn.textContent = "Select trip(s) to export";
       exportBtn.style.opacity = "0.3";
       return;
     }
