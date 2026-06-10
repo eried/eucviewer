@@ -28,13 +28,25 @@ to mirroring into that repo, ignore them.)
   fetches tracks from IndexedDB (store `eucplanet-trip-viewer/currentSession` key `"tracks"`),
   falls back to `localStorage["dbb_tracks"]`, then drives a MapLibre terrain map + 5 canvas
   charts + SVG dashboard + playback loop.
+- `analytics.html` + `analytics.js` is the whole-history analysis page ("Analyze history" in the
+  trip-panel footer). Loads tracks the same way the inspector does, computes per-trip metrics
+  (estimated range from battery delta, Wh/km, avg speed/current, internal-resistance proxy from
+  the V~I sag slope, temp rise), groups them into bins (calendar month/quarter/year or cumulative
+  km/hours), and renders hand-drawn canvas trend/scatter charts. Optional ambient temperature
+  comes from the Open-Meteo archive API (free, no key, CORS) — one request per 0.1°-rounded
+  location cluster at daily resolution, cached in the `weatherCache` IDB store. Range can be
+  temperature-normalized to 20 °C via a Theil–Sen fit of range vs ambient.
 
 ## Storage keys (must match between app.js and inspector.js)
 
-- IndexedDB database: `eucplanet-trip-viewer` (version 2)
+- IndexedDB database: `eucplanet-trip-viewer` (version 3)
   - object store `recentFiles` (keyPath `id`) — up to 5 recent uploads with full `tracks` array
   - object store `currentSession` (no keyPath; key `"tracks"`) — the most recently displayed
     `allTracks` array. **This is what the inspector reads.**
+  - object store `weatherCache` (no keyPath; key `"{lat}|{lon}"` rounded to 0.1°) — value
+    `{ days: { "YYYY-MM-DD": { mean, max } }, fetchedAt }`, daily temps from Open-Meteo.
+    The v3 upgrade block exists in **both** `app.js openRecentDb()` and `analytics.js openDb()`
+    (whichever page opens first creates the store) — keep them identical.
 - localStorage `dbb_tracks` — same data, but silently dropped when it exceeds the browser quota
   for large multi-file datasets. IndexedDB is the reliable path.
 
