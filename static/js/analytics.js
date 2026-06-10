@@ -35,12 +35,16 @@
   const subtitleEl = document.getElementById("page-subtitle");
   const groupSel = document.getElementById("group-select");
   const battMinSel = document.getElementById("batt-min-select");
+  const minBinSel = document.getElementById("minbin-select");
   const rollingCheck = document.getElementById("rolling-check");
   const normalizeCheck = document.getElementById("normalize-check");
   const weatherBtn = document.getElementById("weather-btn");
   const weatherStatus = document.getElementById("weather-status");
   const progressStrip = document.getElementById("progress-strip");
   const progressFill = document.getElementById("progress-strip-fill");
+  const insightsBox = document.getElementById("insights");
+  const insightsList = document.getElementById("insights-list");
+  const rangeTempHost = document.getElementById("range-temp-host");
 
   function showError(msg) {
     errorBanner.textContent = msg;
@@ -303,19 +307,30 @@
     if (curCnt >= 10) m.avgCurrent = curSum / curCnt;
     if (powCnt >= 10) m.avgPower = powSum / powCnt;
 
-    // Internal-resistance proxy: how much pack voltage sags per amp of load.
-    // Slope of V over I across loaded samples; sign-flipped so positive = ohms.
+    // Internal-resistance proxy via the delta method: regress dV vs dI over
+    // short timesteps so SoC drift across the trip cancels out (each pair only
+    // spans ~1-2 seconds). Only sample pairs with a meaningful load step
+    // contribute — small noise around steady cruising adds variance without
+    // information. -slope is the effective IR (positive = ohms).
     if (hasVolt && hasCurrent) {
-      const xs = [], ys = [];
-      for (const row of ts) {
-        const v = row[VOLT] || 0, c = row[CURRENT] || 0;
-        if (v > 10 && Math.abs(c) > 1) { xs.push(c); ys.push(v); }
+      const dXs = [], dYs = [];
+      for (let i = 1; i < ts.length; i++) {
+        const dt = ts[i][SEC] - ts[i - 1][SEC];
+        if (dt <= 0 || dt > 3) continue;
+        const v0 = ts[i - 1][VOLT] || 0, v1 = ts[i][VOLT] || 0;
+        const c0 = ts[i - 1][CURRENT] || 0, c1 = ts[i][CURRENT] || 0;
+        if (v0 < 10 || v1 < 10) continue;
+        const dI = c1 - c0;
+        if (Math.abs(dI) < 2) continue;
+        dXs.push(dI);
+        dYs.push(v1 - v0);
       }
-      if (xs.length >= 30) {
-        const slope = lsSlope(xs, ys);
-        // Sanity window: a pack's effective IR seen at the wheel is well under
-        // 2 Ω; a positive slope means the fit was dominated by SoC drift.
-        if (slope != null && slope < 0 && -slope < 2) m.ohmIR = -slope;
+      if (dXs.length >= 30) {
+        const slope = lsSlope(dXs, dYs);
+        // Real EUC pack IR seen at the wheel is typically 30–150 mΩ.
+        // Anything > 0.2 Ω means the fit is dominated by something other
+        // than true load response (noise, gear changes, etc).
+        if (slope != null && slope < 0 && -slope < 0.2) m.ohmIR = -slope;
       }
     }
 
@@ -472,14 +487,17 @@
   }
 
   // Per-bin robust summary of one metric: distance-weighted median + IQR.
-  function binStats(bins, getter) {
+  // `minN` drops bins that don't have enough samples to be trustworthy — single
+  // unusual trips otherwise create huge whipsaw spikes in the trend.
+  function binStats(bins, getter, minN) {
+    if (minN == null) minN = 1;
     return bins.map((b) => {
       const vals = [], weights = [];
       for (const m of b.trips) {
         const v = getter(m);
         if (v != null && isFinite(v)) { vals.push(v); weights.push(Math.max(0.1, m.distKm)); }
       }
-      if (!vals.length) return null;
+      if (vals.length < minN) return null;
       return {
         med: weightedMedian(vals, weights),
         p25: percentile(vals, 0.25),
@@ -851,6 +869,8 @@
     yMin -= ySpan * 0.1; yMax += ySpan * 0.1;
     const xAt = (v) => pad.left + ((v - xMin) / (xMax - xMin)) * cw;
     const yAt = (v) => pad.top + ch - ((v - yMin) / (yMax - yMin)) * ch;
+    // Expose the transform so other code can overlay fit lines / annotations.
+    canvas._scatterMap = { xAt, yAt, xMin, xMax, yMin, yMax };
 
     ctx.font = FONT;
     ctx.strokeStyle = GRID_COLOR;
@@ -982,14 +1002,340 @@
     return m.estRangeKm + tempFit.slope * (20 - m.ambientC);
   }
 
+  // ---------- Lifetime / insights / activity ----------
+  function fmtCompact(v, unit) {
+    if (v == null || !isFinite(v)) return { v: "—", u: unit };
+    const a = Math.abs(v);
+    if (a >= 1000) return { v: (v / 1000).toFixed(a >= 10000 ? 1 : 2) + "k", u: unit };
+    if (a >= 100) return { v: v.toFixed(0), u: unit };
+    if (a >= 10) return { v: v.toFixed(1), u: unit };
+    return { v: v.toFixed(1), u: unit };
+  }
+  function setStat(id, value, unit) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (value == null || !isFinite(value)) { el.textContent = "—"; return; }
+    const f = fmtCompact(value, unit);
+    el.innerHTML = `${f.v}<small>${unit ? " " + unit : ""}</small>`;
+  }
+
+  function renderLifetime() {
+    let totalKm = 0, totalH = 0, totalWh = 0;
+    let topSpd = 0, maxRangeKm = 0;
+    const days = new Set();
+    for (const m of dated) {
+      totalKm += m.distKm;
+      totalH += m.durH || 0;
+      if (m.energyWh) totalWh += m.energyWh;
+      if (m.dateStr) days.add(m.dateStr);
+      if (m.estRangeKm != null && m.estRangeKm > maxRangeKm) maxRangeKm = m.estRangeKm;
+    }
+    // Top speed: pull from each track's stats since timeseries is downsampled.
+    for (const t of tracks) {
+      const v = t.stats && t.stats.maxSpeed;
+      if (typeof v === "number" && v > topSpd) topSpd = v;
+    }
+    setStat("lf-trips", dated.length, "");
+    setStat("lf-dist", UNITS.dist(totalKm), UNITS.distUnit);
+    setStat("lf-hours", totalH, "h");
+    setStat("lf-energy", totalWh / 1000, "kWh");
+    setStat("lf-topspd", UNITS.speed(topSpd), UNITS.speedUnit);
+    setStat("lf-maxrange", maxRangeKm ? UNITS.dist(maxRangeKm) : null, UNITS.distUnit);
+    setStat("lf-days", days.size, "");
+    // Average rides/month over the active span.
+    const spanMs = dated[dated.length - 1].date - dated[0].date;
+    const spanMonths = Math.max(1, spanMs / (1000 * 60 * 60 * 24 * 30.44));
+    setStat("lf-cadence", dated.length / spanMonths, "");
+  }
+
+  // Insight generation. Compares the first vs last third of dated trips so a
+  // single noisy bin can't dominate the headline. Each item is { kind, html }.
+  function computeInsights() {
+    const out = [];
+    if (dated.length < 6) return out;
+    const third = Math.max(2, Math.floor(dated.length / 3));
+    const early = dated.slice(0, third);
+    const late = dated.slice(-third);
+
+    function pick(arr, getter, w) {
+      const vs = [], ws = [];
+      for (const m of arr) {
+        const v = getter(m);
+        if (v != null && isFinite(v)) { vs.push(v); ws.push(w ? Math.max(0.1, w(m)) : 1); }
+      }
+      if (!vs.length) return null;
+      return weightedMedian(vs, ws);
+    }
+    const fmtPct = (a, b) => ((b - a) / a) * 100;
+
+    // Range drift, ideally on temp-normalized values so a winter→summer move
+    // doesn't masquerade as battery health.
+    const useNorm = !!tempFit;
+    const rangeGetter = (m) => {
+      if (m.estRangeKm == null) return null;
+      if (useNorm && m.ambientC != null) return m.estRangeKm + tempFit.slope * (20 - m.ambientC);
+      return m.estRangeKm;
+    };
+    const r0 = pick(early, rangeGetter, (m) => m.distKm);
+    const r1 = pick(late, rangeGetter, (m) => m.distKm);
+    if (r0 && r1) {
+      const pct = fmtPct(r0, r1);
+      const dispA = UNITS.dist(r0), dispB = UNITS.dist(r1);
+      out.push({
+        kind: pct < -5 ? "warn" : pct > 5 ? "good" : "info",
+        html: `Estimated range ${pct >= 0 ? "up" : "down"} <b>${Math.abs(pct).toFixed(0)}%</b> from first to last third` +
+              ` (<b>${dispA.toFixed(1)}</b> → <b>${dispB.toFixed(1)}</b> ${UNITS.distUnit})` +
+              (useNorm ? ", temperature-normalized to 20 °C." : ". Load weather to remove temperature effects."),
+      });
+    }
+
+    // Internal resistance drift.
+    const ir0 = pick(early, (m) => m.ohmIR);
+    const ir1 = pick(late, (m) => m.ohmIR);
+    if (ir0 && ir1) {
+      const pct = fmtPct(ir0, ir1);
+      const trailing = pct > 15
+        ? "Battery aging is the usual culprit."
+        : pct < -10
+          ? "Likely a measurement-noise improvement (firmware / sensor) rather than a real recovery."
+          : "Pack health looks stable.";
+      out.push({
+        kind: pct > 15 ? "warn" : pct < -10 ? "good" : "info",
+        html: `Effective internal resistance ${pct >= 0 ? "rose" : "fell"} from <b>${(ir0 * 1000).toFixed(0)}</b> mΩ to ` +
+              `<b>${(ir1 * 1000).toFixed(0)}</b> mΩ (${pct >= 0 ? "+" : ""}${pct.toFixed(0)}%). ${trailing}`,
+      });
+    }
+
+    // Efficiency drift (Wh/km).
+    const e0 = pick(early, (m) => m.whPerKm, (m) => m.distKm);
+    const e1 = pick(late, (m) => m.whPerKm, (m) => m.distKm);
+    if (e0 && e1) {
+      const pct = fmtPct(e0, e1);
+      const dA = e0 / UNITS.dist(1), dB = e1 / UNITS.dist(1);
+      out.push({
+        kind: pct > 8 ? "warn" : pct < -5 ? "good" : "info",
+        html: `Energy use ${pct >= 0 ? "up" : "down"} <b>${Math.abs(pct).toFixed(0)}%</b>` +
+              ` (<b>${dA.toFixed(1)}</b> → <b>${dB.toFixed(1)}</b> Wh/${UNITS.distUnit}).`,
+      });
+    }
+
+    // Temperature sensitivity (weather-only).
+    if (tempFit) {
+      const slopeDisp = UNITS.dist(tempFit.slope) / (UNITS.imperial ? 1.8 : 1);
+      out.push({
+        kind: "info",
+        html: `Cold-weather cost: each <b>10 ${UNITS.tempUnit}</b> drop in ambient takes ` +
+              `<b>${Math.abs(slopeDisp * 10).toFixed(1)}</b> ${UNITS.distUnit}` +
+              ` ${slopeDisp >= 0 ? "off" : "on"} the estimated range.`,
+      });
+    }
+
+    // Best month by distance.
+    {
+      const months = new Map();
+      for (const m of dated) {
+        const k = m.date.getFullYear() + "-" + String(m.date.getMonth()).padStart(2, "0");
+        months.set(k, (months.get(k) || 0) + m.distKm);
+      }
+      let best = null;
+      for (const [k, v] of months) if (!best || v > best.v) best = { k, v };
+      if (best) {
+        const [y, mo] = best.k.split("-").map(Number);
+        const label = new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric" }).format(new Date(y, mo, 1));
+        out.push({
+          kind: "info",
+          html: `Most active month: <b>${label}</b> with <b>${UNITS.dist(best.v).toFixed(0)}</b> ${UNITS.distUnit}.`,
+        });
+      }
+    }
+
+    return out;
+  }
+
+  function renderInsights() {
+    const items = computeInsights();
+    if (!items.length) { insightsBox.classList.add("hidden"); insightsList.innerHTML = ""; return; }
+    insightsBox.classList.remove("hidden");
+    insightsList.innerHTML = items.map((i) =>
+      `<div class="insight ${i.kind}"><span class="ico"></span><div>${i.html}</div></div>`
+    ).join("");
+  }
+
+  // Riding activity: bar = distance per bin, line = cumulative lifetime.
+  function drawActivityChart(canvas, bins) {
+    const cv = setupCanvas(canvas);
+    if (!cv) return;
+    const { ctx, w, h } = cv;
+    const pad = { top: 14, bottom: 24, left: 46, right: 52 };
+    const cw = w - pad.left - pad.right;
+    const ch = h - pad.top - pad.bottom;
+    const n = bins.length;
+    if (!n) return;
+
+    const distPerBin = bins.map((b) => b.trips.reduce((s, m) => s + m.distKm, 0));
+    const cum = [];
+    let acc = 0;
+    for (const d of distPerBin) { acc += d; cum.push(acc); }
+    const maxDist = Math.max(1, ...distPerBin);
+    const maxCum = cum[cum.length - 1] || 1;
+
+    const xAt = (i) => pad.left + (n > 1 ? (i / (n - 1)) * cw : cw / 2);
+    const barW = n > 1 ? Math.max(2, (cw / n) * 0.7) : Math.max(8, cw * 0.3);
+
+    ctx.font = FONT;
+    // Grid + left axis (distance per bin).
+    const leftTicks = niceTicks(0, UNITS.dist(maxDist), 4);
+    ctx.fillStyle = AXIS_COLOR;
+    ctx.strokeStyle = GRID_COLOR;
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    for (const tv of leftTicks) {
+      const y = pad.top + ch - (tv / UNITS.dist(maxDist)) * ch;
+      ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(w - pad.right, y); ctx.stroke();
+      ctx.fillStyle = "#b388ff";
+      ctx.fillText(fmtVal(tv), pad.left - 6, y);
+    }
+    // Right axis (cumulative).
+    const rightTicks = niceTicks(0, UNITS.dist(maxCum), 4);
+    ctx.textAlign = "left";
+    ctx.fillStyle = "#69f0ae";
+    for (const tv of rightTicks) {
+      const y = pad.top + ch - (tv / UNITS.dist(maxCum)) * ch;
+      ctx.fillText(fmtVal(tv), w - pad.right + 6, y);
+    }
+
+    // X labels.
+    ctx.fillStyle = AXIS_COLOR;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    const labelStep = Math.max(1, Math.ceil(n / 8));
+    for (let i = 0; i < n; i += labelStep) {
+      ctx.fillText(bins[i].label, xAt(i), pad.top + ch + 6);
+    }
+
+    // Bars.
+    for (let i = 0; i < n; i++) {
+      const v = distPerBin[i];
+      if (v <= 0) continue;
+      const x = xAt(i) - barW / 2;
+      const yTop = pad.top + ch - (v / maxDist) * ch;
+      const grad = ctx.createLinearGradient(0, yTop, 0, pad.top + ch);
+      grad.addColorStop(0, "rgba(179,136,255,0.85)");
+      grad.addColorStop(1, "rgba(179,136,255,0.25)");
+      ctx.fillStyle = grad;
+      ctx.fillRect(x, yTop, barW, pad.top + ch - yTop);
+    }
+
+    // Cumulative line.
+    ctx.strokeStyle = "#69f0ae";
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    for (let i = 0; i < n; i++) {
+      const y = pad.top + ch - (cum[i] / maxCum) * ch;
+      const x = xAt(i);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.fillStyle = "#69f0ae";
+    for (let i = 0; i < n; i++) {
+      ctx.beginPath();
+      ctx.arc(xAt(i), pad.top + ch - (cum[i] / maxCum) * ch, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Legend.
+    ctx.textBaseline = "alphabetic";
+    ctx.fillStyle = "rgba(179,136,255,0.85)";
+    ctx.fillRect(pad.left + 4, 6, 8, 3);
+    ctx.fillStyle = "rgba(255,255,255,0.6)";
+    ctx.textAlign = "left";
+    ctx.fillText("Distance per group (" + UNITS.distUnit + ")", pad.left + 16, 11);
+    const cumLabel = "Cumulative (" + UNITS.distUnit + ")";
+    const offX = pad.left + 16 + ctx.measureText("Distance per group (" + UNITS.distUnit + ")").width + 20;
+    ctx.fillStyle = "#69f0ae";
+    ctx.fillRect(offX, 6, 8, 3);
+    ctx.fillStyle = "rgba(255,255,255,0.6)";
+    ctx.fillText(cumLabel, offX + 12, 11);
+
+    // Hover.
+    canvas._an = {
+      type: "trend",
+      bins,
+      pad, cw, ch, w, h, xAt,
+      series: [
+        { stats: distPerBin.map((v, i) => ({ med: v, n: bins[i].trips.length })), label: "Distance", unit: UNITS.distUnit, dp: 1, color: "#b388ff" },
+        { stats: cum.map((v, i) => ({ med: v, n: bins[i].trips.length })), label: "Cumulative", unit: UNITS.distUnit, dp: 1, color: "#69f0ae" },
+      ],
+    };
+    // Swap the getter so we report metric units.
+    canvas._an.series[0].stats = distPerBin.map((v) => ({ med: UNITS.dist(v) }));
+    canvas._an.series[1].stats = cum.map((v) => ({ med: UNITS.dist(v) }));
+  }
+
+  // Range vs ambient scatter — only shown when weather is loaded. Includes
+  // the Theil–Sen fit line so the slope is visible, not just a number.
+  function drawRangeTempScatter(canvas) {
+    const pts = [];
+    for (const m of dated) {
+      if (m.estRangeKm == null || m.ambientC == null) continue;
+      pts.push({
+        x: UNITS.temp(m.ambientC),
+        y: UNITS.dist(m.estRangeKm),
+        epoch: m.epoch,
+        meta: `<b>${m.label}</b><br>Range: <b>${fmtVal(UNITS.dist(m.estRangeKm), 1)}</b> ${UNITS.distUnit}` +
+              `<br>Ambient: <b>${fmtVal(UNITS.temp(m.ambientC), 1)}</b> ${UNITS.tempUnit}` +
+              `<br>Battery used: <b>${fmtVal(m.battDelta, 1)}</b>%`,
+      });
+    }
+    if (pts.length < 6) { rangeTempHost.classList.add("hidden"); return; }
+    rangeTempHost.classList.remove("hidden");
+    drawScatter(canvas, pts, {
+      xLabel: "ambient (" + UNITS.tempUnit + ")",
+      yLabel: "est. range (" + UNITS.distUnit + ")",
+    });
+    // Overlay Theil–Sen fit line so the temperature relationship is visible.
+    if (pts.length >= 10 && canvas._scatterMap) {
+      const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
+      const fitDisp = theilSen(xs, ys);
+      if (fitDisp) {
+        const { xAt, yAt, xMin, xMax } = canvas._scatterMap;
+        const dpr = window.devicePixelRatio || 1;
+        const ctx = canvas.getContext("2d");
+        ctx.save();
+        ctx.scale(dpr, dpr);
+        ctx.strokeStyle = "rgba(255,241,118,0.75)";
+        ctx.lineWidth = 1.6;
+        ctx.setLineDash([4, 3]);
+        ctx.beginPath();
+        ctx.moveTo(xAt(xMin), yAt(fitDisp.slope * xMin + fitDisp.intercept));
+        ctx.lineTo(xAt(xMax), yAt(fitDisp.slope * xMax + fitDisp.intercept));
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.restore();
+      }
+    }
+  }
+
   // ---------- Render pipeline ----------
   function renderAll() {
     const minBattUse = Number(battMinSel.value);
+    const minPerBin = Number(minBinSel.value);
     for (const m of dated) applyRangeGating(m, minBattUse);
     computeTempFit();
 
     const bins = makeBins(dated, groupSel.value);
     const rolling = rollingCheck.checked;
+
+    renderLifetime();
+    renderInsights();
+
+    // Activity (cumulative + per-period distance).
+    {
+      const totalKm = bins.reduce((s, b) => s + b.trips.reduce((ss, m) => ss + m.distKm, 0), 0);
+      document.getElementById("activity-meta").textContent =
+        `${bins.length} groups · ${UNITS.dist(totalKm).toFixed(0)} ${UNITS.distUnit} total`;
+      drawActivityChart(document.getElementById("chart-activity"), bins);
+    }
 
     // 1. Range.
     {
@@ -998,10 +1344,11 @@
       if (!usable) {
         setSectionEmpty("range", "No trips with battery data used ≥ " + minBattUse + "% — lower the threshold, or these exports carry no battery level.");
         meta.textContent = "";
+        rangeTempHost.classList.add("hidden");
       } else {
         setSectionActive("range");
         const series = [{
-          stats: binStats(bins, (m) => m.estRangeKm == null ? null : UNITS.dist(normalizedRange(m))),
+          stats: binStats(bins, (m) => m.estRangeKm == null ? null : UNITS.dist(normalizedRange(m)), minPerBin),
           color: normalizeCheck.checked ? COLORS.rangeNorm : COLORS.range,
           label: normalizeCheck.checked ? "Est. range (20 °C norm.)" : "Est. full range",
           unit: UNITS.distUnit, band: true, dp: 1,
@@ -1009,12 +1356,15 @@
         drawTrendChart(document.getElementById("chart-range"), bins, series, { rolling, zeroBase: false });
         let metaTxt = usable + " of " + dated.length + " trips usable";
         if (tempFit) {
-          // km/°C → mi/°F: distance converts forward, but a per-°C rate
-          // *divides* by 1.8 to become per-°F.
           const slopeDisp = UNITS.dist(tempFit.slope) / (UNITS.imperial ? 1.8 : 1);
           metaTxt += ` · temp sensitivity ${fmtVal(slopeDisp, 2)} ${UNITS.distUnit}/${UNITS.tempUnit}`;
         }
         meta.textContent = metaTxt;
+        if (weatherLoaded) {
+          drawRangeTempScatter(document.getElementById("chart-range-temp"));
+        } else {
+          rangeTempHost.classList.add("hidden");
+        }
       }
     }
 
@@ -1030,11 +1380,11 @@
         setSectionActive("efficiency");
         const series = [];
         if (hasWh) series.push({
-          stats: binStats(bins, (m) => m.whPerKm == null ? null : m.whPerKm / UNITS.dist(1)),
+          stats: binStats(bins, (m) => m.whPerKm == null ? null : m.whPerKm / UNITS.dist(1), minPerBin),
           color: COLORS.whPerKm, label: "Wh/" + UNITS.distUnit, unit: "Wh/" + UNITS.distUnit, band: true, dp: 1,
         });
         if (hasKmPct) series.push({
-          stats: binStats(bins, (m) => m.kmPerPct == null ? null : UNITS.dist(m.kmPerPct)),
+          stats: binStats(bins, (m) => m.kmPerPct == null ? null : UNITS.dist(m.kmPerPct), minPerBin),
           color: COLORS.kmPerPct, label: UNITS.distUnit + "/%", unit: UNITS.distUnit + "/%", band: false, dp: 2,
         });
         drawTrendChart(document.getElementById("chart-efficiency"), bins, series, { rolling });
@@ -1067,7 +1417,7 @@
         });
         const series = [{
           stats: binStats(bins, (m) => (m.avgMovingSpeed != null && m.avgCurrent != null && m.avgMovingSpeed > 5)
-            ? m.avgCurrent / UNITS.speed(m.avgMovingSpeed) : null),
+            ? m.avgCurrent / UNITS.speed(m.avgMovingSpeed) : null, minPerBin),
           color: COLORS.ampsPerKmh, label: "A per " + UNITS.speedUnit, unit: "A/(" + UNITS.speedUnit + ")", band: true, dp: 3,
         }];
         drawTrendChart(document.getElementById("chart-motor-trend"), bins, series, { rolling });
@@ -1109,7 +1459,7 @@
           stats: binStats(bins, (m) => {
             const r = tempRiseOf(m);
             return r == null ? null : tempDelta(r);
-          }),
+          }, minPerBin),
           color: COLORS.tempRise, label: "Median temp rise", unit: UNITS.tempUnit, band: true, dp: 1,
         }];
         drawTrendChart(document.getElementById("chart-thermal-trend"), bins, series, { rolling });
@@ -1127,7 +1477,7 @@
       } else {
         setSectionActive("health");
         const series = [{
-          stats: binStats(bins, (m) => m.ohmIR == null ? null : m.ohmIR * 1000),
+          stats: binStats(bins, (m) => m.ohmIR == null ? null : m.ohmIR * 1000, Math.max(2, minPerBin)),
           color: COLORS.ohmIR, label: "Effective IR", unit: "mΩ", band: true, dp: 0,
         }];
         drawTrendChart(document.getElementById("chart-health"), bins, series, { rolling, zeroBase: true });
@@ -1138,6 +1488,7 @@
 
   groupSel.addEventListener("change", renderAll);
   battMinSel.addEventListener("change", renderAll);
+  minBinSel.addEventListener("change", renderAll);
   rollingCheck.addEventListener("change", renderAll);
   normalizeCheck.addEventListener("change", renderAll);
   let resizeTimer = null;

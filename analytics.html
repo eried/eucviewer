@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>History Analytics &mdash; EUC Planet</title>
     <link rel="icon" href="static/favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="static/css/analytics.css?v=1" />
+    <link rel="stylesheet" href="static/css/analytics.css?v=3" />
     <script type="text/javascript">
         (function(c,l,a,r,i,t,y){
             c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
@@ -45,8 +45,17 @@
                         <option value="20">20%</option>
                     </select>
                 </label>
+                <label>
+                    <span>Min trips/bin</span>
+                    <select id="minbin-select">
+                        <option value="1">1</option>
+                        <option value="2" selected>2</option>
+                        <option value="3">3</option>
+                        <option value="5">5</option>
+                    </select>
+                </label>
                 <label class="check-label">
-                    <input type="checkbox" id="rolling-check" />
+                    <input type="checkbox" id="rolling-check" checked />
                     <span>Smooth (rolling 3 bins)</span>
                 </label>
                 <label class="check-label">
@@ -61,13 +70,38 @@
         <div id="progress-strip" class="hidden"><div id="progress-strip-fill"></div></div>
 
         <main id="sections">
+            <section id="lifetime-bar">
+                <div class="stat-card"><span class="sv" id="lf-trips">&mdash;</span><span class="sl">Trips</span></div>
+                <div class="stat-card"><span class="sv" id="lf-dist">&mdash;</span><span class="sl">Distance</span></div>
+                <div class="stat-card"><span class="sv" id="lf-hours">&mdash;</span><span class="sl">Riding hours</span></div>
+                <div class="stat-card"><span class="sv" id="lf-energy">&mdash;</span><span class="sl">Energy used</span></div>
+                <div class="stat-card"><span class="sv" id="lf-topspd">&mdash;</span><span class="sl">Top speed</span></div>
+                <div class="stat-card"><span class="sv" id="lf-maxrange">&mdash;</span><span class="sl">Best est. range</span></div>
+                <div class="stat-card"><span class="sv" id="lf-days">&mdash;</span><span class="sl">Active days</span></div>
+                <div class="stat-card"><span class="sv" id="lf-cadence">&mdash;</span><span class="sl">Rides / month</span></div>
+            </section>
+
+            <section id="insights" class="hidden">
+                <h2>Key insights <span class="sec-meta">auto-computed from your history</span></h2>
+                <div id="insights-list"></div>
+            </section>
+
+            <section class="chart-section" data-section="activity">
+                <h2>Riding activity <span class="sec-meta" id="activity-meta"></span></h2>
+                <div class="chart-host tall"><canvas id="chart-activity"></canvas></div>
+                <p class="sec-hint">Bars are distance per group, the line is cumulative lifetime distance.
+                   Empty bars mean a period where you didn't ride.</p>
+            </section>
+
             <section class="chart-section" data-section="range">
                 <h2>Estimated full range <span class="sec-meta" id="range-meta"></span></h2>
                 <div class="chart-host"><canvas id="chart-range"></canvas></div>
+                <div class="chart-host hidden" id="range-temp-host"><canvas id="chart-range-temp"></canvas></div>
                 <p class="sec-hint">Each trip's range is extrapolated from distance vs battery used
                    (<i>distance / battery% &times; 100</i>). Dots are the distance-weighted median per group,
                    the band spans the 25th&ndash;75th percentile. Trips using less battery than the
-                   threshold above are excluded.</p>
+                   threshold above are excluded. With weather loaded, the second chart shows the
+                   range vs ambient temperature relationship for every usable trip.</p>
             </section>
 
             <section class="chart-section" data-section="efficiency">
@@ -109,6 +143,6 @@
         <div id="error-banner" class="hidden"></div>
     </div>
 
-    <script src="static/js/analytics.js?v=1"></script>
+    <script src="static/js/analytics.js?v=3"></script>
 </body>
 </html>
