@@ -1532,6 +1532,18 @@ document.addEventListener("DOMContentLoaded", function () {
     analyticsBtn.innerHTML = `
       <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M1.5 13.5 5.5 8l3 3 6-8"/><circle cx="5.5" cy="8" r="1.2" fill="currentColor"/><circle cx="8.5" cy="11" r="1.2" fill="currentColor"/></svg>
       Analyze history`;
+    // The background currentSession write from handleFile() may not have
+    // landed yet when the user clicks here — flush it synchronously so
+    // analytics.html never opens against an empty store.
+    analyticsBtn.addEventListener("click", async (e) => {
+      if (!allTracks.length) return;
+      e.preventDefault();
+      const orig = analyticsBtn.innerHTML;
+      analyticsBtn.innerHTML = orig.replace("Analyze history", "Preparing…");
+      analyticsBtn.style.pointerEvents = "none";
+      try { await saveSessionTracks(allTracks); } catch (_) {}
+      location.href = "analytics.html";
+    });
     footer.appendChild(analyticsBtn);
 
     const selSummary = document.createElement("div");
