@@ -1272,25 +1272,32 @@ document.addEventListener("DOMContentLoaded", function () {
     header.appendChild(summary);
 
     // Wheel Forensics lives at the top of the panel because it always
-    // operates on the whole library, not the current selection.
+    // operates on the whole library, not the current selection. Opens in
+    // a new tab so the viewer state (selection, expanded groups, scroll)
+    // is preserved when the user comes back.
     const analyticsBtn = document.createElement("a");
     analyticsBtn.className = "analytics-btn analytics-btn-header";
     analyticsBtn.href = "analytics.html";
+    analyticsBtn.target = "_blank";
+    analyticsBtn.rel = "noopener";
     analyticsBtn.innerHTML = `
       <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M1.5 13.5 5.5 8l3 3 6-8"/><circle cx="5.5" cy="8" r="1.2" fill="currentColor"/><circle cx="8.5" cy="11" r="1.2" fill="currentColor"/></svg>
       <span class="analytics-label">Wheel Forensics</span>`;
     analyticsBtn.addEventListener("click", async (e) => {
       if (!allTracks.length) return;
+      // The IDB write started by handleFile() may not have landed yet,
+      // and the new tab would open against an empty currentSession.
+      // Block the native target=_blank, await the write, then open it
+      // ourselves so the analytics page always sees fresh state.
       e.preventDefault();
       const label = analyticsBtn.querySelector(".analytics-label");
       const orig = label.textContent;
       label.textContent = "Preparing…";
       analyticsBtn.style.pointerEvents = "none";
-      // Wait on the background write started by handleFile() instead of
-      // queueing a fresh 15 MB IDB transaction. If it's already done,
-      // navigation fires immediately.
       try { await pendingSessionWrite; } catch (_) {}
-      location.href = "analytics.html";
+      window.open("analytics.html", "_blank", "noopener");
+      label.textContent = orig;
+      analyticsBtn.style.pointerEvents = "";
     });
     header.appendChild(analyticsBtn);
 
@@ -1379,7 +1386,7 @@ document.addEventListener("DOMContentLoaded", function () {
             <div class="trip-date">${formatTripLabel(t)}</div>
             <div class="trip-meta">${meta}</div>
           </div>
-          <a class="inspect-btn" href="inspector.html?i=${i}" title="Open trip inspector">
+          <a class="inspect-btn" href="inspector.html?i=${i}" target="_blank" rel="noopener" title="Open trip inspector in a new tab">
             <svg viewBox="0 0 16 16" width="14" height="14"><circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="10.5" y1="10.5" x2="14" y2="14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
           </a>
         </div>
