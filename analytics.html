@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Wheel Forensics &middot; EUC Planet</title>
     <link rel="icon" href="static/favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="static/css/analytics.css?v=17" />
+    <link rel="stylesheet" href="static/css/analytics.css?v=18" />
     <script type="text/javascript">
         (function(c,l,a,r,i,t,y){
             c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
@@ -71,6 +71,7 @@
                 <div class="ctrl-group" data-group="actions">
                     <span class="weather-capsule">
                         <button type="button" id="weather-btn" title="Downloads historical daily temperatures from open-meteo.com for each trip's rounded location. Unlocks ambient-aware analyses (range vs temp, thermal vs ambient).">Add weather data</button>
+                        <button type="button" id="weather-refresh-btn" class="weather-refresh" title="Try again for the trips not yet in the archive.">!</button>
                         <button type="button" id="weather-remove-btn" class="weather-remove" title="Stop using weather data. The cache stays so adding it again is instant.">&times;</button>
                     </span>
                     <span id="weather-status"></span>
@@ -329,6 +330,6 @@
         <div id="error-banner" class="hidden"></div>
     </div>
 
-    <script src="static/js/analytics.js?v=16"></script>
+    <script src="static/js/analytics.js?v=17"></script>
 </body>
 </html>

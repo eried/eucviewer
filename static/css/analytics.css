@@ -156,9 +156,8 @@ body::before {
 #weather-btn:hover:not([disabled]) { background: rgba(255, 160, 0, 0.2); }
 #weather-btn[disabled] { opacity: 0.55; cursor: default; }
 
-/* Unlink ("×") sub-button: hidden when no data is loaded, joins the main
-   button as a single capsule when it is. */
-#weather-remove-btn {
+/* Sub-buttons in the weather capsule: identical sizing, hidden by default. */
+#weather-remove-btn, #weather-refresh-btn {
     display: none;
     background: transparent;
     color: rgba(255, 160, 0, 0.85);
@@ -172,9 +171,13 @@ body::before {
     transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 #weather-remove-btn:hover { background: rgba(255, 82, 82, 0.18); color: #fff; border-color: rgba(255, 82, 82, 0.7); }
+#weather-refresh-btn { font-weight: 700; }
+#weather-refresh-btn:hover { background: rgba(255, 215, 64, 0.18); color: #fff; border-color: rgba(255, 215, 64, 0.7); }
 
-/* Capsule layout: the two buttons sit shoulder-to-shoulder with a single
-   vertical divider line. Round only the outer corners. */
+/* Capsule layout when weather is loaded:
+   [main button]   [refresh (if pending)]   [unlink]
+   All sit shoulder-to-shoulder, sharing borders. Outer corners round, inner
+   corners square so the divider lines read as one vertical pipe. */
 body.weather-loaded #weather-btn {
     border-top-right-radius: 0;
     border-bottom-right-radius: 0;
@@ -184,12 +187,28 @@ body.weather-loaded #weather-remove-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    border-top-left-radius: 0;
-    border-bottom-left-radius: 0;
+    border-radius: 0;
+    border-left: 1px solid rgba(255, 160, 0, 0.35);
     border-top-right-radius: 5px;
     border-bottom-right-radius: 5px;
-    border-left: 1px solid rgba(255, 160, 0, 0.35);
     margin-left: 0;
+}
+/* Refresh "!" button sits between the main button and the unlink when there
+   are recent trips waiting on the archive. */
+body.weather-loaded.weather-has-pending #weather-refresh-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0;
+    border-left: 1px solid rgba(255, 160, 0, 0.35);
+    border-right: none;
+    color: #ffd740;
+    /* Faint pulse so the user notices it. */
+    animation: refresh-pulse 2.4s ease-in-out infinite;
+}
+@keyframes refresh-pulse {
+    0%, 100% { background: rgba(255, 215, 64, 0.05); }
+    50%      { background: rgba(255, 215, 64, 0.18); }
 }
 #weather-status { font-size: 0.72rem; color: #888; max-width: 200px; }
 #weather-status.ok { color: #69f0ae; }

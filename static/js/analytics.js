@@ -1080,11 +1080,20 @@
       return;
     }
     weatherStatus.className = failedClusters ? "error" : "ok";
+    // Show / hide the refresh segment based on whether there are recent
+    // trips that could land in the archive on a later attempt.
+    document.body.classList.toggle("weather-has-pending", tooRecent > 0);
+    const refreshBtn = document.getElementById("weather-refresh-btn");
+    if (refreshBtn) {
+      refreshBtn.title = tooRecent
+        ? tooRecent + " trip" + (tooRecent === 1 ? "" : "s") + " from the last few days isn't in the archive yet. Open-Meteo's historical data lags about 5 days. Click to try again."
+        : "";
+    }
     if (missing > 0) {
       weatherBtn.textContent = "Add weather for " + missing + " more";
       weatherBtn.disabled = false;
       const extras = [];
-      if (tooRecent) extras.push(tooRecent + " too recent");
+      if (tooRecent) extras.push(tooRecent + " from the last few days, archive lags ~5 days");
       if (noGps) extras.push(noGps + " no GPS");
       if (failedClusters) extras.push(failedClusters + " location" + (failedClusters > 1 ? "s" : "") + " failed");
       weatherStatus.textContent = covered + " of " + dated.length + " trips ready" + (extras.length ? " (" + extras.join(", ") + ")" : "");
@@ -1092,7 +1101,7 @@
       weatherBtn.textContent = "Weather added · " + covered + " of " + dated.length + " trips";
       weatherBtn.disabled = true;
       const extras = [];
-      if (tooRecent) extras.push(tooRecent + " too recent");
+      if (tooRecent) extras.push(tooRecent + " from the last few days, archive lags ~5 days");
       if (noGps) extras.push(noGps + " no GPS");
       weatherStatus.textContent = extras.length ? "(" + extras.join(", ") + ")" : "";
     }
@@ -1111,6 +1120,12 @@
       updateWeatherUi(0);
       renderAll();
     });
+  }
+  // "Refresh" - re-runs the fetch so any trips that have aged past the
+  // ERA5 cutoff since the previous attempt finally pick up their weather.
+  const weatherRefreshBtn = document.getElementById("weather-refresh-btn");
+  if (weatherRefreshBtn) {
+    weatherRefreshBtn.addEventListener("click", fetchWeather);
   }
 
   // ---------- Chart drawing ----------
