@@ -147,6 +147,26 @@ body::before {
 }
 #weather-btn:hover:not([disabled]) { background: rgba(255, 160, 0, 0.2); }
 #weather-btn[disabled] { opacity: 0.4; cursor: default; }
+
+/* Square "×" button that disables the use of weather without wiping the
+   cache (re-adding is instant). Hidden until weather is loaded. */
+#weather-remove-btn {
+    display: none;
+    background: transparent;
+    color: rgba(255, 160, 0, 0.7);
+    border: 1px solid rgba(255, 160, 0, 0.35);
+    border-radius: 5px;
+    width: 26px;
+    height: 26px;
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+    margin-left: 4px;
+    padding: 0;
+    transition: background 0.15s, color 0.15s;
+}
+#weather-remove-btn:hover { background: rgba(255, 82, 82, 0.18); color: #fff; border-color: rgba(255, 82, 82, 0.7); }
+body.weather-loaded #weather-remove-btn { display: inline-flex; align-items: center; justify-content: center; }
 #weather-status { font-size: 0.72rem; color: #888; max-width: 200px; }
 #weather-status.ok { color: #69f0ae; }
 #weather-status.error { color: #ff5252; }
@@ -326,7 +346,8 @@ body[data-layout="tabs"] [data-tab]:not(.tab-btn):not(.tab-active) { display: no
 .insight b { color: #fff; }
 
 .chart-section { margin-bottom: 34px; }
-.chart-section h2 {
+.chart-section h2,
+#insights h2 {
     font-size: 0.92rem;
     font-weight: 600;
     color: #ddd;
@@ -335,7 +356,7 @@ body[data-layout="tabs"] [data-tab]:not(.tab-btn):not(.tab-active) { display: no
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: 6px;
 }
 .chart-section h2 .sec-meta {
     font-weight: 400;
@@ -461,28 +482,26 @@ body.weather-loaded .weather-chip { display: inline-block; }
 }
 body.weather-loaded .tab-btn[data-uses-weather]::after { display: inline-block; }
 
-/* Section heading: "+ [WEATHER]" pair sitting next to the FINDINGS /
-   EVIDENCE chip. Always present so the structure is consistent; reads
-   "very disabled" (low-contrast gray) when weather is not loaded, and
-   lights up yellow once cross-referenced. */
-.weather-pair {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    margin-left: 2px;
-    color: rgba(255, 255, 255, 0.18);
-    transition: color 0.18s;
-}
-.weather-pair .plus { font-weight: 700; font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Consolas, monospace; }
-.forensic-tag.weather-tag {
-    color: rgba(255, 255, 255, 0.28);
-    border-color: rgba(255, 255, 255, 0.10);
-    background: rgba(255, 255, 255, 0.02);
+/* Section heading: "+" sign + "WEATHER" chip sit as siblings next to the
+   FINDINGS / EVIDENCE chip. h2's own flex layout (gap: 8px) handles spacing
+   so every chip / "+" / heading word stays equally separated and vertically
+   centered. */
+.weather-bit {
+    color: rgba(255, 255, 255, 0.22);
     transition: color 0.18s, border-color 0.18s, background 0.18s;
 }
-body.weather-loaded .weather-pair { color: #ffd740; }
+.weather-bit.plus {
+    font-weight: 700;
+    font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Consolas, monospace;
+    font-size: 0.85rem;
+    line-height: 1;
+}
+.forensic-tag.weather-tag {
+    border-color: rgba(255, 255, 255, 0.10);
+    background: rgba(255, 255, 255, 0.02);
+}
+body.weather-loaded .weather-bit { color: #ffd740; }
 body.weather-loaded .forensic-tag.weather-tag {
-    color: #ffd740;
     border-color: rgba(255, 215, 64, 0.45);
     background: rgba(255, 215, 64, 0.10);
 }

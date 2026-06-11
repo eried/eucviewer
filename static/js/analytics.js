@@ -1100,6 +1100,20 @@
   }
   weatherBtn.addEventListener("click", fetchWeather);
 
+  // "Remove weather" - keeps the IDB cache (so re-adding is instant) but
+  // clears the in-memory ambient temps and turns off the body class so every
+  // weather-dependent analysis falls back to its no-weather state.
+  const weatherRemoveBtn = document.getElementById("weather-remove-btn");
+  if (weatherRemoveBtn) {
+    weatherRemoveBtn.addEventListener("click", () => {
+      for (const m of dated) m.ambientC = null;
+      weatherLoaded = false;
+      document.body.classList.remove("weather-loaded");
+      updateWeatherUi(0);
+      renderAll();
+    });
+  }
+
   // ---------- Chart drawing ----------
   const COLORS = {
     range: "#69f0ae",

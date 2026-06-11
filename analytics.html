@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Wheel Forensics &middot; EUC Planet</title>
     <link rel="icon" href="static/favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="static/css/analytics.css?v=15" />
+    <link rel="stylesheet" href="static/css/analytics.css?v=16" />
     <script type="text/javascript">
         (function(c,l,a,r,i,t,y){
             c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
@@ -70,6 +70,7 @@
                 </div>
                 <div class="ctrl-group" data-group="actions">
                     <button type="button" id="weather-btn" title="Pulls historical daily temperatures from open-meteo.com for the coarsely-rounded locations of your trips, then unlocks ambient-aware analyses.">Cross-reference weather</button>
+                    <button type="button" id="weather-remove-btn" class="weather-remove" title="Stop using weather data in the analyses (keeps the cache so re-adding is instant).">&times;</button>
                     <span id="weather-status"></span>
                     <button type="button" id="layout-toggle" class="layout-toggle-btn" title="Switch layout">
                         <svg class="layout-icon-tabs" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
@@ -117,7 +118,7 @@
             </section>
 
             <section id="insights" class="hidden" data-tab="overview">
-                <h2><span class="forensic-tag">FINDINGS</span><span class="weather-pair"><span class="plus">+</span><span class="forensic-tag weather-tag">WEATHER</span></span> Key takeaways <span class="sec-meta">computed from your history</span></h2>
+                <h2><span class="forensic-tag">FINDINGS</span><span class="weather-bit plus">+</span><span class="forensic-tag weather-tag weather-bit">WEATHER</span> Key takeaways <span class="sec-meta">computed from your history</span></h2>
                 <div id="insights-list"></div>
             </section>
 
@@ -143,7 +144,7 @@
             </section>
 
             <section class="chart-section" data-section="range" data-tab="range">
-                <h2><span class="forensic-tag">EVIDENCE</span><span class="weather-pair"><span class="plus">+</span><span class="forensic-tag weather-tag">WEATHER</span></span> Estimated full range <span class="sec-meta" id="range-meta"></span></h2>
+                <h2><span class="forensic-tag">EVIDENCE</span><span class="weather-bit plus">+</span><span class="forensic-tag weather-tag weather-bit">WEATHER</span> Estimated full range <span class="sec-meta" id="range-meta"></span></h2>
                 <div class="chart-host">
                     <div class="chart-title">Range over time <span class="chart-title-axes">(median per group)</span></div>
                     <canvas id="chart-range"></canvas>
@@ -276,7 +277,7 @@
             </section>
 
             <section class="chart-section" data-section="thermal" data-tab="thermal">
-                <h2><span class="forensic-tag">EVIDENCE</span><span class="weather-pair"><span class="plus">+</span><span class="forensic-tag weather-tag">WEATHER</span></span> Thermal <span class="sec-meta" id="thermal-meta"></span></h2>
+                <h2><span class="forensic-tag">EVIDENCE</span><span class="weather-bit plus">+</span><span class="forensic-tag weather-tag weather-bit">WEATHER</span> Thermal <span class="sec-meta" id="thermal-meta"></span></h2>
                 <div class="chart-host tall">
                     <div class="chart-title">How much hotter the wheel got <span class="weather-chip">WEATHER</span> <span class="chart-title-axes">(per ride, vs power output)</span></div>
                     <canvas id="chart-thermal"></canvas>
@@ -321,6 +322,6 @@
         <div id="error-banner" class="hidden"></div>
     </div>
 
-    <script src="static/js/analytics.js?v=14"></script>
+    <script src="static/js/analytics.js?v=15"></script>
 </body>
 </html>
