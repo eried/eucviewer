@@ -288,8 +288,26 @@
     return Math.round(running * 100) / 100;
   }
 
+  // Some EUC loggers keep writing samples after the wheel powers off — the
+  // voltage column snaps to a constant low value (e.g. 13.1 V) and the
+  // battery % freezes at whatever it last saw, while real samples sit safely
+  // above 60 V for any pack still in use. Find the last "alive" index so
+  // every downstream computation (battery delta, IR fit, temp max, etc.)
+  // skips that junk tail. Threshold of 50 V is below any modern EUC pack
+  // (lowest is 67 V at 0% for InMotion V8) yet well above the typical
+  // corrupted-tail readings (10–20 V).
+  function lastAliveIndex(ts) {
+    for (let i = ts.length - 1; i >= 0; i--) {
+      const v = ts[i][VOLT];
+      if (typeof v === "number" && v >= 50) return i;
+    }
+    return -1;
+  }
+
   function computeTripMetrics(t) {
-    const ts = Array.isArray(t.timeseries) ? t.timeseries : [];
+    const rawTs = Array.isArray(t.timeseries) ? t.timeseries : [];
+    const lastAlive = lastAliveIndex(rawTs);
+    const ts = lastAlive >= 0 ? rawTs.slice(0, lastAlive + 1) : rawTs;
     const date = parseTripDate(t);
     const m = {
       date,
@@ -316,8 +334,8 @@
     }
     if (ts.length < 2) return m;
 
-    // Battery start/end: median of the first/last 10 non-zero samples —
-    // robust against the load-sag dips a single reading can show.
+    // Battery start/end: median of the first/last 10 alive-tail samples.
+    // Robust against load-sag dips and against logger-tail corruption.
     const battSamples = [];
     for (const row of ts) {
       const v = row[BATT];
@@ -467,13 +485,35 @@
 
   // ---------- Binning ----------
   const MONTH_FMT = new Intl.DateTimeFormat(undefined, { month: "short", year: "2-digit" });
+  const WEEK_FMT = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "2-digit" });
+  // Monday-anchored week start; ISO style so a Sunday ride doesn't span two
+  // years of labels when it sits on the Dec/Jan boundary.
+  function weekStart(d) {
+    const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const day = (x.getDay() + 6) % 7; // Mon=0, Sun=6
+    x.setDate(x.getDate() - day);
+    return x;
+  }
+  function weekKey(d) {
+    const ws = weekStart(d);
+    return ws.getFullYear() + "-W" + String(ws.getMonth()).padStart(2, "0") + "-" + String(ws.getDate()).padStart(2, "0");
+  }
+  function weekLabel(d) {
+    return WEEK_FMT.format(weekStart(d));
+  }
   function binKeyAndLabel(mode, d) {
     const y = d.getFullYear(), mo = d.getMonth();
+    if (mode === "week") return { key: weekKey(d), label: weekLabel(d) };
     if (mode === "month") return { key: y + "-" + String(mo).padStart(2, "0"), label: MONTH_FMT.format(d) };
     if (mode === "quarter") { const q = Math.floor(mo / 3) + 1; return { key: y + "-Q" + q, label: "Q" + q + " '" + String(y).slice(2) }; }
     return { key: String(y), label: String(y) };
   }
   function nextCalendarKey(mode, key) {
+    if (mode === "week") {
+      const [y, mPart, dPart] = key.split("-W").join("-").split("-");
+      const d = new Date(Number(y), Number(mPart), Number(dPart) + 7);
+      return weekKey(d);
+    }
     if (mode === "month") {
       let [y, m] = key.split("-").map(Number);
       m++; if (m > 11) { m = 0; y++; }
@@ -487,6 +527,10 @@
     return String(Number(key) + 1);
   }
   function calendarKeyToLabel(mode, key) {
+    if (mode === "week") {
+      const [y, mPart, dPart] = key.split("-W").join("-").split("-");
+      return WEEK_FMT.format(new Date(Number(y), Number(mPart), Number(dPart)));
+    }
     if (mode === "month") {
       const [y, m] = key.split("-").map(Number);
       return MONTH_FMT.format(new Date(y, m, 1));
@@ -500,7 +544,7 @@
 
   function makeBins(metrics, mode) {
     const bins = [];
-    if (mode === "month" || mode === "quarter" || mode === "year") {
+    if (mode === "week" || mode === "month" || mode === "quarter" || mode === "year") {
       const map = new Map();
       for (const m of metrics) {
         const { key, label } = binKeyAndLabel(mode, m.date);
