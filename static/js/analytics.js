@@ -1027,15 +1027,76 @@
     if (withAmbient) {
       weatherLoaded = true;
       document.body.classList.add("weather-loaded");
-      weatherStatus.textContent = `Ambient temp for ${withAmbient} of ${dated.length} trips` + (failed ? ` (${failed} location${failed > 1 ? "s" : ""} failed)` : "");
-      weatherStatus.className = failed ? "error" : "ok";
-      weatherBtn.textContent = "Weather added";
-    } else {
-      weatherStatus.textContent = "Weather fetch failed. Check your connection.";
-      weatherStatus.className = "error";
-      weatherBtn.disabled = false;
     }
+    updateWeatherUi(failed);
     renderAll();
+  }
+
+  // Centralised weather button + status state. Distinguishes:
+  //   - covered     = trips with ambient temp already loaded
+  //   - obtainable  = trips with GPS + date AND old enough for the archive
+  //   - unobtainable= trips after the ~6-day ERA5 cutoff or with no GPS
+  // The button only stays enabled when there are still OBTAINABLE missing
+  // trips — so a recent-rides-only mismatch doesn't make the button spin
+  // forever after every reload.
+  // ERA5 archive lag is ~5 days; we keep a 6-day safety margin to match
+  // the same cutoff fetchWeather() applies when picking the end_date.
+  function archiveCutoffDate() {
+    const d = new Date(Date.now() - 6 * 86400000);
+    return localDateStr(d);
+  }
+  function updateWeatherUi(failedClusters) {
+    const cutoff = archiveCutoffDate();
+    let obtainable = 0, covered = 0, tooRecent = 0, noGps = 0;
+    for (const m of dated) {
+      if (m.ambientC != null) covered++;
+      if (!m.centroid || !m.dateStr) { if (!m.centroid) noGps++; continue; }
+      if (m.dateStr > cutoff) { tooRecent++; continue; }
+      obtainable++;
+    }
+    const missingObtainable = Math.max(0, obtainable - (covered - tooRecent /* covered count may include some out-of-range, keep conservative */));
+    // Cleaner missing count: count obtainable trips still lacking ambient.
+    let missing = 0;
+    for (const m of dated) {
+      if (m.ambientC != null) continue;
+      if (!m.centroid || !m.dateStr) continue;
+      if (m.dateStr > cutoff) continue;
+      missing++;
+    }
+    if (covered === 0 && missing === 0) {
+      // Nothing to do (no GPS at all? all too recent?)
+      weatherBtn.textContent = "Cross-reference weather";
+      weatherBtn.disabled = noGps === dated.length;
+      weatherStatus.textContent = failedClusters
+        ? "Weather fetch failed. Check your connection."
+        : (tooRecent ? `${tooRecent} recent trip${tooRecent === 1 ? "" : "s"} not in archive yet` : "");
+      weatherStatus.className = failedClusters ? "error" : "";
+      return;
+    }
+    if (covered === 0) {
+      weatherBtn.textContent = "Cross-reference weather";
+      weatherBtn.disabled = false;
+      weatherStatus.textContent = failedClusters ? "Weather fetch failed. Check your connection." : "";
+      weatherStatus.className = failedClusters ? "error" : "";
+      return;
+    }
+    weatherStatus.className = failedClusters ? "error" : "ok";
+    if (missing > 0) {
+      weatherBtn.textContent = `Fetch ${missing} missing`;
+      weatherBtn.disabled = false;
+      let extras = [];
+      if (tooRecent) extras.push(`${tooRecent} too recent for archive`);
+      if (noGps) extras.push(`${noGps} no GPS`);
+      if (failedClusters) extras.push(`${failedClusters} location${failedClusters > 1 ? "s" : ""} failed`);
+      weatherStatus.textContent = `Weather: ${covered} of ${dated.length} trips` + (extras.length ? ` (${extras.join(", ")})` : "");
+    } else {
+      weatherBtn.textContent = "Weather added";
+      weatherBtn.disabled = true;
+      let extras = [];
+      if (tooRecent) extras.push(`${tooRecent} too recent for archive`);
+      if (noGps) extras.push(`${noGps} no GPS`);
+      weatherStatus.textContent = `Weather added · ${covered} of ${dated.length} trips` + (extras.length ? ` (${extras.join(", ")})` : "");
+    }
   }
   weatherBtn.addEventListener("click", fetchWeather);
 
@@ -2624,11 +2685,8 @@
     if (hits) {
       weatherLoaded = true;
       document.body.classList.add("weather-loaded");
-      weatherStatus.textContent = `Ambient temp for ${hits} trips (cached)`;
-      weatherStatus.className = "ok";
-      const allCovered = dated.every((m) => m.ambientC != null || !m.centroid);
-      if (allCovered) weatherBtn.textContent = "Weather added";
     }
+    updateWeatherUi(0);
     renderAll();
   })();
 })();

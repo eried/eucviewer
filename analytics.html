@@ -278,18 +278,25 @@
             <section class="chart-section" data-section="thermal" data-tab="thermal">
                 <h2><span class="forensic-tag">EVIDENCE</span><span class="weather-pair"><span class="plus">+</span><span class="forensic-tag weather-tag">WEATHER</span></span> Thermal <span class="sec-meta" id="thermal-meta"></span></h2>
                 <div class="chart-host tall">
-                    <div class="chart-title">Temperature rise vs power draw <span class="weather-chip">WEATHER</span> <span class="chart-title-axes">(one dot per trip, old → new)</span></div>
+                    <div class="chart-title">How much hotter the wheel got <span class="weather-chip">WEATHER</span> <span class="chart-title-axes">(per ride, vs power output)</span></div>
                     <canvas id="chart-thermal"></canvas>
                 </div>
                 <div class="chart-takeaway" id="thermal-takeaway"></div>
                 <div class="chart-host">
-                    <div class="chart-title">Temperature rise over time <span class="chart-title-axes">(median per group)</span></div>
+                    <div class="chart-title">Heat-up per ride, tracked over time <span class="chart-title-axes">(median °C above ambient, per group)</span></div>
                     <canvas id="chart-thermal-trend"></canvas>
                 </div>
                 <div class="chart-takeaway" id="thermal-trend-takeaway"></div>
-                <p class="sec-hint" id="thermal-hint">Top: peak board temperature rise above ambient versus average power,
-                   one dot per trip (oldest blue, newest red). Bottom: median temperature rise per group.
-                   A drifting-up trend at similar power means the wheel is heating more than it used to.</p>
+                <p class="sec-hint" id="thermal-hint">For every ride we compute how much hotter the board got compared to
+                   the air around you — the <i>temperature rise</i>. Hot motors mean more electrical losses, more cooling
+                   pressure on the pack, and a higher risk of thermal cutoff on long climbs.
+                   <br><br>
+                   <b>Top chart</b>: each dot is one ride. X is the average power the wheel pulled, Y is the peak temperature rise.
+                   Dots drift from blue (oldest) to red (newest). If the recent (red) dots sit above the older (blue) ones at the
+                   same power level, the wheel is running hotter for the same work — a sign of degraded cooling or pack aging.
+                   <br><br>
+                   <b>Bottom chart</b>: the median rise per group across time. A flat line means consistent thermal behaviour;
+                   a drifting-up line means it's getting hotter to do the same ride.</p>
             </section>
 
             <section class="chart-section" data-section="health" data-tab="health">
@@ -314,6 +321,6 @@
         <div id="error-banner" class="hidden"></div>
     </div>
 
-    <script src="static/js/analytics.js?v=12"></script>
+    <script src="static/js/analytics.js?v=14"></script>
 </body>
 </html>
