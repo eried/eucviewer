@@ -46,6 +46,15 @@ html, body {
     font-size: 1rem;
     font-weight: 600;
     white-space: nowrap;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+#page-name::before {
+    content: "//";
+    color: rgba(179, 136, 255, 0.55);
+    margin-right: 8px;
+    letter-spacing: 0;
+    font-weight: 400;
 }
 #page-subtitle {
     color: #888;
@@ -209,6 +218,8 @@ body[data-layout="tabs"] [data-tab]:not(.tab-btn):not(.tab-active) { display: no
     font-weight: 600;
     letter-spacing: 0.2px;
     line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+    font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Consolas, monospace;
 }
 .stat-card .sv small {
     font-size: 0.6em;
@@ -297,6 +308,28 @@ body[data-layout="tabs"] [data-tab]:not(.tab-btn):not(.tab-active) { display: no
 .chart-host + .chart-host { margin-top: 10px; }
 .chart-host canvas { width: 100%; height: 100%; display: block; }
 
+/* Vertical crosshair synced across every trend chart on hover. */
+.chart-crosshair {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: rgba(255, 255, 255, 0.45);
+    box-shadow: 0 0 6px rgba(255, 255, 255, 0.25);
+    pointer-events: none;
+    display: none;
+    z-index: 3;
+}
+.chart-crosshair::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: -3px;
+    right: -3px;
+    bottom: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.05), transparent);
+}
+
 /* Floating title in the top-right of each chart so secondary charts are
    self-explanatory without overlapping the canvas-drawn legend on the left. */
 .chart-title {
@@ -331,7 +364,11 @@ body[data-layout="tabs"] [data-tab]:not(.tab-btn):not(.tab-active) { display: no
     line-height: 1.45;
 }
 .chart-takeaway:empty { display: none; }
-.chart-takeaway b { color: #fff; }
+.chart-takeaway b {
+    color: #fff;
+    font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+}
 .chart-takeaway .ta-sep { color: #555; margin: 0 8px; }
 .chart-takeaway.warn { background: rgba(255, 160, 0, 0.04); border-left-color: rgba(255, 160, 0, 0.55); }
 
@@ -391,4 +428,30 @@ body[data-layout="tabs"] [data-tab]:not(.tab-btn):not(.tab-active) { display: no
     .controls { margin-left: 0; }
     .chart-host { height: 180px; }
     .chart-host.tall { height: 230px; }
+
+    /* Mobile tabs: snap-scrolling horizontal strip, not center-justified
+       (so the active tab is always reachable without horizontal scroll). */
+    #tab-bar {
+        justify-content: flex-start;
+        scroll-snap-type: x mandatory;
+        padding: 4px 8px;
+        -webkit-overflow-scrolling: touch;
+    }
+    .tab-btn {
+        scroll-snap-align: start;
+        font-size: 0.78rem;
+        padding: 6px 10px;
+    }
+    /* Stack the topbar contents so the controls don't elbow the title. */
+    #topbar { padding: 8px 10px; }
+    .page-title { width: 100%; }
+    .controls { width: 100%; gap: 8px; }
+    .controls label { flex-direction: row; align-items: center; gap: 6px; }
+    .controls label.check-label { font-size: 0.76rem; }
+    #weather-status { font-size: 0.68rem; }
+    .chart-title { font-size: 0.7rem; max-width: 75%; }
+    .chart-title-axes { display: none; }
+    .stat-card { padding: 10px 12px; min-height: 56px; }
+    .stat-card .sv { font-size: 1rem; }
+    .insight { font-size: 0.78rem; }
 }

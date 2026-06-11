@@ -1029,10 +1029,41 @@
     canvas._an = { type: "scatter", drawn, opts };
   }
 
+  // Ensure every chart-host gets a single crosshair overlay element.
+  function ensureCrosshair(host) {
+    let ch = host.querySelector(".chart-crosshair");
+    if (!ch) {
+      ch = document.createElement("div");
+      ch.className = "chart-crosshair";
+      host.appendChild(ch);
+    }
+    return ch;
+  }
+  function hideAllCrosshairs() {
+    document.querySelectorAll(".chart-crosshair").forEach((el) => (el.style.display = "none"));
+  }
+  // Position the crosshair on every trend chart at the given bin index, so
+  // the user can read across all time-series at once.
+  function syncCrosshair(binIdx) {
+    document.querySelectorAll("canvas").forEach((cv) => {
+      const an = cv._an;
+      if (!an || an.type !== "trend") return;
+      const host = cv.parentElement;
+      if (!host) return;
+      const ch = ensureCrosshair(host);
+      if (binIdx == null || binIdx < 0 || binIdx >= an.bins.length) { ch.style.display = "none"; return; }
+      // an.xAt is in CSS pixels relative to the canvas, and canvas fills
+      // the host, so the chart-host-relative x is the same value.
+      const x = an.xAt(binIdx);
+      ch.style.display = "block";
+      ch.style.left = Math.round(x) + "px";
+    });
+  }
+
   // One delegated hover handler for all charts.
   document.addEventListener("mousemove", (e) => {
     const canvas = e.target.closest && e.target.closest("canvas");
-    if (!canvas || !canvas._an) { hideTooltip(); return; }
+    if (!canvas || !canvas._an) { hideTooltip(); hideAllCrosshairs(); return; }
     const an = canvas._an;
     const rect = canvas.getBoundingClientRect();
     const mx = e.clientX - rect.left, my = e.clientY - rect.top;
@@ -1043,7 +1074,8 @@
         const d = Math.abs(an.xAt(i) - mx);
         if (d < bestD) { bestD = d; best = i; }
       }
-      if (best < 0 || bestD > 40) { hideTooltip(); return; }
+      if (best < 0 || bestD > 40) { hideTooltip(); hideAllCrosshairs(); return; }
+      syncCrosshair(best);
       const bin = an.bins[best];
       let html = `<b>${bin.label}</b> · ${bin.trips.length} trip${bin.trips.length === 1 ? "" : "s"}`;
       for (const s of an.series) {
@@ -1054,6 +1086,7 @@
       }
       showTooltip(html, e.clientX, e.clientY);
     } else {
+      hideAllCrosshairs();
       let best = null, bestD = Infinity;
       for (const d of an.drawn) {
         const dx = d.x - mx, dy = d.y - my;
@@ -1064,7 +1097,7 @@
       showTooltip(best.p.meta, e.clientX, e.clientY);
     }
   });
-  document.addEventListener("mouseleave", hideTooltip, true);
+  document.addEventListener("mouseleave", () => { hideTooltip(); hideAllCrosshairs(); }, true);
 
   // ---------- Sections ----------
   function sectionEl(name) { return document.querySelector(`.chart-section[data-section="${name}"]`); }
