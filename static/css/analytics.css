@@ -446,6 +446,36 @@ body[data-layout="tabs"] [data-tab]:not(.tab-btn):not(.tab-active) { display: no
 }
 body.weather-loaded .weather-chip { display: inline-block; }
 
+/* Tab indicator: tiny yellow dot on the top-right of tabs whose content
+   draws on weather data. Lights up only when weather is loaded. */
+.tab-btn[data-uses-weather] { padding-right: 18px; }
+.tab-btn[data-uses-weather]::after {
+    content: "";
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    width: 6px;
+    height: 6px;
+    background: #ffd740;
+    border-radius: 50%;
+    box-shadow: 0 0 6px rgba(255, 215, 64, 0.6);
+    opacity: 0;
+    transition: opacity 0.18s;
+}
+body.weather-loaded .tab-btn[data-uses-weather]::after { opacity: 1; }
+
+/* Yellow secondary chip appended to FINDINGS / EVIDENCE on the
+   weather-enriched sections so the heading reads
+   "EVIDENCE + WEATHER" when the data is loaded. */
+.forensic-tag.weather-tag {
+    display: none;
+    color: #ffd740;
+    border-color: rgba(255, 215, 64, 0.45);
+    background: rgba(255, 215, 64, 0.10);
+    margin-left: -2px;
+}
+body.weather-loaded .forensic-tag.weather-tag { display: inline-block; }
+
 /* Info-icon tooltips next to control labels. */
 .info-icon {
     display: inline-flex;
