@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Wheel Forensics &middot; EUC Planet</title>
     <link rel="icon" href="static/favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="static/css/analytics.css?v=16" />
+    <link rel="stylesheet" href="static/css/analytics.css?v=17" />
     <script type="text/javascript">
         (function(c,l,a,r,i,t,y){
             c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
@@ -25,7 +25,7 @@
             <div class="controls">
                 <div class="ctrl-group" data-group="binning">
                     <label>
-                        <span>Group <span class="info-icon" title="How trips are grouped on every time-axis. Week/month/quarter/year are calendar bins; cumulative-km / -h walk through ride history at fixed mileage / runtime intervals.">i</span></span>
+                        <span>Group <span class="info-icon" title="How trips are grouped on the time axis. Week, month, quarter or year are calendar buckets. Every 250 km, 500 km, 1000 km, 10 h or 50 h step through your history by mileage or runtime instead.">i</span></span>
                         <select id="group-select">
                             <option value="week">Week</option>
                             <option value="month" selected>Month</option>
@@ -39,7 +39,7 @@
                         </select>
                     </label>
                     <label>
-                        <span>Min trips/bin <span class="info-icon" title="A group with fewer than this many trips is left blank instead of plotted. Stops a single unusual ride from creating a fake spike in a quiet month.">i</span></span>
+                        <span>Min trips/bin <span class="info-icon" title="A group with fewer than this many trips is skipped. Stops one unusual ride from looking like a real trend in a quiet month.">i</span></span>
                         <select id="minbin-select">
                             <option value="1">1</option>
                             <option value="2" selected>2</option>
@@ -50,7 +50,7 @@
                 </div>
                 <div class="ctrl-group" data-group="filters">
                     <label>
-                        <span>Min batt&nbsp;use <span class="info-icon" title="Range is only estimated for trips that used at least this much battery. Tiny battery deltas extrapolate to wild numbers, so we exclude them - lower for short-trip libraries, raise for trips you actually drained.">i</span></span>
+                        <span>Min batt&nbsp;use <span class="info-icon" title="Estimated range is only computed for trips that used at least this much battery. Tiny battery drops blow up into wild range numbers, so we skip them. Lower if your trips are short; raise if you actually drain the pack.">i</span></span>
                         <select id="batt-min-select">
                             <option value="5">5%</option>
                             <option value="10" selected>10%</option>
@@ -61,16 +61,18 @@
                 <div class="ctrl-group" data-group="overlays">
                     <label class="check-label">
                         <input type="checkbox" id="rolling-check" checked />
-                        <span>Smooth <span class="info-icon" title="Adds a dashed white overlay that averages each point with its two neighbors. Smoothes single-bin noise so the trend reads more clearly.">i</span></span>
+                        <span>Smooth <span class="info-icon" title="Adds a dashed white line over each chart that averages every point with its two neighbours. Hides single-bin noise so the trend is easier to read.">i</span></span>
                     </label>
                     <label class="check-label">
                         <input type="checkbox" id="normalize-check" disabled />
-                        <span>Norm 20&nbsp;&deg;C <span class="info-icon" title="Subtracts the temperature effect from estimated range so cold-month dips don't masquerade as battery aging. Needs weather cross-referenced and at least 10 trips with battery data.">i</span></span>
+                        <span>Norm 20&nbsp;&deg;C <span class="info-icon" title="Subtracts the temperature effect from range so a cold month doesn't look like battery aging. Needs weather data loaded and at least 10 trips with both battery and ambient temp.">i</span></span>
                     </label>
                 </div>
                 <div class="ctrl-group" data-group="actions">
-                    <button type="button" id="weather-btn" title="Pulls historical daily temperatures from open-meteo.com for the coarsely-rounded locations of your trips, then unlocks ambient-aware analyses.">Cross-reference weather</button>
-                    <button type="button" id="weather-remove-btn" class="weather-remove" title="Stop using weather data in the analyses (keeps the cache so re-adding is instant).">&times;</button>
+                    <span class="weather-capsule">
+                        <button type="button" id="weather-btn" title="Downloads historical daily temperatures from open-meteo.com for each trip's rounded location. Unlocks ambient-aware analyses (range vs temp, thermal vs ambient).">Add weather data</button>
+                        <button type="button" id="weather-remove-btn" class="weather-remove" title="Stop using weather data. The cache stays so adding it again is instant.">&times;</button>
+                    </span>
                     <span id="weather-status"></span>
                     <button type="button" id="layout-toggle" class="layout-toggle-btn" title="Switch layout">
                         <svg class="layout-icon-tabs" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
@@ -129,8 +131,8 @@
                     <canvas id="chart-activity"></canvas>
                 </div>
                 <div class="chart-takeaway" id="activity-takeaway"></div>
-                <p class="sec-hint">Bars are distance per group, the line is cumulative lifetime distance.
-                   Empty bars mean a period where you didn't ride.</p>
+                <p class="sec-hint">Each bar is how much you rode in that group. The line is your total distance so far.
+                   Empty bars mean you didn't ride in that period.</p>
             </section>
 
             <section class="chart-section" data-section="dist-hist" data-tab="overview">
@@ -140,7 +142,8 @@
                     <canvas id="chart-dist-hist"></canvas>
                 </div>
                 <div class="chart-takeaway" id="dist-hist-takeaway"></div>
-                <p class="sec-hint">Distribution of trip distances. Tells you whether you mostly do short hops, long cruises, or both.</p>
+                <p class="sec-hint">Shows how many of your rides land in each distance band. Tells you whether
+                   you mostly do short hops, long cruises, or both.</p>
             </section>
 
             <section class="chart-section" data-section="range" data-tab="range">
@@ -155,11 +158,12 @@
                     <canvas id="chart-range-temp"></canvas>
                 </div>
                 <div class="chart-takeaway" id="range-temp-takeaway"></div>
-                <p class="sec-hint">Each trip's range is extrapolated from distance vs battery used
-                   (<i>distance / battery% &times; 100</i>). Dots are the distance-weighted median per group,
-                   the band spans the 25th to 75th percentile. Trips using less battery than the
-                   threshold above are excluded. Logger-tail corruption (frozen voltage / battery after wheel
-                   shutdown) is auto-trimmed before computing battery delta.</p>
+                <p class="sec-hint">For every trip we compute <i>distance / battery used &times; 100</i> to
+                   estimate how far you'd have gone on a full charge. The dot is the typical value for that
+                   group (weighted by distance), the shaded band shows the middle half of the trips
+                   (25th to 75th percentile). Trips that used less battery than the threshold above are skipped.
+                   If your logger keeps writing junk after the wheel turns off (frozen voltage and battery),
+                   we trim that tail before measuring.</p>
             </section>
 
             <section class="chart-section" data-section="charging" data-tab="charging">
@@ -174,9 +178,10 @@
                     <canvas id="chart-charge-window"></canvas>
                 </div>
                 <div class="chart-takeaway" id="charge-window-takeaway"></div>
-                <p class="sec-hint">A charge is detected whenever consecutive trips show the battery jumping back up
-                   (next trip's start &gt; previous trip's end). Cycling from a high state of charge (e.g. <i>80 → 100</i>)
-                   is gentler on Li-ion packs than deep drains; cycling from low (<i>15 → 100</i>) accelerates aging.</p>
+                <p class="sec-hint">We detect a charge whenever your next trip starts with a higher battery
+                   than the previous one ended at. Topping up from a high state of charge
+                   (say <i>80% to 100%</i>) is easier on lithium-ion packs than charging from
+                   deep discharges (say <i>15% to 100%</i>), which ages them faster.</p>
             </section>
 
             <section class="chart-section" data-section="speed" data-tab="speed">
@@ -191,8 +196,9 @@
                     <canvas id="chart-speed-hist"></canvas>
                 </div>
                 <div class="chart-takeaway" id="speed-hist-takeaway"></div>
-                <p class="sec-hint">GPS-verified speeds: samples where the wheel speed disagrees with ground motion
-                   (i.e. free spins) are excluded so a pickup test or fall can't poison the lifetime max.</p>
+                <p class="sec-hint">We compare every wheel-speed sample against GPS speed. Samples where
+                   the wheel is spinning but the GPS shows it didn't actually move (a pickup test or fall)
+                   are removed, so a lifted wheel can't fake your top speed.</p>
             </section>
 
             <section class="chart-section" data-section="accel" data-tab="speed">
@@ -202,11 +208,11 @@
                     <canvas id="chart-accel40"></canvas>
                 </div>
                 <div class="chart-takeaway" id="accel40-takeaway"></div>
-                <p class="sec-hint">For every ride we scan for runs where the speed climbed from a near-stop up to
-                   <i>40&nbsp;km/h</i> (or 60 in the second chart). Anomalous samples (free spins or
-                   physics-impossible accelerations) are skipped so a wheel lifted off the ground can't masquerade
-                   as a launch run. Shorter times mean the wheel had more headroom — useful for spotting
-                   pack sag with age.</p>
+                <p class="sec-hint">For every ride we look for runs where you accelerated from a near-stop
+                   up to <i>40&nbsp;km/h</i> (or 25 if you rarely hit 40, 60 when you do). Free-spin samples and
+                   physically impossible accelerations are skipped, so a lifted wheel can't fake a fast launch.
+                   Shorter times mean the wheel has more punch on tap, which is a useful signal for spotting
+                   pack sag as it ages.</p>
             </section>
 
             <section class="chart-section" data-section="anomalies" data-tab="speed">
@@ -235,10 +241,11 @@
                 </details>
                 <div class="chart-takeaway" id="anomalies-takeaway"></div>
                 <div id="anomalies-list" class="anomalies-list"></div>
-                <p class="sec-hint">A free spin is a sample where the wheel reported a speed but GPS shows the
-                   wheel didn't actually move. Most are pickup tests, but a few are <b>falls</b>: when the wheel
-                   was already moving fast on the ground and then suddenly its speed disagreed with GPS while
-                   ground speed crashed. Tune the thresholds above to match your wheel.</p>
+                <p class="sec-hint">A free spin is a moment where the wheel reports a speed but GPS shows it
+                   didn't actually move. Most are pickup tests. A <b>fall</b> is a free spin that happens after
+                   you were already riding at speed: the wheel was rolling on the ground, then suddenly its
+                   reported speed disagreed with GPS and the ground speed crashed. Tune the thresholds above
+                   if your wheel triggers too many false positives or misses real events.</p>
             </section>
 
             <section class="chart-section" data-section="efficiency" data-tab="efficiency">
@@ -322,6 +329,6 @@
         <div id="error-banner" class="hidden"></div>
     </div>
 
-    <script src="static/js/analytics.js?v=15"></script>
+    <script src="static/js/analytics.js?v=16"></script>
 </body>
 </html>

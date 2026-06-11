@@ -135,6 +135,14 @@ body::before {
 }
 .controls select:focus { border-color: rgba(179, 136, 255, 0.5); }
 
+.weather-capsule {
+    display: inline-flex;
+    align-items: stretch;
+}
+
+/* Weather button is a single pill when no data is loaded ("Add weather
+   data"). Once data is loaded the right side ("Unlink") slides in and the
+   pair reads as a capsule with a vertical divider between them. */
 #weather-btn {
     background: rgba(255, 160, 0, 0.1);
     color: #ffa000;
@@ -143,30 +151,46 @@ body::before {
     padding: 6px 12px;
     font-size: 0.78rem;
     cursor: pointer;
-    transition: background 0.15s;
+    transition: background 0.15s, border-color 0.15s, color 0.15s, padding 0.15s;
 }
 #weather-btn:hover:not([disabled]) { background: rgba(255, 160, 0, 0.2); }
-#weather-btn[disabled] { opacity: 0.4; cursor: default; }
+#weather-btn[disabled] { opacity: 0.55; cursor: default; }
 
-/* Square "×" button that disables the use of weather without wiping the
-   cache (re-adding is instant). Hidden until weather is loaded. */
+/* Unlink ("×") sub-button: hidden when no data is loaded, joins the main
+   button as a single capsule when it is. */
 #weather-remove-btn {
     display: none;
     background: transparent;
-    color: rgba(255, 160, 0, 0.7);
+    color: rgba(255, 160, 0, 0.85);
     border: 1px solid rgba(255, 160, 0, 0.35);
-    border-radius: 5px;
-    width: 26px;
-    height: 26px;
-    font-size: 1rem;
+    width: 28px;
+    height: 28px;
+    font-size: 0.95rem;
     line-height: 1;
     cursor: pointer;
-    margin-left: 4px;
     padding: 0;
-    transition: background 0.15s, color 0.15s;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 #weather-remove-btn:hover { background: rgba(255, 82, 82, 0.18); color: #fff; border-color: rgba(255, 82, 82, 0.7); }
-body.weather-loaded #weather-remove-btn { display: inline-flex; align-items: center; justify-content: center; }
+
+/* Capsule layout: the two buttons sit shoulder-to-shoulder with a single
+   vertical divider line. Round only the outer corners. */
+body.weather-loaded #weather-btn {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+    border-right: none;
+}
+body.weather-loaded #weather-remove-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    border-top-right-radius: 5px;
+    border-bottom-right-radius: 5px;
+    border-left: 1px solid rgba(255, 160, 0, 0.35);
+    margin-left: 0;
+}
 #weather-status { font-size: 0.72rem; color: #888; max-width: 200px; }
 #weather-status.ok { color: #69f0ae; }
 #weather-status.error { color: #ff5252; }
@@ -483,11 +507,12 @@ body.weather-loaded .weather-chip { display: inline-block; }
 body.weather-loaded .tab-btn[data-uses-weather]::after { display: inline-block; }
 
 /* Section heading: "+" sign + "WEATHER" chip sit as siblings next to the
-   FINDINGS / EVIDENCE chip. h2's own flex layout (gap: 8px) handles spacing
-   so every chip / "+" / heading word stays equally separated and vertically
-   centered. */
+   FINDINGS / EVIDENCE chip. h2's own flex layout handles spacing so every
+   chip stays equally separated and vertically centered. The WEATHER chip
+   inherits the .forensic-tag shape so it visually matches the others;
+   it just swaps colors based on body.weather-loaded. */
 .weather-bit {
-    color: rgba(255, 255, 255, 0.22);
+    color: rgba(255, 255, 255, 0.32);
     transition: color 0.18s, border-color 0.18s, background 0.18s;
 }
 .weather-bit.plus {
@@ -496,14 +521,19 @@ body.weather-loaded .tab-btn[data-uses-weather]::after { display: inline-block; 
     font-size: 0.85rem;
     line-height: 1;
 }
+/* Disabled (no weather loaded): chip is dimmed like the "+" so the pair
+   reads as a single greyed-out unit. */
 .forensic-tag.weather-tag {
-    border-color: rgba(255, 255, 255, 0.10);
-    background: rgba(255, 255, 255, 0.02);
+    color: rgba(255, 255, 255, 0.32);
+    border-color: rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.03);
 }
+/* Loaded: matches the chip shape of FINDINGS / EVIDENCE, just yellow. */
 body.weather-loaded .weather-bit { color: #ffd740; }
 body.weather-loaded .forensic-tag.weather-tag {
-    border-color: rgba(255, 215, 64, 0.45);
-    background: rgba(255, 215, 64, 0.10);
+    color: #ffd740;
+    border-color: rgba(255, 215, 64, 0.55);
+    background: rgba(255, 215, 64, 0.12);
 }
 
 /* Info-icon tooltips next to control labels. */

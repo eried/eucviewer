@@ -1064,38 +1064,37 @@
       missing++;
     }
     if (covered === 0 && missing === 0) {
-      // Nothing to do (no GPS at all? all too recent?)
-      weatherBtn.textContent = "Cross-reference weather";
+      weatherBtn.textContent = "Add weather data";
       weatherBtn.disabled = noGps === dated.length;
       weatherStatus.textContent = failedClusters
-        ? "Weather fetch failed. Check your connection."
-        : (tooRecent ? `${tooRecent} recent trip${tooRecent === 1 ? "" : "s"} not in archive yet` : "");
+        ? "Couldn't reach the weather service"
+        : (tooRecent ? tooRecent + " recent trip" + (tooRecent === 1 ? "" : "s") + " not in the archive yet" : "");
       weatherStatus.className = failedClusters ? "error" : "";
       return;
     }
     if (covered === 0) {
-      weatherBtn.textContent = "Cross-reference weather";
+      weatherBtn.textContent = "Add weather data";
       weatherBtn.disabled = false;
-      weatherStatus.textContent = failedClusters ? "Weather fetch failed. Check your connection." : "";
+      weatherStatus.textContent = failedClusters ? "Couldn't reach the weather service" : "";
       weatherStatus.className = failedClusters ? "error" : "";
       return;
     }
     weatherStatus.className = failedClusters ? "error" : "ok";
     if (missing > 0) {
-      weatherBtn.textContent = `Fetch ${missing} missing`;
+      weatherBtn.textContent = "Add weather for " + missing + " more";
       weatherBtn.disabled = false;
-      let extras = [];
-      if (tooRecent) extras.push(`${tooRecent} too recent for archive`);
-      if (noGps) extras.push(`${noGps} no GPS`);
-      if (failedClusters) extras.push(`${failedClusters} location${failedClusters > 1 ? "s" : ""} failed`);
-      weatherStatus.textContent = `Weather: ${covered} of ${dated.length} trips` + (extras.length ? ` (${extras.join(", ")})` : "");
+      const extras = [];
+      if (tooRecent) extras.push(tooRecent + " too recent");
+      if (noGps) extras.push(noGps + " no GPS");
+      if (failedClusters) extras.push(failedClusters + " location" + (failedClusters > 1 ? "s" : "") + " failed");
+      weatherStatus.textContent = covered + " of " + dated.length + " trips ready" + (extras.length ? " (" + extras.join(", ") + ")" : "");
     } else {
-      weatherBtn.textContent = "Weather added";
+      weatherBtn.textContent = "Weather added · " + covered + " of " + dated.length + " trips";
       weatherBtn.disabled = true;
-      let extras = [];
-      if (tooRecent) extras.push(`${tooRecent} too recent for archive`);
-      if (noGps) extras.push(`${noGps} no GPS`);
-      weatherStatus.textContent = `Weather added · ${covered} of ${dated.length} trips` + (extras.length ? ` (${extras.join(", ")})` : "");
+      const extras = [];
+      if (tooRecent) extras.push(tooRecent + " too recent");
+      if (noGps) extras.push(noGps + " no GPS");
+      weatherStatus.textContent = extras.length ? "(" + extras.join(", ") + ")" : "";
     }
   }
   weatherBtn.addEventListener("click", fetchWeather);
