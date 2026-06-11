@@ -3,8 +3,27 @@
 html, body {
     height: 100%;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    background: #0a0a0f;
+    background:
+        radial-gradient(ellipse at top, rgba(179, 136, 255, 0.06), transparent 60%),
+        radial-gradient(ellipse at bottom right, rgba(0, 229, 255, 0.04), transparent 60%),
+        #07070d;
     color: #e0e0e0;
+}
+/* Faint scanline overlay so the page feels like a live diagnostic readout */
+body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background-image: repeating-linear-gradient(
+        0deg,
+        rgba(255, 255, 255, 0.012) 0px,
+        rgba(255, 255, 255, 0.012) 1px,
+        transparent 1px,
+        transparent 3px
+    );
+    z-index: 1000;
+    mix-blend-mode: screen;
 }
 
 .hidden { display: none !important; }
@@ -65,9 +84,25 @@ html, body {
 .controls {
     display: flex;
     align-items: center;
-    gap: 14px;
+    gap: 4px;
     flex-wrap: wrap;
     margin-left: auto;
+}
+.ctrl-group {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 0 12px;
+    position: relative;
+}
+.ctrl-group + .ctrl-group::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 6px;
+    bottom: 6px;
+    width: 1px;
+    background: rgba(255, 255, 255, 0.08);
 }
 .controls label {
     display: flex;
@@ -136,37 +171,47 @@ html, body {
 body[data-layout="tabs"] .layout-toggle-btn .layout-icon-single { display: block; }
 body[data-layout="single"] .layout-toggle-btn .layout-icon-tabs { display: block; }
 
-/* Tab navigation bar (only visible in tabs layout) */
+/* Tab navigation bar (only visible in tabs layout) - pill-style */
 #tab-bar {
     display: flex;
     justify-content: center;
-    gap: 4px;
-    padding: 6px 16px;
-    background: rgba(10, 10, 15, 0.7);
+    gap: 6px;
+    padding: 10px 16px;
+    background: rgba(10, 10, 15, 0.6);
     border-bottom: 1px solid rgba(255, 255, 255, 0.06);
     overflow-x: auto;
     scrollbar-width: thin;
     position: sticky;
     top: 0;
     z-index: 9;
+    backdrop-filter: blur(8px);
 }
 .tab-btn {
-    background: transparent;
-    color: #888;
-    border: none;
-    padding: 8px 14px;
-    font-size: 0.85rem;
+    background: rgba(255, 255, 255, 0.03);
+    color: #8a8aa0;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    padding: 7px 16px;
+    font-size: 0.82rem;
     font-weight: 500;
+    letter-spacing: 0.02em;
     cursor: pointer;
-    border-radius: 6px;
-    border-bottom: 2px solid transparent;
-    transition: color 0.12s, background 0.12s, border-color 0.12s;
+    border-radius: 999px;
+    transition: color 0.15s, background 0.15s, border-color 0.15s, box-shadow 0.15s;
     white-space: nowrap;
+    position: relative;
 }
-.tab-btn:hover { color: #ddd; background: rgba(255, 255, 255, 0.03); }
+.tab-btn:hover {
+    color: #fff;
+    background: rgba(179, 136, 255, 0.08);
+    border-color: rgba(179, 136, 255, 0.2);
+}
 .tab-btn.active {
     color: #fff;
-    border-bottom-color: #b388ff;
+    background: linear-gradient(180deg, rgba(179, 136, 255, 0.28), rgba(179, 136, 255, 0.14));
+    border-color: rgba(179, 136, 255, 0.55);
+    box-shadow:
+        0 0 0 1px rgba(179, 136, 255, 0.2),
+        0 0 12px rgba(179, 136, 255, 0.25);
 }
 
 body[data-layout="single"] #tab-bar { display: none; }
@@ -287,13 +332,34 @@ body[data-layout="tabs"] [data-tab]:not(.tab-btn):not(.tab-active) { display: no
     color: #ddd;
     margin-bottom: 10px;
     letter-spacing: 0.3px;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
 }
 .chart-section h2 .sec-meta {
     font-weight: 400;
     font-size: 0.72rem;
     color: #777;
-    margin-left: 8px;
+    margin-left: auto;
+    font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Consolas, monospace;
+    font-variant-numeric: tabular-nums;
 }
+
+/* Forensic-tag chip on each section heading - reads like a finding code. */
+.forensic-tag {
+    display: inline-block;
+    font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Consolas, monospace;
+    font-size: 0.62rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    padding: 2px 7px;
+    border-radius: 3px;
+    border: 1px solid rgba(179, 136, 255, 0.35);
+    color: #b388ff;
+    background: rgba(179, 136, 255, 0.08);
+}
+#insights h2 .forensic-tag { border-color: rgba(105, 240, 174, 0.4); color: #69f0ae; background: rgba(105, 240, 174, 0.08); }
 .chart-section.no-data .chart-host { display: none; }
 
 .chart-host {

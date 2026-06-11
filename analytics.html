@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Wheel Forensics &middot; EUC Planet</title>
     <link rel="icon" href="static/favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="static/css/analytics.css?v=10" />
+    <link rel="stylesheet" href="static/css/analytics.css?v=11" />
     <script type="text/javascript">
         (function(c,l,a,r,i,t,y){
             c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
@@ -23,64 +23,74 @@
             </div>
 
             <div class="controls">
-                <label>
-                    <span>Group by</span>
-                    <select id="group-select">
-                        <option value="week">Week</option>
-                        <option value="month" selected>Month</option>
-                        <option value="quarter">Quarter</option>
-                        <option value="year">Year</option>
-                        <option value="km250">Every 250 km</option>
-                        <option value="km500">Every 500 km</option>
-                        <option value="km1000">Every 1000 km</option>
-                        <option value="h10">Every 10 h</option>
-                        <option value="h50">Every 50 h</option>
-                    </select>
-                </label>
-                <label>
-                    <span>Min battery use</span>
-                    <select id="batt-min-select">
-                        <option value="5">5%</option>
-                        <option value="10" selected>10%</option>
-                        <option value="20">20%</option>
-                    </select>
-                </label>
-                <label>
-                    <span>Min trips/bin</span>
-                    <select id="minbin-select">
-                        <option value="1">1</option>
-                        <option value="2" selected>2</option>
-                        <option value="3">3</option>
-                        <option value="5">5</option>
-                    </select>
-                </label>
-                <label class="check-label">
-                    <input type="checkbox" id="rolling-check" checked />
-                    <span>Smooth (rolling 3 bins)</span>
-                </label>
-                <label class="check-label">
-                    <input type="checkbox" id="normalize-check" disabled />
-                    <span>Normalize range to 20&nbsp;&deg;C</span>
-                </label>
-                <button type="button" id="weather-btn" title="Pulls historical daily temperatures from open-meteo.com for the coarsely-rounded locations of your trips, then unlocks ambient-aware analyses.">Cross-reference weather</button>
-                <span id="weather-status"></span>
-                <button type="button" id="layout-toggle" class="layout-toggle-btn" title="Switch layout">
-                    <svg class="layout-icon-tabs" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-                        <rect x="1" y="2" width="5" height="12" rx="1" fill="none" stroke="currentColor" stroke-width="1.4"/>
-                        <rect x="10" y="2" width="5" height="12" rx="1" fill="none" stroke="currentColor" stroke-width="1.4"/>
-                    </svg>
-                    <svg class="layout-icon-single" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-                        <rect x="2" y="2" width="12" height="3" rx="0.6" fill="none" stroke="currentColor" stroke-width="1.4"/>
-                        <rect x="2" y="6.5" width="12" height="3" rx="0.6" fill="none" stroke="currentColor" stroke-width="1.4"/>
-                        <rect x="2" y="11" width="12" height="3" rx="0.6" fill="none" stroke="currentColor" stroke-width="1.4"/>
-                    </svg>
-                </button>
+                <div class="ctrl-group" data-group="binning">
+                    <label>
+                        <span>Group</span>
+                        <select id="group-select">
+                            <option value="week">Week</option>
+                            <option value="month" selected>Month</option>
+                            <option value="quarter">Quarter</option>
+                            <option value="year">Year</option>
+                            <option value="km250">Every 250 km</option>
+                            <option value="km500">Every 500 km</option>
+                            <option value="km1000">Every 1000 km</option>
+                            <option value="h10">Every 10 h</option>
+                            <option value="h50">Every 50 h</option>
+                        </select>
+                    </label>
+                    <label>
+                        <span>Min trips/bin</span>
+                        <select id="minbin-select">
+                            <option value="1">1</option>
+                            <option value="2" selected>2</option>
+                            <option value="3">3</option>
+                            <option value="5">5</option>
+                        </select>
+                    </label>
+                </div>
+                <div class="ctrl-group" data-group="filters">
+                    <label>
+                        <span>Min batt&nbsp;use</span>
+                        <select id="batt-min-select">
+                            <option value="5">5%</option>
+                            <option value="10" selected>10%</option>
+                            <option value="20">20%</option>
+                        </select>
+                    </label>
+                </div>
+                <div class="ctrl-group" data-group="overlays">
+                    <label class="check-label">
+                        <input type="checkbox" id="rolling-check" checked />
+                        <span>Smooth</span>
+                    </label>
+                    <label class="check-label">
+                        <input type="checkbox" id="normalize-check" disabled />
+                        <span>Norm 20&nbsp;&deg;C</span>
+                    </label>
+                </div>
+                <div class="ctrl-group" data-group="actions">
+                    <button type="button" id="weather-btn" title="Pulls historical daily temperatures from open-meteo.com for the coarsely-rounded locations of your trips, then unlocks ambient-aware analyses.">Cross-reference weather</button>
+                    <span id="weather-status"></span>
+                    <button type="button" id="layout-toggle" class="layout-toggle-btn" title="Switch layout">
+                        <svg class="layout-icon-tabs" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                            <rect x="1" y="2" width="5" height="12" rx="1" fill="none" stroke="currentColor" stroke-width="1.4"/>
+                            <rect x="10" y="2" width="5" height="12" rx="1" fill="none" stroke="currentColor" stroke-width="1.4"/>
+                        </svg>
+                        <svg class="layout-icon-single" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                            <rect x="2" y="2" width="12" height="3" rx="0.6" fill="none" stroke="currentColor" stroke-width="1.4"/>
+                            <rect x="2" y="6.5" width="12" height="3" rx="0.6" fill="none" stroke="currentColor" stroke-width="1.4"/>
+                            <rect x="2" y="11" width="12" height="3" rx="0.6" fill="none" stroke="currentColor" stroke-width="1.4"/>
+                        </svg>
+                    </button>
+                </div>
             </div>
         </header>
 
         <nav id="tab-bar">
             <button type="button" class="tab-btn active" data-tab="overview">Overview</button>
             <button type="button" class="tab-btn" data-tab="range">Range</button>
+            <button type="button" class="tab-btn" data-tab="charging">Charging</button>
+            <button type="button" class="tab-btn" data-tab="speed">Speed</button>
             <button type="button" class="tab-btn" data-tab="efficiency">Efficiency</button>
             <button type="button" class="tab-btn" data-tab="motor">Motor</button>
             <button type="button" class="tab-btn" data-tab="thermal">Thermal</button>
@@ -99,15 +109,17 @@
                 <div class="stat-card"><span class="sv" id="lf-maxrange">&hellip;</span><span class="sl">Best est. range</span></div>
                 <div class="stat-card"><span class="sv" id="lf-days">&hellip;</span><span class="sl">Active days</span></div>
                 <div class="stat-card"><span class="sv" id="lf-cadence">&hellip;</span><span class="sl">Rides / month</span></div>
+                <div class="stat-card"><span class="sv" id="lf-charges">&hellip;</span><span class="sl">Charges logged</span></div>
+                <div class="stat-card"><span class="sv" id="lf-chargedpct">&hellip;</span><span class="sl">Total charged %</span></div>
             </section>
 
             <section id="insights" class="hidden" data-tab="overview">
-                <h2>Key takeaways <span class="sec-meta">computed from your history</span></h2>
+                <h2><span class="forensic-tag">FINDINGS</span> Key takeaways <span class="sec-meta">computed from your history</span></h2>
                 <div id="insights-list"></div>
             </section>
 
             <section class="chart-section" data-section="activity" data-tab="overview">
-                <h2>Riding activity <span class="sec-meta" id="activity-meta"></span></h2>
+                <h2><span class="forensic-tag">EVIDENCE</span> Riding activity <span class="sec-meta" id="activity-meta"></span></h2>
                 <div class="chart-host tall">
                     <div class="chart-title">Distance per group &amp; cumulative lifetime</div>
                     <canvas id="chart-activity"></canvas>
@@ -117,8 +129,18 @@
                    Empty bars mean a period where you didn't ride.</p>
             </section>
 
+            <section class="chart-section" data-section="dist-hist" data-tab="overview">
+                <h2><span class="forensic-tag">PATTERN</span> Trip-distance distribution <span class="sec-meta" id="dist-hist-meta"></span></h2>
+                <div class="chart-host">
+                    <div class="chart-title">How long are your rides? <span class="chart-title-axes">(trip count by distance band)</span></div>
+                    <canvas id="chart-dist-hist"></canvas>
+                </div>
+                <div class="chart-takeaway" id="dist-hist-takeaway"></div>
+                <p class="sec-hint">Distribution of trip distances. Tells you whether you mostly do short hops, long cruises, or both.</p>
+            </section>
+
             <section class="chart-section" data-section="range" data-tab="range">
-                <h2>Estimated full range <span class="sec-meta" id="range-meta"></span></h2>
+                <h2><span class="forensic-tag">EVIDENCE</span> Estimated full range <span class="sec-meta" id="range-meta"></span></h2>
                 <div class="chart-host">
                     <div class="chart-title">Range over time <span class="chart-title-axes">(median per group)</span></div>
                     <canvas id="chart-range"></canvas>
@@ -132,24 +154,62 @@
                 <p class="sec-hint">Each trip's range is extrapolated from distance vs battery used
                    (<i>distance / battery% &times; 100</i>). Dots are the distance-weighted median per group,
                    the band spans the 25th to 75th percentile. Trips using less battery than the
-                   threshold above are excluded. With weather enriched, the second chart shows the
-                   range vs ambient temperature relationship for every usable trip.</p>
+                   threshold above are excluded. Logger-tail corruption (frozen voltage / battery after wheel
+                   shutdown) is auto-trimmed before computing battery delta.</p>
+            </section>
+
+            <section class="chart-section" data-section="charging" data-tab="charging">
+                <h2><span class="forensic-tag">EVIDENCE</span> Charging events <span class="sec-meta" id="charging-meta"></span></h2>
+                <div class="chart-host">
+                    <div class="chart-title">Charges per group <span class="chart-title-axes">(detected from battery jumps between rides)</span></div>
+                    <canvas id="chart-charges"></canvas>
+                </div>
+                <div class="chart-takeaway" id="charging-takeaway"></div>
+                <div class="chart-host">
+                    <div class="chart-title">State of charge per top-up <span class="chart-title-axes">(start → end %)</span></div>
+                    <canvas id="chart-charge-window"></canvas>
+                </div>
+                <div class="chart-takeaway" id="charge-window-takeaway"></div>
+                <p class="sec-hint">A charge is detected whenever consecutive trips show the battery jumping back up
+                   (next trip's start &gt; previous trip's end). Cycling from a high state of charge (e.g. <i>80 → 100</i>)
+                   is gentler on Li-ion packs than deep drains; cycling from low (<i>15 → 100</i>) accelerates aging.</p>
+            </section>
+
+            <section class="chart-section" data-section="speed" data-tab="speed">
+                <h2><span class="forensic-tag">EVIDENCE</span> Top speed <span class="sec-meta" id="speed-meta"></span></h2>
+                <div class="chart-host">
+                    <div class="chart-title">Top speed over time <span class="chart-title-axes">(max + median per group)</span></div>
+                    <canvas id="chart-topspeed"></canvas>
+                </div>
+                <div class="chart-takeaway" id="topspeed-takeaway"></div>
+                <div class="chart-host">
+                    <div class="chart-title">Speed distribution across rides <span class="chart-title-axes">(trip count by top-speed band)</span></div>
+                    <canvas id="chart-speed-hist"></canvas>
+                </div>
+                <div class="chart-takeaway" id="speed-hist-takeaway"></div>
+                <p class="sec-hint">How aggressively you push the wheel. The trend chart shows whether you're
+                   getting bolder (or backing off) over time. The histogram shows which speeds you actually live in.</p>
             </section>
 
             <section class="chart-section" data-section="efficiency" data-tab="efficiency">
-                <h2>Efficiency <span class="sec-meta" id="efficiency-meta"></span></h2>
+                <h2><span class="forensic-tag">EVIDENCE</span> Efficiency <span class="sec-meta" id="efficiency-meta"></span></h2>
                 <div class="chart-host">
                     <div class="chart-title">Energy use over time <span class="chart-title-axes">(median per group)</span></div>
                     <canvas id="chart-efficiency"></canvas>
                 </div>
                 <div class="chart-takeaway" id="efficiency-takeaway"></div>
+                <div class="chart-host">
+                    <div class="chart-title">Power-draw distribution <span class="chart-title-axes">(trip count by avg-W band)</span></div>
+                    <canvas id="chart-power-hist"></canvas>
+                </div>
+                <div class="chart-takeaway" id="power-hist-takeaway"></div>
                 <p class="sec-hint">Energy per distance (Wh/km, computed from logged power or voltage&times;current)
-                   and distance per battery percent (km/%). Rising Wh/km or falling km/% means the wheel
-                   needs more energy for the same ride.</p>
+                   and distance per battery percent (km/%). The histogram shows how hard you typically push the
+                   wheel: most riders sit in a narrow average-power band with a long tail toward steep climbs / sprints.</p>
             </section>
 
             <section class="chart-section" data-section="motor" data-tab="motor">
-                <h2>Motor: speed vs current <span class="sec-meta" id="motor-meta"></span></h2>
+                <h2><span class="forensic-tag">EVIDENCE</span> Motor: speed vs current <span class="sec-meta" id="motor-meta"></span></h2>
                 <div class="chart-host tall">
                     <div class="chart-title">Avg speed vs avg current <span class="chart-title-axes">(one dot per trip, old → new)</span></div>
                     <canvas id="chart-motor"></canvas>
@@ -167,7 +227,7 @@
             </section>
 
             <section class="chart-section" data-section="thermal" data-tab="thermal">
-                <h2>Thermal <span class="sec-meta" id="thermal-meta"></span></h2>
+                <h2><span class="forensic-tag">EVIDENCE</span> Thermal <span class="sec-meta" id="thermal-meta"></span></h2>
                 <div class="chart-host tall">
                     <div class="chart-title">Temperature rise vs power draw <span class="chart-title-axes">(one dot per trip, old → new)</span></div>
                     <canvas id="chart-thermal"></canvas>
@@ -184,21 +244,21 @@
             </section>
 
             <section class="chart-section" data-section="health" data-tab="health">
-                <h2>Battery health: voltage sag <span class="sec-meta" id="health-meta"></span></h2>
+                <h2><span class="forensic-tag">EVIDENCE</span> Battery health: voltage sag <span class="sec-meta" id="health-meta"></span></h2>
                 <div class="chart-host">
                     <div class="chart-title">Effective internal resistance over time <span class="chart-title-axes">(median per group, mΩ)</span></div>
                     <canvas id="chart-health"></canvas>
                 </div>
                 <div class="chart-takeaway" id="health-takeaway"></div>
                 <p class="sec-hint">Effective internal resistance estimated per trip from how much the pack
-                   voltage sags per amp of load (robust fit of voltage against current). A rising trend
-                   indicates an aging battery pack.</p>
+                   voltage sags per amp of load (dV/dI delta method across short timesteps). A rising trend
+                   indicates an aging battery pack; flat means the chemistry is holding up.</p>
             </section>
         </main>
 
         <div id="error-banner" class="hidden"></div>
     </div>
 
-    <script src="static/js/analytics.js?v=9"></script>
+    <script src="static/js/analytics.js?v=10"></script>
 </body>
 </html>

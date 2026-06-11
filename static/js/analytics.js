@@ -323,6 +323,10 @@
       tempMax: null, tempStart: null,
       ambientC: null,
       centroid: null,
+      // Forensic adds
+      // Sanity-clamp top speed: no production EUC tops 100 km/h, so anything
+      // above that is a single GPS glitch sample inflating stats.maxSpeed.
+      topSpeedKmh: (t.stats && t.stats.maxSpeed && t.stats.maxSpeed <= 100) ? t.stats.maxSpeed : null,
     };
     if (t.dateStart && t.dateEnd) {
       const s = new Date(t.dateStart).getTime();
@@ -472,6 +476,27 @@
   }
   // Epoch position 0..1 for the old→new colour ramp on scatter charts.
   dated.forEach((m, i) => { m.epoch = dated.length > 1 ? i / (dated.length - 1) : 0.5; });
+
+  // Charging events: a charge is detected when consecutive (date-sorted) trips
+  // show the battery jumping back up between rides. Threshold of 5% suppresses
+  // sensor noise / partial top-ups that aren't real plug-in events.
+  const charges = [];
+  for (let i = 1; i < dated.length; i++) {
+    const prev = dated[i - 1], cur = dated[i];
+    if (prev.battEnd == null || cur.battStart == null) continue;
+    const gain = cur.battStart - prev.battEnd;
+    if (gain < 5) continue;
+    // Skip the implausible (driver was wearing a fresh pack from another wheel?)
+    if (gain > 100) continue;
+    charges.push({
+      // The charge happened between prev and cur — attribute it to cur's date.
+      date: cur.date,
+      from: prev.battEnd,
+      to: cur.battStart,
+      gain,
+    });
+  }
+  // Quick lookup: count charges per bin key when we render the section.
 
   {
     let totalKm = 0;
@@ -1166,9 +1191,10 @@
       if (m.estRangeKm != null && m.estRangeKm > maxRangeKm) maxRangeKm = m.estRangeKm;
     }
     // Top speed: pull from each track's stats since timeseries is downsampled.
+    // Clamp to 100 km/h since anything beyond is a GPS glitch, not a real run.
     for (const t of tracks) {
       const v = t.stats && t.stats.maxSpeed;
-      if (typeof v === "number" && v > topSpd) topSpd = v;
+      if (typeof v === "number" && v > topSpd && v <= 100) topSpd = v;
     }
     setStat("lf-trips", dated.length, "");
     setStat("lf-dist", UNITS.dist(totalKm), UNITS.distUnit);
@@ -1181,6 +1207,8 @@
     const spanMs = dated[dated.length - 1].date - dated[0].date;
     const spanMonths = Math.max(1, spanMs / (1000 * 60 * 60 * 24 * 30.44));
     setStat("lf-cadence", dated.length / spanMonths, "");
+    setStat("lf-charges", charges.length, "");
+    setStat("lf-chargedpct", charges.reduce((s, c) => s + c.gain, 0), "%");
   }
 
   // Insight generation. Compares the first vs last third of dated trips so a
@@ -1424,6 +1452,223 @@
     canvas._an.series[1].stats = cum.map((v) => ({ med: UNITS.dist(v) }));
   }
 
+  // Plain histogram with bin labels under each bar; opts.color picks the fill.
+  // Used for distance / speed / power distributions.
+  function drawHistogram(canvas, values, opts) {
+    const cv = setupCanvas(canvas);
+    if (!cv || !values.length) return;
+    const { ctx, w, h } = cv;
+    const pad = { top: 20, bottom: 28, left: 44, right: 14 };
+    const cw = w - pad.left - pad.right;
+    const ch = h - pad.top - pad.bottom;
+    const nBins = opts.nBins || 16;
+    let lo = opts.min != null ? opts.min : Math.min.apply(null, values);
+    let hi = opts.max != null ? opts.max : Math.max.apply(null, values);
+    if (hi <= lo) hi = lo + 1;
+    // Snap to a clean bin width: round up to a "nice" number close to (hi-lo)/nBins.
+    const targetW = (hi - lo) / nBins;
+    const mag = Math.pow(10, Math.floor(Math.log10(targetW)));
+    let step = mag;
+    for (const k of [1, 2, 2.5, 5, 10]) {
+      if (mag * k >= targetW) { step = mag * k; break; }
+    }
+    lo = Math.floor(lo / step) * step;
+    hi = Math.ceil(hi / step) * step;
+    const realBins = Math.max(1, Math.round((hi - lo) / step));
+    const counts = new Array(realBins).fill(0);
+    for (const v of values) {
+      let idx = Math.floor((v - lo) / step);
+      if (idx < 0) idx = 0;
+      if (idx >= realBins) idx = realBins - 1;
+      counts[idx]++;
+    }
+    const maxCount = Math.max(1, ...counts);
+
+    ctx.font = FONT;
+    ctx.strokeStyle = GRID_COLOR;
+    ctx.fillStyle = AXIS_COLOR;
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    const yTicks = niceTicks(0, maxCount, 4);
+    for (const tv of yTicks) {
+      const y = pad.top + ch - (tv / maxCount) * ch;
+      ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(w - pad.right, y); ctx.stroke();
+      ctx.fillText(String(Math.round(tv)), pad.left - 6, y);
+    }
+
+    const barW = cw / realBins;
+    for (let i = 0; i < realBins; i++) {
+      const c = counts[i];
+      if (c <= 0) continue;
+      const x = pad.left + i * barW;
+      const yTop = pad.top + ch - (c / maxCount) * ch;
+      const grad = ctx.createLinearGradient(0, yTop, 0, pad.top + ch);
+      grad.addColorStop(0, opts.colorTop || "rgba(179,136,255,0.95)");
+      grad.addColorStop(1, opts.colorBot || "rgba(179,136,255,0.25)");
+      ctx.fillStyle = grad;
+      ctx.fillRect(x + 1, yTop, barW - 2, pad.top + ch - yTop);
+    }
+
+    // X labels at bin edges (sparse to avoid collision)
+    ctx.fillStyle = AXIS_COLOR;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    const labelEvery = Math.max(1, Math.ceil(realBins / 8));
+    for (let i = 0; i <= realBins; i += labelEvery) {
+      const tv = lo + i * step;
+      const x = pad.left + i * barW;
+      ctx.fillText(fmtVal(tv), x, pad.top + ch + 6);
+    }
+    // Axis title (top-left)
+    ctx.fillStyle = "rgba(255,255,255,0.55)";
+    ctx.textAlign = "left";
+    ctx.fillText(opts.yLabel || "trips", pad.left + 4, 4);
+    ctx.textAlign = "right";
+    ctx.fillText(opts.xLabel || "", w - pad.right, pad.top + ch + 6);
+
+    // Hover state: closest bin
+    canvas._an = {
+      type: "hist",
+      pad, cw, ch, w, h,
+      bins: counts.map((c, i) => ({ from: lo + i * step, to: lo + (i + 1) * step, count: c })),
+      xToBin: (mx) => Math.floor((mx - pad.left) / barW),
+      unit: opts.unit || "",
+    };
+  }
+
+  // Charge-event bar chart: counts charges per calendar bin, like the activity
+  // chart but only counting plug-in moments.
+  function drawChargesBar(canvas, bins, perBin) {
+    const cv = setupCanvas(canvas);
+    if (!cv) return;
+    const { ctx, w, h } = cv;
+    const pad = { top: 14, bottom: 24, left: 40, right: 14 };
+    const cw = w - pad.left - pad.right;
+    const ch = h - pad.top - pad.bottom;
+    const n = bins.length;
+    if (!n) return;
+    const xAt = (i) => pad.left + (n > 1 ? (i / (n - 1)) * cw : cw / 2);
+    const barW = n > 1 ? Math.max(2, (cw / n) * 0.7) : Math.max(8, cw * 0.3);
+    const max = Math.max(1, ...perBin);
+    ctx.font = FONT;
+    ctx.fillStyle = AXIS_COLOR;
+    ctx.strokeStyle = GRID_COLOR;
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    for (const tv of niceTicks(0, max, 4)) {
+      const y = pad.top + ch - (tv / max) * ch;
+      ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(w - pad.right, y); ctx.stroke();
+      ctx.fillText(String(Math.round(tv)), pad.left - 6, y);
+    }
+    for (let i = 0; i < n; i++) {
+      const v = perBin[i];
+      if (v <= 0) continue;
+      const x = xAt(i) - barW / 2;
+      const yTop = pad.top + ch - (v / max) * ch;
+      const grad = ctx.createLinearGradient(0, yTop, 0, pad.top + ch);
+      grad.addColorStop(0, "rgba(0,229,255,0.85)");
+      grad.addColorStop(1, "rgba(0,229,255,0.18)");
+      ctx.fillStyle = grad;
+      ctx.fillRect(x, yTop, barW, pad.top + ch - yTop);
+    }
+    ctx.fillStyle = AXIS_COLOR;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    const labelStep = Math.max(1, Math.ceil(n / 8));
+    for (let i = 0; i < n; i += labelStep) {
+      ctx.fillText(bins[i].label, xAt(i), pad.top + ch + 6);
+    }
+    canvas._an = {
+      type: "trend",
+      bins,
+      pad, cw, ch, w, h, xAt,
+      series: [{ stats: perBin.map((v) => ({ med: v })), label: "Charges", unit: "", dp: 0, color: "#00e5ff" }],
+    };
+  }
+
+  // Charge windows: for each charge, draw a vertical segment from `from` to
+  // `to` along the X = trip-date axis. Visually shows the band of state-of-
+  // charge each plug-in covered.
+  function drawChargeWindows(canvas, list) {
+    const cv = setupCanvas(canvas);
+    if (!cv || !list.length) return;
+    const { ctx, w, h } = cv;
+    const pad = { top: 16, bottom: 24, left: 42, right: 14 };
+    const cw = w - pad.left - pad.right;
+    const ch = h - pad.top - pad.bottom;
+    const t0 = list[0].date.getTime();
+    const t1 = list[list.length - 1].date.getTime();
+    const span = Math.max(1, t1 - t0);
+    const xAt = (d) => pad.left + ((d.getTime() - t0) / span) * cw;
+    const yAt = (pct) => pad.top + ch - (pct / 100) * ch;
+    ctx.font = FONT;
+    ctx.fillStyle = AXIS_COLOR;
+    ctx.strokeStyle = GRID_COLOR;
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    for (const tv of [0, 25, 50, 75, 100]) {
+      const y = yAt(tv);
+      ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(w - pad.right, y); ctx.stroke();
+      ctx.fillText(tv + "%", pad.left - 6, y);
+    }
+    // Each charge: vertical line from `from` to `to` at its date
+    for (const c of list) {
+      const x = xAt(c.date);
+      ctx.strokeStyle = c.from <= 20 ? "#ff7043" : c.from <= 50 ? "#ffd740" : "#69f0ae";
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(x, yAt(c.from));
+      ctx.lineTo(x, yAt(c.to));
+      ctx.stroke();
+      ctx.fillStyle = ctx.strokeStyle;
+      ctx.beginPath(); ctx.arc(x, yAt(c.to), 1.8, 0, Math.PI * 2); ctx.fill();
+    }
+    // Legend: green = gentle, yellow = mid, red = deep top-up
+    ctx.textBaseline = "alphabetic";
+    ctx.textAlign = "left";
+    const legendY = 12;
+    let lx = pad.left + 4;
+    const legendItems = [
+      ["#69f0ae", "from >50% (gentle)"],
+      ["#ffd740", "from 20–50%"],
+      ["#ff7043", "from <20% (deep)"],
+    ];
+    for (const [col, lbl] of legendItems) {
+      ctx.fillStyle = col;
+      ctx.fillRect(lx, legendY - 6, 8, 2);
+      ctx.fillStyle = "rgba(255,255,255,0.6)";
+      ctx.fillText(lbl, lx + 12, legendY);
+      lx += 16 + ctx.measureText(lbl).width + 12;
+    }
+    // X axis title
+    ctx.fillStyle = AXIS_COLOR;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    const xfmt = new Intl.DateTimeFormat(undefined, { month: "short", year: "2-digit" });
+    ctx.fillText(xfmt.format(new Date(t0)), pad.left, pad.top + ch + 6);
+    ctx.textAlign = "right";
+    ctx.fillText(xfmt.format(new Date(t1)), w - pad.right, pad.top + ch + 6);
+  }
+
+  // Top-speed trend with both max-per-bin and median-per-bin on the same chart.
+  function drawTopSpeedChart(canvas, bins) {
+    const medians = bins.map((b) => {
+      const vs = b.trips.map((m) => m.topSpeedKmh).filter((v) => v != null);
+      return vs.length ? { med: median(vs) } : null;
+    });
+    const maxes = bins.map((b) => {
+      const vs = b.trips.map((m) => m.topSpeedKmh).filter((v) => v != null);
+      return vs.length ? { med: Math.max.apply(null, vs) } : null;
+    });
+    const series = [
+      { stats: medians.map((s) => s ? { med: UNITS.speed(s.med) } : null),
+        color: "#7cc7ff", label: "Median top speed", unit: UNITS.speedUnit, band: false, dp: 1 },
+      { stats: maxes.map((s) => s ? { med: UNITS.speed(s.med) } : null),
+        color: "#ff5252", label: "Max top speed", unit: UNITS.speedUnit, band: false, dp: 1 },
+    ];
+    drawTrendChart(canvas, bins, series, { rolling: false, zeroBase: false });
+  }
+
   // Range vs ambient scatter — only shown when weather is loaded. Includes
   // the Theil–Sen fit line so the slope is visible, not just a number.
   function drawRangeTempScatter(canvas) {
@@ -1554,6 +1799,122 @@
       }
     }
 
+    // Distance distribution on Overview tab.
+    {
+      const dists = dated.map((m) => UNITS.dist(m.distKm)).filter((v) => v > 0);
+      if (dists.length >= 5) {
+        drawHistogram(document.getElementById("chart-dist-hist"), dists, {
+          xLabel: UNITS.distUnit,
+          yLabel: "trips",
+          nBins: 18,
+          colorTop: "rgba(179,136,255,0.9)",
+          colorBot: "rgba(179,136,255,0.18)",
+        });
+        const sorted = dists.slice().sort((a, b) => a - b);
+        const med = sorted[Math.floor(sorted.length / 2)];
+        const p90 = sorted[Math.floor(sorted.length * 0.9)];
+        const max = sorted[sorted.length - 1];
+        setTakeaway("dist-hist-takeaway", [
+          `Median ride: <b>${med.toFixed(1)} ${UNITS.distUnit}</b>`,
+          `Top 10% beyond: <b>${p90.toFixed(1)} ${UNITS.distUnit}</b>`,
+          `Longest: <b>${max.toFixed(1)} ${UNITS.distUnit}</b>`,
+        ]);
+        document.getElementById("dist-hist-meta").textContent = dists.length + " trips";
+      } else {
+        setTakeaway("dist-hist-takeaway", []);
+      }
+    }
+
+    // Charging section.
+    {
+      const meta = document.getElementById("charging-meta");
+      if (!charges.length) {
+        setSectionEmpty("charging", "No charging events detected. Either you charge after every trip (so no battery jump between rides) or trips lack battery data.");
+        meta.textContent = "";
+        setTakeaway("charging-takeaway", []);
+        setTakeaway("charge-window-takeaway", []);
+      } else {
+        setSectionActive("charging");
+        meta.textContent = charges.length + " charges detected";
+        // Count charges per calendar/cumulative bin
+        const perBin = bins.map((b) => 0);
+        for (const c of charges) {
+          for (let i = 0; i < bins.length; i++) {
+            // Match by date for calendar bins; for cumulative bins, match by trip membership.
+            // Trips already carry their bin assignment via the dated array, so we use date overlap.
+            const tripsInBin = bins[i].trips;
+            if (!tripsInBin.length) continue;
+            // The charge is attributed to cur.date; find which bin holds a trip on that day.
+            const matchingTrip = tripsInBin.find((m) => m.date && c.date && m.date.getTime() === c.date.getTime());
+            if (matchingTrip) { perBin[i]++; break; }
+          }
+        }
+        drawChargesBar(document.getElementById("chart-charges"), bins, perBin);
+        // Aggregates
+        const totalCharged = charges.reduce((s, c) => s + c.gain, 0);
+        const gentle = charges.filter((c) => c.from > 50).length;
+        const deep = charges.filter((c) => c.from <= 20).length;
+        const medGain = median(charges.map((c) => c.gain));
+        const medFrom = median(charges.map((c) => c.from));
+        const medTo = median(charges.map((c) => c.to));
+        setTakeaway("charging-takeaway", [
+          `Typical top-up: <b>${medFrom.toFixed(0)}%</b> &rarr; <b>${medTo.toFixed(0)}%</b> (+<b>${medGain.toFixed(0)}%</b>)`,
+          `Total state-of-charge added: <b>${totalCharged.toFixed(0)}%</b> across ${charges.length} sessions`,
+          `<b>${gentle}</b> gentle (from &gt;50%) &middot; <b>${deep}</b> deep (from &le;20%)`,
+        ], deep > gentle ? "warn" : null);
+        drawChargeWindows(document.getElementById("chart-charge-window"), charges);
+        // Trailing window of recent charges as the takeaway
+        const recent = charges.slice(-10);
+        const recentMedFrom = median(recent.map((c) => c.from));
+        const recentMedTo = median(recent.map((c) => c.to));
+        setTakeaway("charge-window-takeaway", [
+          `Last 10 charges: typically <b>${recentMedFrom.toFixed(0)}%</b> &rarr; <b>${recentMedTo.toFixed(0)}%</b>`,
+          `Lowest start of any charge: <b>${Math.min.apply(null, charges.map((c) => c.from)).toFixed(0)}%</b>`,
+        ]);
+      }
+    }
+
+    // Speed section: top-speed trend + speed distribution.
+    {
+      const meta = document.getElementById("speed-meta");
+      const tops = dated.map((m) => m.topSpeedKmh).filter((v) => v != null);
+      if (tops.length < 5) {
+        setSectionEmpty("speed", "Not enough trips with top-speed data.");
+        meta.textContent = "";
+        setTakeaway("topspeed-takeaway", []);
+        setTakeaway("speed-hist-takeaway", []);
+      } else {
+        setSectionActive("speed");
+        meta.textContent = tops.length + " trips with top-speed data";
+        drawTopSpeedChart(document.getElementById("chart-topspeed"), bins);
+        const lifeTop = Math.max.apply(null, tops);
+        const lifeTopTrip = dated.find((m) => m.topSpeedKmh === lifeTop);
+        const medTop = median(tops);
+        setTakeaway("topspeed-takeaway", [
+          `All-time top: <b>${UNITS.speed(lifeTop).toFixed(1)} ${UNITS.speedUnit}</b>` +
+            (lifeTopTrip && lifeTopTrip.date ? ` on <b>${new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(lifeTopTrip.date)}</b>` : ""),
+          `Median peak per ride: <b>${UNITS.speed(medTop).toFixed(1)} ${UNITS.speedUnit}</b>`,
+        ]);
+        // Speed histogram
+        const topsDisp = tops.map((v) => UNITS.speed(v));
+        drawHistogram(document.getElementById("chart-speed-hist"), topsDisp, {
+          xLabel: UNITS.speedUnit,
+          yLabel: "trips",
+          nBins: 16,
+          colorTop: "rgba(255,82,82,0.9)",
+          colorBot: "rgba(255,82,82,0.18)",
+        });
+        const sorted = topsDisp.slice().sort((a, b) => a - b);
+        const p25 = sorted[Math.floor(sorted.length * 0.25)];
+        const p75 = sorted[Math.floor(sorted.length * 0.75)];
+        const lifeTopDisp = UNITS.speed(lifeTop);
+        setTakeaway("speed-hist-takeaway", [
+          `Comfort zone: <b>${p25.toFixed(0)}</b>&ndash;<b>${p75.toFixed(0)} ${UNITS.speedUnit}</b>`,
+          `Hot threshold (max ever): <b>${lifeTopDisp.toFixed(1)} ${UNITS.speedUnit}</b>`,
+        ]);
+      }
+    }
+
     // 2. Efficiency.
     {
       const hasWh = dated.some((m) => m.whPerKm != null);
@@ -1588,6 +1949,28 @@
             parts.push(`Worst: <b>${peak.v.toFixed(1)} Wh/${UNITS.distUnit}</b> in <b>${peak.label}</b>`);
           }
           setTakeaway("efficiency-takeaway", parts);
+        }
+        // Power-draw histogram
+        const powers = dated.map((m) => m.avgPower).filter((v) => v != null && v > 0);
+        if (powers.length >= 5) {
+          drawHistogram(document.getElementById("chart-power-hist"), powers, {
+            xLabel: "W",
+            yLabel: "trips",
+            nBins: 16,
+            colorTop: "rgba(124,77,255,0.9)",
+            colorBot: "rgba(124,77,255,0.18)",
+          });
+          const sortedP = powers.slice().sort((a, b) => a - b);
+          const medP = sortedP[Math.floor(sortedP.length / 2)];
+          const p90P = sortedP[Math.floor(sortedP.length * 0.9)];
+          const maxP = sortedP[sortedP.length - 1];
+          setTakeaway("power-hist-takeaway", [
+            `Median ride pulls <b>${medP.toFixed(0)} W</b>`,
+            `Top 10% beyond: <b>${p90P.toFixed(0)} W</b>`,
+            `Hardest ride: <b>${maxP.toFixed(0)} W</b> avg`,
+          ]);
+        } else {
+          setTakeaway("power-hist-takeaway", []);
         }
       }
     }
