@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Wheel Forensics &middot; EUC Planet</title>
     <link rel="icon" href="static/favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="static/css/analytics.css?v=11" />
+    <link rel="stylesheet" href="static/css/analytics.css?v=12" />
     <script type="text/javascript">
         (function(c,l,a,r,i,t,y){
             c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
@@ -111,6 +111,9 @@
                 <div class="stat-card"><span class="sv" id="lf-cadence">&hellip;</span><span class="sl">Rides / month</span></div>
                 <div class="stat-card"><span class="sv" id="lf-charges">&hellip;</span><span class="sl">Charges logged</span></div>
                 <div class="stat-card"><span class="sv" id="lf-chargedpct">&hellip;</span><span class="sl">Total charged %</span></div>
+                <div class="stat-card" title="Best 0 to 40 km/h time across every trip, excluding samples flagged as free spin or impossible acceleration."><span class="sv" id="lf-accel40">&hellip;</span><span class="sl">Best 0&hairsp;&rarr;&hairsp;40&hairsp;km/h</span></div>
+                <div class="stat-card" title="Wheel speed samples flagged as free spin (lift / pickup) or fall, where the reported speed disagrees with GPS or accelerates beyond physical limits."><span class="sv" id="lf-anomalies">&hellip;</span><span class="sl">Free spins / falls</span></div>
+                <div class="stat-card"><span class="sv" id="lf-climb">&hellip;</span><span class="sl">Total climb</span></div>
             </section>
 
             <section id="insights" class="hidden" data-tab="overview">
@@ -178,7 +181,7 @@
             <section class="chart-section" data-section="speed" data-tab="speed">
                 <h2><span class="forensic-tag">EVIDENCE</span> Top speed <span class="sec-meta" id="speed-meta"></span></h2>
                 <div class="chart-host">
-                    <div class="chart-title">Top speed over time <span class="chart-title-axes">(max + median per group)</span></div>
+                    <div class="chart-title">Top speed over time <span class="chart-title-axes">(max + median per group, GPS-verified)</span></div>
                     <canvas id="chart-topspeed"></canvas>
                 </div>
                 <div class="chart-takeaway" id="topspeed-takeaway"></div>
@@ -187,8 +190,32 @@
                     <canvas id="chart-speed-hist"></canvas>
                 </div>
                 <div class="chart-takeaway" id="speed-hist-takeaway"></div>
-                <p class="sec-hint">How aggressively you push the wheel. The trend chart shows whether you're
-                   getting bolder (or backing off) over time. The histogram shows which speeds you actually live in.</p>
+                <p class="sec-hint">GPS-verified speeds: samples where the wheel speed disagrees with ground motion
+                   (i.e. free spins) are excluded so a pickup test or fall can't poison the lifetime max.</p>
+            </section>
+
+            <section class="chart-section" data-section="accel" data-tab="speed">
+                <h2><span class="forensic-tag">FINDING</span> Acceleration <span class="sec-meta" id="accel-meta"></span></h2>
+                <div class="chart-host">
+                    <div class="chart-title">Best 0&hairsp;&rarr;&hairsp;40&hairsp;km/h time per group <span class="chart-title-axes">(seconds, lower is faster)</span></div>
+                    <canvas id="chart-accel40"></canvas>
+                </div>
+                <div class="chart-takeaway" id="accel40-takeaway"></div>
+                <p class="sec-hint">For every ride we scan for runs where the speed climbed from a near-stop up to
+                   <i>40&nbsp;km/h</i> (or 60 in the second chart). Anomalous samples (free spins or
+                   physics-impossible accelerations) are skipped so a wheel lifted off the ground can't masquerade
+                   as a launch run. Shorter times mean the wheel had more headroom — useful for spotting
+                   pack sag with age.</p>
+            </section>
+
+            <section class="chart-section" data-section="anomalies" data-tab="speed">
+                <h2><span class="forensic-tag">ANOMALY</span> Free spins &amp; suspected falls <span class="sec-meta" id="anomalies-meta"></span></h2>
+                <div class="chart-takeaway" id="anomalies-takeaway"></div>
+                <div id="anomalies-list" class="anomalies-list"></div>
+                <p class="sec-hint">A free spin is a sample where the wheel reported a speed but GPS shows the
+                   wheel didn't actually move. Most are pickup tests, but a few are <b>falls</b>: when the wheel
+                   was already moving fast on the ground and then suddenly its speed disagreed with GPS.
+                   The classifier uses the pre-event ground-truth speed to label each event.</p>
             </section>
 
             <section class="chart-section" data-section="efficiency" data-tab="efficiency">
@@ -259,6 +286,6 @@
         <div id="error-banner" class="hidden"></div>
     </div>
 
-    <script src="static/js/analytics.js?v=10"></script>
+    <script src="static/js/analytics.js?v=11"></script>
 </body>
 </html>

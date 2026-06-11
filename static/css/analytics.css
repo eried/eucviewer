@@ -438,6 +438,42 @@ body[data-layout="tabs"] [data-tab]:not(.tab-btn):not(.tab-active) { display: no
 .chart-takeaway .ta-sep { color: #555; margin: 0 8px; }
 .chart-takeaway.warn { background: rgba(255, 160, 0, 0.04); border-left-color: rgba(255, 160, 0, 0.55); }
 
+/* Forensic-style anomaly list (free spins / falls). */
+.anomalies-list {
+    margin-top: 12px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 8px;
+    max-height: 380px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+}
+.anomaly-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 6px;
+    font-size: 0.78rem;
+    color: #cfd8dc;
+    font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+}
+.anomaly-row .anom-kind {
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    font-size: 0.66rem;
+    padding: 3px 6px;
+    border-radius: 3px;
+    border: 1px solid currentColor;
+}
+.anomaly-row.lift .anom-kind { color: #7cc7ff; }
+.anomaly-row.fall .anom-kind { color: #ff5252; }
+.anomaly-row .anom-date { color: #888; }
+.anomaly-row .anom-peak { color: #fff; }
+
 .sec-hint {
     font-size: 0.74rem;
     color: #777;

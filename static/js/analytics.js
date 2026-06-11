@@ -177,8 +177,8 @@
 
   // Timeseries layout: [sec, speed, voltage, temp, battery, altitude, lat, lon, mileageKm,
   //                     pwm, current, power, gpsSpeed, gForce, gForceX, gForceY]
-  const SEC = 0, SPD = 1, VOLT = 2, TEMP = 3, BATT = 4, LAT = 6, LON = 7, MILEAGE = 8;
-  const CURRENT = 10, POWER = 11;
+  const SEC = 0, SPD = 1, VOLT = 2, TEMP = 3, BATT = 4, ALT = 5, LAT = 6, LON = 7, MILEAGE = 8;
+  const PWM = 9, CURRENT = 10, POWER = 11, GPSSPD = 12, GFORCE = 13;
 
   // ---------- Small stats helpers ----------
   function median(values) {
@@ -304,6 +304,131 @@
     return -1;
   }
 
+  // Detect "anomaly" samples: free spins (wheel spinning without ground
+  // contact, e.g. pick-up tests or falls) and physics-impossible accelerations.
+  //
+  //   Free spin = wheel speed > 5 km/h while GPS speed < 2 km/h
+  //   Impossible accel = > 6 m/s² (real-world EUC peak accel is ~3 m/s²)
+  //
+  // Each anomaly carries `kind`: "lift" if the wheel returned to rest
+  // cleanly without a preceding high-speed run, "fall" if it followed a
+  // sustained high-speed window (suggesting an unplanned dismount).
+  // Returns { indices: Set, events: [{kind, sec, peakSpd, durS}] }.
+  function detectAnomalies(ts) {
+    const indices = new Set();
+    const events = [];
+    if (ts.length < 4) return { indices, events };
+    // First pass: per-sample anomaly flagging
+    const flags = new Array(ts.length).fill(false);
+    for (let i = 1; i < ts.length; i++) {
+      const dt = ts[i][SEC] - ts[i - 1][SEC];
+      if (dt <= 0 || dt > 5) continue;
+      const w = ts[i][SPD] || 0;
+      const g = ts[i][GPSSPD];
+      const prevG = ts[i - 1][GPSSPD];
+      // Free spin detection requires GPS data to be present (>0 on either
+      // side of the window — otherwise we'd flag wheels parked indoors).
+      const hasGps = (typeof g === "number" && g > 0.3) || (typeof prevG === "number" && prevG > 0.3);
+      if (hasGps && w > 5 && typeof g === "number" && g < 2) {
+        flags[i] = true;
+        indices.add(i);
+      }
+      // Impossible-accel sanity check. dV in m/s over dt seconds.
+      const dV = ((w || 0) - (ts[i - 1][SPD] || 0)) / 3.6;
+      if (dV / dt > 6 && w > 10) {
+        flags[i] = true;
+        indices.add(i);
+      }
+    }
+    // Second pass: group contiguous flagged samples into events.
+    let i = 0;
+    while (i < ts.length) {
+      if (!flags[i]) { i++; continue; }
+      const startI = i;
+      let peakSpd = ts[i][SPD] || 0;
+      // Extend through the contiguous flagged window, allowing 1 gap.
+      let gap = 0;
+      let j = i;
+      while (j < ts.length && (flags[j] || gap < 2)) {
+        if (flags[j]) { gap = 0; if ((ts[j][SPD] || 0) > peakSpd) peakSpd = ts[j][SPD]; }
+        else gap++;
+        j++;
+      }
+      const endI = Math.min(ts.length - 1, j - 1);
+      const durS = (ts[endI][SEC] || 0) - (ts[startI][SEC] || 0);
+      // Classify FALL vs LIFT. A real fall has:
+      //   1. The wheel sustained at speed BEFORE (>=15 km/h with GPS agree)
+      //      for at least 3 of the previous 12 samples — not just 1.
+      //   2. AFTER the event, the wheel did NOT smoothly return to the
+      //      previous riding speed — ground-truth speed drops to near zero
+      //      within the next ~20 samples and stays there.
+      // Otherwise it's a LIFT/test (brief pickup, GPS dropout in a turn, etc).
+      let preFastCount = 0;
+      for (let k = Math.max(0, startI - 12); k < startI; k++) {
+        const w = ts[k][SPD] || 0, g = ts[k][GPSSPD];
+        if (typeof g === "number" && g >= 12 && w >= 12) preFastCount++;
+      }
+      let postCrashed = false;
+      if (preFastCount >= 3) {
+        // Within the next 20 samples after the anomaly window, check if GPS
+        // ground speed dropped to < 3 km/h and stayed there for a stretch.
+        let lowStreak = 0, scanned = 0;
+        for (let k = endI + 1; k < Math.min(ts.length, endI + 21); k++) {
+          scanned++;
+          const g = ts[k][GPSSPD];
+          if (typeof g === "number" && g < 3) lowStreak++; else lowStreak = 0;
+          if (lowStreak >= 5) { postCrashed = true; break; }
+        }
+        // If we ran out of trip (last samples) and most of them were slow,
+        // count it as a crash too (wheel never recovered).
+        if (!postCrashed && scanned >= 6 && lowStreak >= 3) postCrashed = true;
+      }
+      events.push({
+        kind: preFastCount >= 3 && postCrashed ? "fall" : "lift",
+        sec: ts[startI][SEC],
+        peakSpd,
+        durS,
+        preFastCount,
+      });
+      i = j;
+    }
+    return { indices, events };
+  }
+
+  // Walk through `ts` looking for the fastest acceleration runs from at-rest
+  // up to `targetKmh`. Returns the best (shortest) time achieved, plus the
+  // start-second so the UI can locate it. Excludes samples in `skipSet`.
+  function bestAccelTime(ts, targetKmh, skipSet) {
+    let best = null;
+    let i = 0;
+    while (i < ts.length) {
+      // Start: speed below 3 km/h (effectively stopped)
+      while (i < ts.length && (ts[i][SPD] || 0) >= 3) i++;
+      if (i >= ts.length) break;
+      const startI = i;
+      // Skip leading at-rest samples
+      while (i < ts.length && (ts[i][SPD] || 0) < 3) i++;
+      // Now scan up to target
+      let aborted = false;
+      while (i < ts.length && (ts[i][SPD] || 0) < targetKmh) {
+        if (skipSet.has(i)) { aborted = true; break; }
+        i++;
+      }
+      if (!aborted && i < ts.length && (ts[i][SPD] || 0) >= targetKmh && !skipSet.has(i)) {
+        // First moving sample (>= 3 km/h) defines the start time
+        let firstMoveI = startI;
+        while (firstMoveI < i && (ts[firstMoveI][SPD] || 0) < 3) firstMoveI++;
+        const dur = (ts[i][SEC] || 0) - (ts[firstMoveI][SEC] || 0);
+        if (dur > 0 && dur < 60) {
+          if (best == null || dur < best.dur) best = { dur, atSec: ts[firstMoveI][SEC] };
+        }
+      }
+      // Continue past current point
+      while (i < ts.length && (ts[i][SPD] || 0) >= 3) i++;
+    }
+    return best;
+  }
+
   function computeTripMetrics(t) {
     const rawTs = Array.isArray(t.timeseries) ? t.timeseries : [];
     const lastAlive = lastAliveIndex(rawTs);
@@ -324,9 +449,15 @@
       ambientC: null,
       centroid: null,
       // Forensic adds
-      // Sanity-clamp top speed: no production EUC tops 100 km/h, so anything
-      // above that is a single GPS glitch sample inflating stats.maxSpeed.
-      topSpeedKmh: (t.stats && t.stats.maxSpeed && t.stats.maxSpeed <= 100) ? t.stats.maxSpeed : null,
+      topSpeedKmh: null,        // verified max speed (excludes free spins)
+      anomalies: [],            // free spins + falls detected within this trip
+      accel25: null,            // best 0->25 km/h time (universally achievable)
+      accel40: null,            // best 0->40 km/h time
+      accel60: null,            // best 0->60 km/h time
+      climbM: 0,                // cumulative ascent
+      descentM: 0,              // cumulative descent
+      stationaryS: 0,           // seconds with speed < 1 km/h while logger alive
+      maxGForce: 0,             // peak g-force magnitude (where logged)
     };
     if (t.dateStart && t.dateEnd) {
       const s = new Date(t.dateStart).getTime();
@@ -423,6 +554,55 @@
     if (temps.length >= 4) {
       m.tempMax = Math.max(...temps);
       m.tempStart = median(temps.slice(0, 5));
+    }
+
+    // Anomaly detection: free spins + falls. Drives verified-max-speed and
+    // gates the acceleration runs so a free-spin spike doesn't count as
+    // "0 to 60 in 4 seconds."
+    const { indices: anomIdx, events: anomEvents } = detectAnomalies(ts);
+    m.anomalies = anomEvents;
+
+    // Verified top speed: highest wheel speed excluding any anomaly sample.
+    // Also clamp the absolute ceiling at 100 km/h (no production EUC).
+    let maxV = 0;
+    for (let i = 0; i < ts.length; i++) {
+      if (anomIdx.has(i)) continue;
+      const v = ts[i][SPD] || 0;
+      if (v > maxV && v <= 100) maxV = v;
+    }
+    if (maxV > 0) m.topSpeedKmh = maxV;
+
+    // Acceleration: best 0->target time per common thresholds, skipping
+    // anomalies. 25 km/h is the most universally-reached, gives every
+    // trip a comparable metric; 40/60 surface on the longer/faster rides.
+    const a25 = bestAccelTime(ts, 25, anomIdx);
+    if (a25) m.accel25 = a25.dur;
+    const a40 = bestAccelTime(ts, 40, anomIdx);
+    if (a40) m.accel40 = a40.dur;
+    const a60 = bestAccelTime(ts, 60, anomIdx);
+    if (a60) m.accel60 = a60.dur;
+
+    // Altitude: integrate up/down deltas. Skip noisy single-sample bumps by
+    // requiring at least 0.5 m change between samples.
+    for (let i = 1; i < ts.length; i++) {
+      const a0 = ts[i - 1][ALT], a1 = ts[i][ALT];
+      if (typeof a0 !== "number" || typeof a1 !== "number") continue;
+      const d = a1 - a0;
+      if (Math.abs(d) < 0.5) continue;
+      if (d > 0) m.climbM += d; else m.descentM += -d;
+    }
+
+    // Stationary time: speed < 1 km/h.
+    for (let i = 1; i < ts.length; i++) {
+      const v = ts[i][SPD] || 0;
+      const dt = (ts[i][SEC] || 0) - (ts[i - 1][SEC] || 0);
+      if (v < 1 && dt > 0 && dt < 30) m.stationaryS += dt;
+    }
+
+    // Max g-force (column may be 0 on older exports).
+    for (const row of ts) {
+      const g = row[GFORCE];
+      if (typeof g === "number" && g > m.maxGForce) m.maxGForce = g;
     }
 
     // GPS centroid rounded to 0.1° (~11 km) — coarse on purpose, both for
@@ -1102,13 +1282,26 @@
       if (best < 0 || bestD > 40) { hideTooltip(); hideAllCrosshairs(); return; }
       syncCrosshair(best);
       const bin = an.bins[best];
+      const totalKmIn = bin.trips.reduce((s, m) => s + (m.distKm || 0), 0);
       let html = `<b>${bin.label}</b> · ${bin.trips.length} trip${bin.trips.length === 1 ? "" : "s"}`;
+      if (totalKmIn > 0) html += ` · ${UNITS.dist(totalKmIn).toFixed(0)} ${UNITS.distUnit}`;
       for (const s of an.series) {
         const st = s.stats[best];
         if (!st || st.med == null) continue;
         html += `<br>${s.label}: <b>${fmtVal(st.med, s.dp)}</b> ${s.unit || ""}`;
-        if (s.band && st.p25 != null) html += ` <span style="color:#888">(${fmtVal(st.p25, s.dp)}–${fmtVal(st.p75, s.dp)})</span>`;
+        if (s.band && st.p25 != null) html += ` <span style="color:#888">(IQR ${fmtVal(st.p25, s.dp)}–${fmtVal(st.p75, s.dp)})</span>`;
+        if (st.n != null) html += ` <span style="color:#666">n=${st.n}</span>`;
       }
+      showTooltip(html, e.clientX, e.clientY);
+    } else if (an.type === "hist") {
+      hideAllCrosshairs();
+      const idx = an.xToBin(mx);
+      if (idx < 0 || idx >= an.bins.length) { hideTooltip(); return; }
+      const b = an.bins[idx];
+      if (b.count === 0) { hideTooltip(); return; }
+      // Range readout uses the unit baked in by the histogram caller.
+      const html = `<b>${fmtVal(b.from)}</b>–<b>${fmtVal(b.to)}</b> ${an.unit || ""}<br>` +
+                   `<b>${b.count}</b> trip${b.count === 1 ? "" : "s"}`;
       showTooltip(html, e.clientX, e.clientY);
     } else {
       hideAllCrosshairs();
@@ -1182,6 +1375,7 @@
   function renderLifetime() {
     let totalKm = 0, totalH = 0, totalWh = 0;
     let topSpd = 0, maxRangeKm = 0;
+    let totalClimb = 0, anomCount = 0, bestAccel = null, bestAccelTarget = 0;
     const days = new Set();
     for (const m of dated) {
       totalKm += m.distKm;
@@ -1189,12 +1383,12 @@
       if (m.energyWh) totalWh += m.energyWh;
       if (m.dateStr) days.add(m.dateStr);
       if (m.estRangeKm != null && m.estRangeKm > maxRangeKm) maxRangeKm = m.estRangeKm;
-    }
-    // Top speed: pull from each track's stats since timeseries is downsampled.
-    // Clamp to 100 km/h since anything beyond is a GPS glitch, not a real run.
-    for (const t of tracks) {
-      const v = t.stats && t.stats.maxSpeed;
-      if (typeof v === "number" && v > topSpd && v <= 100) topSpd = v;
+      if (m.topSpeedKmh != null && m.topSpeedKmh > topSpd) topSpd = m.topSpeedKmh;
+      totalClimb += m.climbM || 0;
+      anomCount += (m.anomalies && m.anomalies.length) || 0;
+      // Prefer to headline the 40 km/h time when achievable, else 25 km/h.
+      if (m.accel40 != null && (bestAccelTarget < 40 || m.accel40 < bestAccel)) { bestAccel = m.accel40; bestAccelTarget = 40; }
+      else if (bestAccelTarget < 40 && m.accel25 != null && (bestAccel == null || m.accel25 < bestAccel)) { bestAccel = m.accel25; bestAccelTarget = 25; }
     }
     setStat("lf-trips", dated.length, "");
     setStat("lf-dist", UNITS.dist(totalKm), UNITS.distUnit);
@@ -1209,6 +1403,13 @@
     setStat("lf-cadence", dated.length / spanMonths, "");
     setStat("lf-charges", charges.length, "");
     setStat("lf-chargedpct", charges.reduce((s, c) => s + c.gain, 0), "%");
+    setStat("lf-accel40", bestAccel, bestAccelTarget ? "s" : "");
+    {
+      const lbl = document.querySelector("#lf-accel40 + .sl");
+      if (lbl && bestAccelTarget) lbl.textContent = "Best 0 → " + bestAccelTarget + " km/h";
+    }
+    setStat("lf-anomalies", anomCount, "");
+    setStat("lf-climb", UNITS.alt(totalClimb), UNITS.altUnit);
   }
 
   // Insight generation. Compares the first vs last third of dated trips so a
@@ -1913,6 +2114,85 @@
           `Hot threshold (max ever): <b>${lifeTopDisp.toFixed(1)} ${UNITS.speedUnit}</b>`,
         ]);
       }
+    }
+
+    // Acceleration trend: pick whichever threshold (25 / 40 / 60 km/h) the
+    // user actually hits often. 25 km/h is the universal floor; the 40 / 60
+    // numbers tag along in the takeaway when achievable.
+    {
+      const meta = document.getElementById("accel-meta");
+      const usable25 = dated.filter((m) => m.accel25 != null).length;
+      const usable40 = dated.filter((m) => m.accel40 != null).length;
+      const usable60 = dated.filter((m) => m.accel60 != null).length;
+      const useTarget = usable40 >= 10 ? 40 : (usable25 >= 5 ? 25 : null);
+      if (!useTarget) {
+        setSectionEmpty("accel", "Not enough trips with valid acceleration runs to compute a trend.");
+        meta.textContent = "";
+        setTakeaway("accel40-takeaway", []);
+      } else {
+        setSectionActive("accel");
+        const field = useTarget === 40 ? "accel40" : "accel25";
+        const usable = useTarget === 40 ? usable40 : usable25;
+        meta.textContent = usable + " trips with 0 to " + useTarget + " km/h runs";
+        const stats = binStats(bins, (m) => m[field], minPerBin);
+        const series = [{
+          stats, color: "#ffd740",
+          label: "Best 0 to " + useTarget + " km/h",
+          unit: "s", band: true, dp: 2,
+        }];
+        drawTrendChart(document.getElementById("chart-accel40"), bins, series, { rolling });
+        const dateFmt = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" });
+        const parts = [];
+        if (usable25) {
+          const all = dated.map((m) => m.accel25).filter((v) => v != null).sort((a, b) => a - b);
+          const fastest = all[0], med = all[Math.floor(all.length / 2)];
+          const fastestTrip = dated.find((m) => m.accel25 === fastest);
+          parts.push(`Fastest 0&hairsp;&rarr;&hairsp;25 km/h: <b>${fastest.toFixed(2)} s</b>` + (fastestTrip && fastestTrip.date ? ` on <b>${dateFmt.format(fastestTrip.date)}</b>` : ""));
+          parts.push(`Typical: <b>${med.toFixed(2)} s</b>`);
+        }
+        if (usable40) {
+          const all = dated.map((m) => m.accel40).filter((v) => v != null).sort((a, b) => a - b);
+          parts.push(`Fastest 0&hairsp;&rarr;&hairsp;40 km/h: <b>${all[0].toFixed(2)} s</b>`);
+        }
+        if (usable60) {
+          const all = dated.map((m) => m.accel60).filter((v) => v != null).sort((a, b) => a - b);
+          parts.push(`Fastest 0&hairsp;&rarr;&hairsp;60 km/h: <b>${all[0].toFixed(2)} s</b>`);
+        }
+        setTakeaway("accel40-takeaway", parts);
+      }
+    }
+
+    // Anomalies: list every free spin or fall across the whole library.
+    {
+      const events = [];
+      for (const m of dated) {
+        for (const ev of m.anomalies || []) {
+          events.push({ ...ev, date: m.date, label: m.label });
+        }
+      }
+      const meta = document.getElementById("anomalies-meta");
+      const list = document.getElementById("anomalies-list");
+      const falls = events.filter((e) => e.kind === "fall");
+      const lifts = events.filter((e) => e.kind === "lift");
+      meta.textContent = events.length + " events (" + lifts.length + " lifts / " + falls.length + " falls)";
+      setTakeaway("anomalies-takeaway", events.length ? [
+        `Lifts / pickup tests: <b>${lifts.length}</b>`,
+        `Suspected falls: <b>${falls.length}</b>`,
+      ] : ["No free-spin or fall samples detected"], falls.length > 0 ? "warn" : null);
+      // Render most recent 200 to avoid blowing up the DOM
+      events.sort((a, b) => (b.date?.getTime() || 0) - (a.date?.getTime() || 0));
+      const top = events.slice(0, 200);
+      const fmt = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" });
+      list.innerHTML = top.map((e) => {
+        const peak = UNITS.speed(e.peakSpd).toFixed(0);
+        const dur = e.durS != null ? e.durS.toFixed(1) : "—";
+        return `<div class="anomaly-row ${e.kind}">` +
+          `<span class="anom-kind">${e.kind.toUpperCase()}</span>` +
+          `<span class="anom-date">${e.date ? fmt.format(e.date) : "?"}</span>` +
+          `<span class="anom-peak">${peak} ${UNITS.speedUnit}</span>` +
+          `<span style="color:#888">${dur}s</span>` +
+        `</div>`;
+      }).join("");
     }
 
     // 2. Efficiency.
