@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Wheel Forensics &middot; EUC Planet</title>
     <link rel="icon" href="static/favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="static/css/analytics.css?v=14" />
+    <link rel="stylesheet" href="static/css/analytics.css?v=15" />
     <script type="text/javascript">
         (function(c,l,a,r,i,t,y){
             c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
@@ -117,7 +117,7 @@
             </section>
 
             <section id="insights" class="hidden" data-tab="overview">
-                <h2><span class="forensic-tag">FINDINGS</span><span class="forensic-tag weather-tag">+ WEATHER</span> Key takeaways <span class="sec-meta">computed from your history</span></h2>
+                <h2><span class="forensic-tag">FINDINGS</span><span class="weather-pair"><span class="plus">+</span><span class="forensic-tag weather-tag">WEATHER</span></span> Key takeaways <span class="sec-meta">computed from your history</span></h2>
                 <div id="insights-list"></div>
             </section>
 
@@ -143,7 +143,7 @@
             </section>
 
             <section class="chart-section" data-section="range" data-tab="range">
-                <h2><span class="forensic-tag">EVIDENCE</span><span class="forensic-tag weather-tag">+ WEATHER</span> Estimated full range <span class="sec-meta" id="range-meta"></span></h2>
+                <h2><span class="forensic-tag">EVIDENCE</span><span class="weather-pair"><span class="plus">+</span><span class="forensic-tag weather-tag">WEATHER</span></span> Estimated full range <span class="sec-meta" id="range-meta"></span></h2>
                 <div class="chart-host">
                     <div class="chart-title">Range over time <span class="chart-title-axes">(median per group)</span></div>
                     <canvas id="chart-range"></canvas>
@@ -276,7 +276,7 @@
             </section>
 
             <section class="chart-section" data-section="thermal" data-tab="thermal">
-                <h2><span class="forensic-tag">EVIDENCE</span><span class="forensic-tag weather-tag">+ WEATHER</span> Thermal <span class="sec-meta" id="thermal-meta"></span></h2>
+                <h2><span class="forensic-tag">EVIDENCE</span><span class="weather-pair"><span class="plus">+</span><span class="forensic-tag weather-tag">WEATHER</span></span> Thermal <span class="sec-meta" id="thermal-meta"></span></h2>
                 <div class="chart-host tall">
                     <div class="chart-title">Temperature rise vs power draw <span class="weather-chip">WEATHER</span> <span class="chart-title-axes">(one dot per trip, old → new)</span></div>
                     <canvas id="chart-thermal"></canvas>

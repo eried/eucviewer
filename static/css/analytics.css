@@ -446,35 +446,46 @@ body[data-layout="tabs"] [data-tab]:not(.tab-btn):not(.tab-active) { display: no
 }
 body.weather-loaded .weather-chip { display: inline-block; }
 
-/* Tab indicator: tiny yellow dot on the top-right of tabs whose content
-   draws on weather data. Lights up only when weather is loaded. */
-.tab-btn[data-uses-weather] { padding-right: 18px; }
+/* Tab indicator: small yellow square inline with the tab label, visible
+   only when weather is actually loaded. Hidden entirely (no reserved
+   space) when weather is absent so the tab keeps its natural width. */
 .tab-btn[data-uses-weather]::after {
     content: "";
-    position: absolute;
-    top: 6px;
-    right: 8px;
-    width: 6px;
-    height: 6px;
-    background: #ffd740;
-    border-radius: 50%;
-    box-shadow: 0 0 6px rgba(255, 215, 64, 0.6);
-    opacity: 0;
-    transition: opacity 0.18s;
-}
-body.weather-loaded .tab-btn[data-uses-weather]::after { opacity: 1; }
-
-/* Yellow secondary chip appended to FINDINGS / EVIDENCE on the
-   weather-enriched sections so the heading reads
-   "EVIDENCE + WEATHER" when the data is loaded. */
-.forensic-tag.weather-tag {
     display: none;
+    width: 7px;
+    height: 7px;
+    background: #ffd740;
+    margin-left: 7px;
+    vertical-align: middle;
+    box-shadow: 0 0 6px rgba(255, 215, 64, 0.55);
+}
+body.weather-loaded .tab-btn[data-uses-weather]::after { display: inline-block; }
+
+/* Section heading: "+ [WEATHER]" pair sitting next to the FINDINGS /
+   EVIDENCE chip. Always present so the structure is consistent; reads
+   "very disabled" (low-contrast gray) when weather is not loaded, and
+   lights up yellow once cross-referenced. */
+.weather-pair {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 2px;
+    color: rgba(255, 255, 255, 0.18);
+    transition: color 0.18s;
+}
+.weather-pair .plus { font-weight: 700; font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Consolas, monospace; }
+.forensic-tag.weather-tag {
+    color: rgba(255, 255, 255, 0.28);
+    border-color: rgba(255, 255, 255, 0.10);
+    background: rgba(255, 255, 255, 0.02);
+    transition: color 0.18s, border-color 0.18s, background 0.18s;
+}
+body.weather-loaded .weather-pair { color: #ffd740; }
+body.weather-loaded .forensic-tag.weather-tag {
     color: #ffd740;
     border-color: rgba(255, 215, 64, 0.45);
     background: rgba(255, 215, 64, 0.10);
-    margin-left: -2px;
 }
-body.weather-loaded .forensic-tag.weather-tag { display: inline-block; }
 
 /* Info-icon tooltips next to control labels. */
 .info-icon {
