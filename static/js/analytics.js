@@ -2,11 +2,10 @@
   "use strict";
 
   // Imperial unit toggle — drives display labels and converters everywhere
-  // values are shown. Resolution order: ?units= URL param, then localStorage
-  // (set by the cogwheel toggle on the main viewer), then locale-based
-  // default for first visit. Keep this block in sync with app.js / inspector.js.
+  // values are shown. Strict: only default to imperial when the browser
+  // language is en-US (or the two other countries that actually use it).
+  // Keep in sync with app.js / inspector.js.
   const UNITS_STORAGE_KEY = "eucviewer-units";
-  const IMPERIAL_REGIONS = ["US", "LR", "MM", "GB"];
   function detectUnits() {
     const force = new URLSearchParams(location.search).get("units");
     if (force === "imperial" || force === "metric") return force;
@@ -14,10 +13,8 @@
       const stored = localStorage.getItem(UNITS_STORAGE_KEY);
       if (stored === "imperial" || stored === "metric") return stored;
     } catch (_) {}
-    try {
-      const loc = new Intl.Locale(navigator.language || "en").maximize();
-      if (IMPERIAL_REGIONS.includes(loc.region)) return "imperial";
-    } catch (_) {}
+    const lang = (navigator.language || "").toLowerCase();
+    if (lang === "en-us" || lang === "en-lr" || lang === "en-mm") return "imperial";
     return "metric";
   }
   const UNITS = (() => {
@@ -55,6 +52,87 @@
   const insightsBox = document.getElementById("insights");
   const insightsList = document.getElementById("insights-list");
   const rangeTempHost = document.getElementById("range-temp-host");
+
+  // Anomaly detector settings - persisted per-browser so the user can
+  // tune them once for their wheel/loadout and keep the result.
+  const ANOM_STORAGE_KEY = "wheel-forensics-anom-settings";
+  const ANOM_DEFAULTS = { gpsThresh: 2, accelThresh: 6, preFallSpd: 12, postStopStreak: 5 };
+  let anomalySettings = (() => {
+    try {
+      const raw = localStorage.getItem(ANOM_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        return Object.assign({}, ANOM_DEFAULTS, parsed);
+      }
+    } catch (_) {}
+    return Object.assign({}, ANOM_DEFAULTS);
+  })();
+  function saveAnomSettings() {
+    try { localStorage.setItem(ANOM_STORAGE_KEY, JSON.stringify(anomalySettings)); } catch (_) {}
+  }
+  function bindAnomSettings() {
+    const inputs = [
+      ["anom-gps-thresh", "gpsThresh"],
+      ["anom-accel-thresh", "accelThresh"],
+      ["anom-prefall-spd", "preFallSpd"],
+      ["anom-poststop", "postStopStreak"],
+    ];
+    for (const [id, key] of inputs) {
+      const el = document.getElementById(id);
+      if (!el) continue;
+      el.value = anomalySettings[key];
+      el.addEventListener("change", () => {
+        const v = Number(el.value);
+        if (!isNaN(v)) {
+          anomalySettings[key] = v;
+          saveAnomSettings();
+          recomputeAnomalies();
+        }
+      });
+    }
+    const reset = document.getElementById("anom-reset");
+    if (reset) {
+      reset.addEventListener("click", () => {
+        anomalySettings = Object.assign({}, ANOM_DEFAULTS);
+        saveAnomSettings();
+        for (const [id, key] of inputs) {
+          const el = document.getElementById(id);
+          if (el) el.value = anomalySettings[key];
+        }
+        recomputeAnomalies();
+      });
+    }
+  }
+  // Re-run anomaly detection on every loaded trip without re-parsing the
+  // .dbb. Fast enough at 200+ trips.
+  let tracksRef = null;
+  let metricsRef = null;
+  function recomputeAnomalies() {
+    if (!tracksRef || !metricsRef) return;
+    for (let i = 0; i < tracksRef.length; i++) {
+      const t = tracksRef[i];
+      const rawTs = Array.isArray(t.timeseries) ? t.timeseries : [];
+      const la = lastAliveIndex(rawTs);
+      const ts = la >= 0 ? rawTs.slice(0, la + 1) : rawTs;
+      const { indices: anomIdx, events: anomEvents } = detectAnomalies(ts, anomalySettings);
+      metricsRef[i].anomalies = anomEvents;
+      // Recompute the affected metrics
+      let maxV = 0;
+      for (let k = 0; k < ts.length; k++) {
+        if (anomIdx.has(k)) continue;
+        const v = ts[k][SPD] || 0;
+        if (v > maxV && v <= 100) maxV = v;
+      }
+      metricsRef[i].topSpeedKmh = maxV > 0 ? maxV : null;
+      const a25 = bestAccelTime(ts, 25, anomIdx);
+      metricsRef[i].accel25 = a25 ? a25.dur : null;
+      const a40 = bestAccelTime(ts, 40, anomIdx);
+      metricsRef[i].accel40 = a40 ? a40.dur : null;
+      const a60 = bestAccelTime(ts, 60, anomIdx);
+      metricsRef[i].accel60 = a60 ? a60.dur : null;
+    }
+    if (typeof renderAll === "function") renderAll();
+  }
 
   function showError(msg) {
     errorBanner.textContent = msg;
@@ -314,7 +392,12 @@
   // cleanly without a preceding high-speed run, "fall" if it followed a
   // sustained high-speed window (suggesting an unplanned dismount).
   // Returns { indices: Set, events: [{kind, sec, peakSpd, durS}] }.
-  function detectAnomalies(ts) {
+  function detectAnomalies(ts, opts) {
+    opts = opts || {};
+    const gpsThresh = opts.gpsThresh != null ? opts.gpsThresh : 2;
+    const accelThresh = opts.accelThresh != null ? opts.accelThresh : 6;
+    const preFallSpd = opts.preFallSpd != null ? opts.preFallSpd : 12;
+    const postStopStreak = opts.postStopStreak != null ? opts.postStopStreak : 5;
     const indices = new Set();
     const events = [];
     if (ts.length < 4) return { indices, events };
@@ -329,13 +412,13 @@
       // Free spin detection requires GPS data to be present (>0 on either
       // side of the window — otherwise we'd flag wheels parked indoors).
       const hasGps = (typeof g === "number" && g > 0.3) || (typeof prevG === "number" && prevG > 0.3);
-      if (hasGps && w > 5 && typeof g === "number" && g < 2) {
+      if (hasGps && w > 5 && typeof g === "number" && g < gpsThresh) {
         flags[i] = true;
         indices.add(i);
       }
       // Impossible-accel sanity check. dV in m/s over dt seconds.
       const dV = ((w || 0) - (ts[i - 1][SPD] || 0)) / 3.6;
-      if (dV / dt > 6 && w > 10) {
+      if (dV / dt > accelThresh && w > 10) {
         flags[i] = true;
         indices.add(i);
       }
@@ -366,7 +449,7 @@
       let preFastCount = 0;
       for (let k = Math.max(0, startI - 12); k < startI; k++) {
         const w = ts[k][SPD] || 0, g = ts[k][GPSSPD];
-        if (typeof g === "number" && g >= 12 && w >= 12) preFastCount++;
+        if (typeof g === "number" && g >= preFallSpd && w >= preFallSpd) preFastCount++;
       }
       let postCrashed = false;
       if (preFastCount >= 3) {
@@ -377,11 +460,9 @@
           scanned++;
           const g = ts[k][GPSSPD];
           if (typeof g === "number" && g < 3) lowStreak++; else lowStreak = 0;
-          if (lowStreak >= 5) { postCrashed = true; break; }
+          if (lowStreak >= postStopStreak) { postCrashed = true; break; }
         }
-        // If we ran out of trip (last samples) and most of them were slow,
-        // count it as a crash too (wheel never recovered).
-        if (!postCrashed && scanned >= 6 && lowStreak >= 3) postCrashed = true;
+        if (!postCrashed && scanned >= 6 && lowStreak >= Math.max(2, postStopStreak - 2)) postCrashed = true;
       }
       events.push({
         kind: preFastCount >= 3 && postCrashed ? "fall" : "lift",
@@ -449,6 +530,7 @@
       ambientC: null,
       centroid: null,
       // Forensic adds
+      voltSagPct: null,         // (Vmax - Vmin under load) / Vmax * 100
       topSpeedKmh: null,        // verified max speed (excludes free spins)
       anomalies: [],            // free spins + falls detected within this trip
       accel25: null,            // best 0->25 km/h time (universally achievable)
@@ -518,6 +600,22 @@
     if (curCnt >= 10) m.avgCurrent = curSum / curCnt;
     if (powCnt >= 10) m.avgPower = powSum / powCnt;
 
+    // Voltage sag %: how far the pack droops between unloaded peak and
+    // loaded trough during the ride. Useful as a battery-aging proxy
+    // alongside the IR delta-method.
+    if (hasVolt) {
+      let vMax = 0, vMin = Infinity;
+      for (const row of ts) {
+        const v = row[VOLT] || 0;
+        if (v < 50) continue; // alive-only
+        if (v > vMax) vMax = v;
+        if (v < vMin) vMin = v;
+      }
+      if (vMax > 0 && vMin < Infinity && vMax > vMin) {
+        m.voltSagPct = (vMax - vMin) / vMax * 100;
+      }
+    }
+
     // Internal-resistance proxy via the delta method: regress dV vs dI over
     // short timesteps so SoC drift across the trip cancels out (each pair only
     // spans ~1-2 seconds). Only sample pairs with a meaningful load step
@@ -558,8 +656,8 @@
 
     // Anomaly detection: free spins + falls. Drives verified-max-speed and
     // gates the acceleration runs so a free-spin spike doesn't count as
-    // "0 to 60 in 4 seconds."
-    const { indices: anomIdx, events: anomEvents } = detectAnomalies(ts);
+    // "0 to 60 in 4 seconds." Opts read from the saved settings panel.
+    const { indices: anomIdx, events: anomEvents } = detectAnomalies(ts, anomalySettings);
     m.anomalies = anomEvents;
 
     // Verified top speed: highest wheel speed excluding any anomaly sample.
@@ -645,6 +743,12 @@
     }
   }
   progressStrip.classList.add("hidden");
+
+  // Expose for anomaly-settings recompute (lets the panel re-flag events
+  // without re-parsing the .dbb).
+  tracksRef = tracks;
+  metricsRef = tripMetrics;
+  bindAnomSettings();
 
   // Analysis works oldest → newest; undated trips can't be placed on a
   // timeline, so they're dropped (counted in the subtitle).
@@ -922,6 +1026,7 @@
     const withAmbient = dated.filter((m) => m.ambientC != null).length;
     if (withAmbient) {
       weatherLoaded = true;
+      document.body.classList.add("weather-loaded");
       weatherStatus.textContent = `Ambient temp for ${withAmbient} of ${dated.length} trips` + (failed ? ` (${failed} location${failed > 1 ? "s" : ""} failed)` : "");
       weatherStatus.className = failed ? "error" : "ok";
       weatherBtn.textContent = "Weather added";
@@ -947,6 +1052,7 @@
   };
   const AXIS_COLOR = "rgba(255,255,255,0.35)";
   const GRID_COLOR = "rgba(255,255,255,0.06)";
+  const GRID_MINOR_COLOR = "rgba(255,255,255,0.025)";
   const FONT = "10px -apple-system, sans-serif";
 
   const tooltip = document.createElement("div");
@@ -1038,7 +1144,16 @@
     const s0 = scales.find((s) => s);
     if (s0) {
       const ticks = niceTicks(s0.min, s0.max, 4);
+      const minorTicks = niceTicks(s0.min, s0.max, 16);
       ctx.fillStyle = AXIS_COLOR;
+      const majorSet = new Set(ticks.map((v) => v.toFixed(6)));
+      // Minor gridlines first (so major lines paint on top).
+      ctx.strokeStyle = GRID_MINOR_COLOR;
+      for (const tv of minorTicks) {
+        if (majorSet.has(tv.toFixed(6))) continue;
+        const y = pad.top + ch - ((tv - s0.min) / (s0.max - s0.min)) * ch;
+        ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(w - pad.right, y); ctx.stroke();
+      }
       ctx.strokeStyle = GRID_COLOR;
       ctx.textAlign = "right";
       ctx.textBaseline = "middle";
@@ -1180,21 +1295,41 @@
     canvas._scatterMap = { xAt, yAt, xMin, xMax, yMin, yMax };
 
     ctx.font = FONT;
-    ctx.strokeStyle = GRID_COLOR;
     ctx.fillStyle = AXIS_COLOR;
     ctx.textAlign = "right";
     ctx.textBaseline = "middle";
-    for (const tv of niceTicks(yMin, yMax, 4)) {
+    // Minor (faint) gridlines first, then major over the top.
+    const yMajor = niceTicks(yMin, yMax, 4);
+    const yMinor = niceTicks(yMin, yMax, 16);
+    const yMajorSet = new Set(yMajor.map((v) => v.toFixed(6)));
+    ctx.strokeStyle = GRID_MINOR_COLOR;
+    for (const tv of yMinor) {
+      if (yMajorSet.has(tv.toFixed(6))) continue;
+      const y = yAt(tv);
+      ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(w - pad.right, y); ctx.stroke();
+    }
+    ctx.strokeStyle = GRID_COLOR;
+    for (const tv of yMajor) {
       const y = yAt(tv);
       ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(w - pad.right, y); ctx.stroke();
       ctx.fillText(fmtVal(tv), pad.left - 6, y);
     }
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
+    const xMajor = niceTicks(xMin, xMax, 6);
+    const xMinor = niceTicks(xMin, xMax, 24);
+    const xMajorSet = new Set(xMajor.map((v) => v.toFixed(6)));
+    ctx.strokeStyle = GRID_MINOR_COLOR;
+    for (const tv of xMinor) {
+      if (xMajorSet.has(tv.toFixed(6))) continue;
+      const x = xAt(tv);
+      ctx.beginPath(); ctx.moveTo(x, pad.top); ctx.lineTo(x, pad.top + ch); ctx.stroke();
+    }
+    ctx.strokeStyle = GRID_COLOR;
     // The x-axis title sits on the same line at the right edge — skip tick
     // labels that would collide with it.
     const xTitleW = ctx.measureText(opts.xLabel).width;
-    for (const tv of niceTicks(xMin, xMax, 6)) {
+    for (const tv of xMajor) {
       const x = xAt(tv);
       ctx.beginPath(); ctx.moveTo(x, pad.top); ctx.lineTo(x, pad.top + ch); ctx.stroke();
       if (x < w - pad.right - xTitleW - 16) ctx.fillText(fmtVal(tv), x, pad.top + ch + 6);
@@ -1210,10 +1345,15 @@
     for (const p of pts) {
       const x = xAt(p.x), y = yAt(p.y);
       ctx.fillStyle = epochColor(p.epoch);
-      ctx.globalAlpha = 0.8;
+      ctx.globalAlpha = 0.82;
       ctx.beginPath();
-      ctx.arc(x, y, 3.2, 0, Math.PI * 2);
+      ctx.arc(x, y, 4.6, 0, Math.PI * 2);
       ctx.fill();
+      // Outline for better contrast on busy scatters
+      ctx.globalAlpha = 0.55;
+      ctx.strokeStyle = "rgba(0,0,0,0.4)";
+      ctx.lineWidth = 0.8;
+      ctx.stroke();
       drawn.push({ x, y, p });
     }
     ctx.globalAlpha = 1;
@@ -1789,12 +1929,13 @@
 
   // Charge windows: for each charge, draw a vertical segment from `from` to
   // `to` along the X = trip-date axis. Visually shows the band of state-of-
-  // charge each plug-in covered.
+  // charge each plug-in covered. X axis gets month tick labels so the user
+  // can locate a charging pattern in a specific season.
   function drawChargeWindows(canvas, list) {
     const cv = setupCanvas(canvas);
     if (!cv || !list.length) return;
     const { ctx, w, h } = cv;
-    const pad = { top: 16, bottom: 24, left: 42, right: 14 };
+    const pad = { top: 24, bottom: 28, left: 42, right: 14 };
     const cw = w - pad.left - pad.right;
     const ch = h - pad.top - pad.bottom;
     const t0 = list[0].date.getTime();
@@ -1807,48 +1948,85 @@
     ctx.strokeStyle = GRID_COLOR;
     ctx.textAlign = "right";
     ctx.textBaseline = "middle";
+    // Major y gridlines
     for (const tv of [0, 25, 50, 75, 100]) {
       const y = yAt(tv);
       ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(w - pad.right, y); ctx.stroke();
       ctx.fillText(tv + "%", pad.left - 6, y);
     }
+    // Minor y gridlines (every 12.5%)
+    ctx.strokeStyle = GRID_MINOR_COLOR;
+    for (const tv of [12.5, 37.5, 62.5, 87.5]) {
+      const y = yAt(tv);
+      ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(w - pad.right, y); ctx.stroke();
+    }
+    // X axis: walk through months of the span and place a tick wherever a
+    // month boundary lands. Pick a step that yields ~6-8 labels regardless
+    // of span (months, quarters, years).
+    const spanDays = span / 86400000;
+    const startD = new Date(t0);
+    const endD = new Date(t1);
+    let xfmt, stepMonths;
+    if (spanDays <= 120) { xfmt = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }); stepMonths = 1; }
+    else if (spanDays <= 800) { xfmt = new Intl.DateTimeFormat(undefined, { month: "short", year: "2-digit" }); stepMonths = 2; }
+    else if (spanDays <= 2000) { xfmt = new Intl.DateTimeFormat(undefined, { month: "short", year: "2-digit" }); stepMonths = 3; }
+    else { xfmt = new Intl.DateTimeFormat(undefined, { year: "numeric" }); stepMonths = 6; }
+    const xLabels = [];
+    const cursor = new Date(startD.getFullYear(), startD.getMonth(), 1);
+    while (cursor.getTime() <= endD.getTime()) {
+      if (cursor.getTime() >= startD.getTime()) xLabels.push(new Date(cursor));
+      cursor.setMonth(cursor.getMonth() + stepMonths);
+    }
+    ctx.strokeStyle = GRID_MINOR_COLOR;
+    ctx.textBaseline = "top";
+    ctx.textAlign = "center";
+    ctx.fillStyle = AXIS_COLOR;
+    for (const d of xLabels) {
+      const x = xAt(d);
+      ctx.beginPath(); ctx.moveTo(x, pad.top); ctx.lineTo(x, pad.top + ch); ctx.stroke();
+      ctx.fillText(xfmt.format(d), x, pad.top + ch + 6);
+    }
     // Each charge: vertical line from `from` to `to` at its date
     for (const c of list) {
       const x = xAt(c.date);
-      ctx.strokeStyle = c.from <= 20 ? "#ff7043" : c.from <= 50 ? "#ffd740" : "#69f0ae";
-      ctx.lineWidth = 1.6;
+      ctx.strokeStyle = c.from <= 20 ? "#ff5252" : c.from <= 50 ? "#ffd740" : "#69f0ae";
+      ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.moveTo(x, yAt(c.from));
       ctx.lineTo(x, yAt(c.to));
       ctx.stroke();
+      // Endpoint dots — small at start, larger at end so it reads as
+      // "charged FROM here UP TO there".
       ctx.fillStyle = ctx.strokeStyle;
-      ctx.beginPath(); ctx.arc(x, yAt(c.to), 1.8, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(x, yAt(c.from), 1.6, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(x, yAt(c.to), 2.6, 0, Math.PI * 2); ctx.fill();
     }
-    // Legend: green = gentle, yellow = mid, red = deep top-up
+    // Legend: greener = healthier
     ctx.textBaseline = "alphabetic";
     ctx.textAlign = "left";
-    const legendY = 12;
+    const legendY = 14;
     let lx = pad.left + 4;
     const legendItems = [
-      ["#69f0ae", "from >50% (gentle)"],
-      ["#ffd740", "from 20–50%"],
-      ["#ff7043", "from <20% (deep)"],
+      ["#69f0ae", "Gentle (started >50%)"],
+      ["#ffd740", "Mid (20–50%)"],
+      ["#ff5252", "Deep (below 20%)"],
     ];
     for (const [col, lbl] of legendItems) {
       ctx.fillStyle = col;
-      ctx.fillRect(lx, legendY - 6, 8, 2);
-      ctx.fillStyle = "rgba(255,255,255,0.6)";
-      ctx.fillText(lbl, lx + 12, legendY);
-      lx += 16 + ctx.measureText(lbl).width + 12;
+      ctx.fillRect(lx, legendY - 7, 10, 3);
+      ctx.fillStyle = "rgba(255,255,255,0.7)";
+      ctx.fillText(lbl, lx + 14, legendY);
+      lx += 18 + ctx.measureText(lbl).width + 14;
     }
-    // X axis title
-    ctx.fillStyle = AXIS_COLOR;
-    ctx.textAlign = "left";
+    // Y-axis title
+    ctx.save();
+    ctx.translate(14, pad.top + ch / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillStyle = "rgba(255,255,255,0.45)";
+    ctx.textAlign = "center";
     ctx.textBaseline = "top";
-    const xfmt = new Intl.DateTimeFormat(undefined, { month: "short", year: "2-digit" });
-    ctx.fillText(xfmt.format(new Date(t0)), pad.left, pad.top + ch + 6);
-    ctx.textAlign = "right";
-    ctx.fillText(xfmt.format(new Date(t1)), w - pad.right, pad.top + ch + 6);
+    ctx.fillText("state of charge", 0, 0);
+    ctx.restore();
   }
 
   // Top-speed trend with both max-per-bin and median-per-bin on the same chart.
@@ -2058,9 +2236,12 @@
         const medGain = median(charges.map((c) => c.gain));
         const medFrom = median(charges.map((c) => c.from));
         const medTo = median(charges.map((c) => c.to));
+        // Express the cumulative % as "equivalent full charges" because
+        // "2475%" reads as a typo without context.
+        const fullCharges = (totalCharged / 100).toFixed(1);
         setTakeaway("charging-takeaway", [
-          `Typical top-up: <b>${medFrom.toFixed(0)}%</b> &rarr; <b>${medTo.toFixed(0)}%</b> (+<b>${medGain.toFixed(0)}%</b>)`,
-          `Total state-of-charge added: <b>${totalCharged.toFixed(0)}%</b> across ${charges.length} sessions`,
+          `Typical top-up: <b>${medFrom.toFixed(0)}%</b> &rarr; <b>${medTo.toFixed(0)}%</b> (adds <b>${medGain.toFixed(0)}%</b>)`,
+          `<b>${charges.length}</b> sessions logged &middot; total energy added ≈ <b>${fullCharges}</b> full charges`,
           `<b>${gentle}</b> gentle (from &gt;50%) &middot; <b>${deep}</b> deep (from &le;20%)`,
         ], deep > gentle ? "warn" : null);
         drawChargeWindows(document.getElementById("chart-charge-window"), charges);
@@ -2379,7 +2560,9 @@
           stats: irStats,
           color: COLORS.ohmIR, label: "Effective IR", unit: "mΩ", band: true, dp: 0,
         }];
-        drawTrendChart(document.getElementById("chart-health"), bins, series, { rolling, zeroBase: true });
+        // Let the y-axis fit the actual data range — IR sits around 180 mΩ,
+        // forcing the axis to zero compressed the variation into the top sliver.
+        drawTrendChart(document.getElementById("chart-health"), bins, series, { rolling });
         meta.textContent = usable + " trips";
         const { peak, trough } = statsPeakTrough(irStats, bins);
         const parts = [];
@@ -2389,6 +2572,25 @@
           parts.push(`Highest: <b>${peak.v.toFixed(0)} mΩ</b> in <b>${peak.label}</b> (+${pct.toFixed(0)}%)`);
         }
         setTakeaway("health-takeaway", parts, peak && trough && ((peak.v - trough.v) / trough.v) > 0.25 ? "warn" : null);
+
+        // Second chart: voltage droop %, independent battery-aging proxy.
+        const sagStats = binStats(bins, (m) => m.voltSagPct, Math.max(2, minPerBin));
+        const usableSag = dated.filter((m) => m.voltSagPct != null).length;
+        if (usableSag >= 5) {
+          const sagSeries = [{
+            stats: sagStats, color: "#ff7043", label: "Voltage droop", unit: "%", band: true, dp: 1,
+          }];
+          drawTrendChart(document.getElementById("chart-health-sag"), bins, sagSeries, { rolling });
+          const { peak: sp, trough: st } = statsPeakTrough(sagStats, bins);
+          const sagParts = [];
+          if (sp && st && sp.label !== st.label) {
+            sagParts.push(`Smallest droop: <b>${st.v.toFixed(1)}%</b> in <b>${st.label}</b>`);
+            sagParts.push(`Largest: <b>${sp.v.toFixed(1)}%</b> in <b>${sp.label}</b>`);
+          }
+          setTakeaway("health-sag-takeaway", sagParts);
+        } else {
+          setTakeaway("health-sag-takeaway", []);
+        }
       }
     }
   }
@@ -2421,6 +2623,7 @@
     }
     if (hits) {
       weatherLoaded = true;
+      document.body.classList.add("weather-loaded");
       weatherStatus.textContent = `Ambient temp for ${hits} trips (cached)`;
       weatherStatus.className = "ok";
       const allCovered = dated.every((m) => m.ambientC != null || !m.centroid);

@@ -2,11 +2,10 @@
   "use strict";
 
   // Imperial unit toggle — drives display labels and converters everywhere
-  // values are shown. Resolution order: ?units= URL param, then localStorage
-  // (set by the cogwheel toggle on the main viewer), then locale-based
-  // default for first visit. Keep this block in sync with app.js / analytics.js.
+  // values are shown. Strict: only default to imperial when the browser
+  // language is en-US (or the two other countries that actually use it).
+  // Keep in sync with app.js / analytics.js.
   const UNITS_STORAGE_KEY = "eucviewer-units";
-  const IMPERIAL_REGIONS = ["US", "LR", "MM", "GB"];
   function detectUnits() {
     const force = new URLSearchParams(location.search).get("units");
     if (force === "imperial" || force === "metric") return force;
@@ -14,10 +13,8 @@
       const stored = localStorage.getItem(UNITS_STORAGE_KEY);
       if (stored === "imperial" || stored === "metric") return stored;
     } catch (_) {}
-    try {
-      const loc = new Intl.Locale(navigator.language || "en").maximize();
-      if (IMPERIAL_REGIONS.includes(loc.region)) return "imperial";
-    } catch (_) {}
+    const lang = (navigator.language || "").toLowerCase();
+    if (lang === "en-us" || lang === "en-lr" || lang === "en-mm") return "imperial";
     return "metric";
   }
   const UNITS = (() => {

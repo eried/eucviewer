@@ -1,10 +1,13 @@
 document.addEventListener("DOMContentLoaded", function () {
   // Imperial unit toggle — drives display labels and converters everywhere
   // values are shown. Resolution order: ?units= URL param, then localStorage
-  // (the cogwheel toggle persists here), then a locale-based first-visit
-  // default (imperial only for known imperial-using regions).
+  // (the cogwheel toggle persists here), then a strict locale check: only
+  // default to imperial when the browser language is explicitly an English
+  // variant of one of the three countries that actually use imperial in
+  // daily life. Anything else (including bare "en" — which a Polish browser
+  // set to English would send) defaults to metric so we don't accidentally
+  // show miles to a metric user.
   const UNITS_STORAGE_KEY = "eucviewer-units";
-  const IMPERIAL_REGIONS = ["US", "LR", "MM", "GB"];
   function detectUnits() {
     const force = new URLSearchParams(location.search).get("units");
     if (force === "imperial" || force === "metric") return force;
@@ -12,10 +15,8 @@ document.addEventListener("DOMContentLoaded", function () {
       const stored = localStorage.getItem(UNITS_STORAGE_KEY);
       if (stored === "imperial" || stored === "metric") return stored;
     } catch (_) {}
-    try {
-      const loc = new Intl.Locale(navigator.language || "en").maximize();
-      if (IMPERIAL_REGIONS.includes(loc.region)) return "imperial";
-    } catch (_) {}
+    const lang = (navigator.language || "").toLowerCase();
+    if (lang === "en-us" || lang === "en-lr" || lang === "en-mm") return "imperial";
     return "metric";
   }
   const UNITS = (() => {

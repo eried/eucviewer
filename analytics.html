@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Wheel Forensics &middot; EUC Planet</title>
     <link rel="icon" href="static/favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="static/css/analytics.css?v=12" />
+    <link rel="stylesheet" href="static/css/analytics.css?v=13" />
     <script type="text/javascript">
         (function(c,l,a,r,i,t,y){
             c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
@@ -25,7 +25,7 @@
             <div class="controls">
                 <div class="ctrl-group" data-group="binning">
                     <label>
-                        <span>Group</span>
+                        <span>Group <span class="info-icon" title="How trips are grouped on every time-axis. Week/month/quarter/year are calendar bins; cumulative-km / -h walk through ride history at fixed mileage / runtime intervals.">i</span></span>
                         <select id="group-select">
                             <option value="week">Week</option>
                             <option value="month" selected>Month</option>
@@ -39,7 +39,7 @@
                         </select>
                     </label>
                     <label>
-                        <span>Min trips/bin</span>
+                        <span>Min trips/bin <span class="info-icon" title="A group with fewer than this many trips is left blank instead of plotted. Stops a single unusual ride from creating a fake spike in a quiet month.">i</span></span>
                         <select id="minbin-select">
                             <option value="1">1</option>
                             <option value="2" selected>2</option>
@@ -50,7 +50,7 @@
                 </div>
                 <div class="ctrl-group" data-group="filters">
                     <label>
-                        <span>Min batt&nbsp;use</span>
+                        <span>Min batt&nbsp;use <span class="info-icon" title="Range is only estimated for trips that used at least this much battery. Tiny battery deltas extrapolate to wild numbers, so we exclude them - lower for short-trip libraries, raise for trips you actually drained.">i</span></span>
                         <select id="batt-min-select">
                             <option value="5">5%</option>
                             <option value="10" selected>10%</option>
@@ -61,11 +61,11 @@
                 <div class="ctrl-group" data-group="overlays">
                     <label class="check-label">
                         <input type="checkbox" id="rolling-check" checked />
-                        <span>Smooth</span>
+                        <span>Smooth <span class="info-icon" title="Adds a dashed white overlay that averages each point with its two neighbors. Smoothes single-bin noise so the trend reads more clearly.">i</span></span>
                     </label>
                     <label class="check-label">
                         <input type="checkbox" id="normalize-check" disabled />
-                        <span>Norm 20&nbsp;&deg;C</span>
+                        <span>Norm 20&nbsp;&deg;C <span class="info-icon" title="Subtracts the temperature effect from estimated range so cold-month dips don't masquerade as battery aging. Needs weather cross-referenced and at least 10 trips with battery data.">i</span></span>
                     </label>
                 </div>
                 <div class="ctrl-group" data-group="actions">
@@ -150,7 +150,7 @@
                 </div>
                 <div class="chart-takeaway" id="range-takeaway"></div>
                 <div class="chart-host hidden" id="range-temp-host">
-                    <div class="chart-title">Range vs ambient temperature <span class="chart-title-axes">(one dot per trip)</span></div>
+                    <div class="chart-title">Range vs ambient temperature <span class="weather-chip">WEATHER</span> <span class="chart-title-axes">(one dot per trip)</span></div>
                     <canvas id="chart-range-temp"></canvas>
                 </div>
                 <div class="chart-takeaway" id="range-temp-takeaway"></div>
@@ -210,12 +210,34 @@
 
             <section class="chart-section" data-section="anomalies" data-tab="speed">
                 <h2><span class="forensic-tag">ANOMALY</span> Free spins &amp; suspected falls <span class="sec-meta" id="anomalies-meta"></span></h2>
+                <details class="adv-settings" id="anom-settings">
+                    <summary>Detection thresholds <span class="info-icon" title="Tune what counts as a free-spin or fall. Saved per-browser.">i</span></summary>
+                    <div class="adv-grid">
+                        <label><span>Free-spin GPS speed (km/h)</span>
+                            <input type="number" id="anom-gps-thresh" min="0" max="20" step="0.5" value="2"
+                                title="Wheel speed > 5 km/h while GPS is below this counts as a free spin." />
+                        </label>
+                        <label><span>Impossible accel (m/s²)</span>
+                            <input type="number" id="anom-accel-thresh" min="3" max="15" step="0.5" value="6"
+                                title="A single sample whose dV/dt exceeds this is flagged as physics-impossible (real EUC peak ≈ 3 m/s²)." />
+                        </label>
+                        <label><span>Pre-fall GPS speed (km/h)</span>
+                            <input type="number" id="anom-prefall-spd" min="5" max="40" step="1" value="12"
+                                title="The wheel must have been moving above this on GPS for at least 3 of the 12 samples before the event for a FALL classification." />
+                        </label>
+                        <label><span>Post-fall stop streak (samples)</span>
+                            <input type="number" id="anom-poststop" min="2" max="15" step="1" value="5"
+                                title="After the event, GPS must drop below 3 km/h for at least this many consecutive samples for the event to be classified as a fall." />
+                        </label>
+                        <button type="button" id="anom-reset" class="adv-reset">Reset to defaults</button>
+                    </div>
+                </details>
                 <div class="chart-takeaway" id="anomalies-takeaway"></div>
                 <div id="anomalies-list" class="anomalies-list"></div>
                 <p class="sec-hint">A free spin is a sample where the wheel reported a speed but GPS shows the
                    wheel didn't actually move. Most are pickup tests, but a few are <b>falls</b>: when the wheel
-                   was already moving fast on the ground and then suddenly its speed disagreed with GPS.
-                   The classifier uses the pre-event ground-truth speed to label each event.</p>
+                   was already moving fast on the ground and then suddenly its speed disagreed with GPS while
+                   ground speed crashed. Tune the thresholds above to match your wheel.</p>
             </section>
 
             <section class="chart-section" data-section="efficiency" data-tab="efficiency">
@@ -256,7 +278,7 @@
             <section class="chart-section" data-section="thermal" data-tab="thermal">
                 <h2><span class="forensic-tag">EVIDENCE</span> Thermal <span class="sec-meta" id="thermal-meta"></span></h2>
                 <div class="chart-host tall">
-                    <div class="chart-title">Temperature rise vs power draw <span class="chart-title-axes">(one dot per trip, old → new)</span></div>
+                    <div class="chart-title">Temperature rise vs power draw <span class="weather-chip">WEATHER</span> <span class="chart-title-axes">(one dot per trip, old → new)</span></div>
                     <canvas id="chart-thermal"></canvas>
                 </div>
                 <div class="chart-takeaway" id="thermal-takeaway"></div>
@@ -277,15 +299,21 @@
                     <canvas id="chart-health"></canvas>
                 </div>
                 <div class="chart-takeaway" id="health-takeaway"></div>
-                <p class="sec-hint">Effective internal resistance estimated per trip from how much the pack
-                   voltage sags per amp of load (dV/dI delta method across short timesteps). A rising trend
-                   indicates an aging battery pack; flat means the chemistry is holding up.</p>
+                <div class="chart-host">
+                    <div class="chart-title">Voltage droop over the trip <span class="chart-title-axes">(% sag from peak, lower is healthier)</span></div>
+                    <canvas id="chart-health-sag"></canvas>
+                </div>
+                <div class="chart-takeaway" id="health-sag-takeaway"></div>
+                <p class="sec-hint">Two independent battery-aging proxies. <b>Effective IR</b> is the slope
+                   of voltage against current using only short-timestep deltas (so SoC drift across the trip
+                   cancels out). <b>Voltage droop</b> is the gap between the pack's peak resting voltage and
+                   its lowest loaded voltage during the same ride — naturally widens as the pack ages.</p>
             </section>
         </main>
 
         <div id="error-banner" class="hidden"></div>
     </div>
 
-    <script src="static/js/analytics.js?v=11"></script>
+    <script src="static/js/analytics.js?v=12"></script>
 </body>
 </html>

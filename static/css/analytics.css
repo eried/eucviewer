@@ -371,6 +371,16 @@ body[data-layout="tabs"] [data-tab]:not(.tab-btn):not(.tab-active) { display: no
     overflow: hidden;
 }
 .chart-host.tall { height: 300px; }
+/* Wider viewports get more vertical room: the layout doesn't need to scroll
+   so much, and trends/patterns are easier to read at higher chart-height. */
+@media (min-width: 900px) {
+    .chart-host { height: 280px; }
+    .chart-host.tall { height: 380px; }
+}
+@media (min-width: 1300px) {
+    .chart-host { height: 320px; }
+    .chart-host.tall { height: 440px; }
+}
 .chart-host + .chart-host { margin-top: 10px; }
 .chart-host canvas { width: 100%; height: 100%; display: block; }
 
@@ -417,6 +427,43 @@ body[data-layout="tabs"] [data-tab]:not(.tab-btn):not(.tab-active) { display: no
     margin-left: 4px;
     font-size: 0.72rem;
 }
+
+/* Small yellow "weather" marker that appears on charts whose data is
+   enriched with ambient temperature - so the user knows at a glance which
+   sections actually pull the cross-referenced weather. */
+.weather-chip {
+    display: none;
+    font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Consolas, monospace;
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    padding: 2px 6px;
+    border-radius: 3px;
+    margin-left: 6px;
+    background: rgba(255, 215, 0, 0.15);
+    border: 1px solid rgba(255, 215, 0, 0.5);
+    color: #ffd740;
+}
+body.weather-loaded .weather-chip { display: inline-block; }
+
+/* Info-icon tooltips next to control labels. */
+.info-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    color: rgba(255, 255, 255, 0.55);
+    font-size: 9px;
+    font-weight: 700;
+    margin-left: 4px;
+    cursor: help;
+    font-family: serif;
+    line-height: 1;
+}
+.info-icon:hover { color: #fff; border-color: rgba(179, 136, 255, 0.7); background: rgba(179, 136, 255, 0.12); }
 
 /* One-line takeaway below the chart - the actionable number/comparison. */
 .chart-takeaway {
@@ -473,6 +520,51 @@ body[data-layout="tabs"] [data-tab]:not(.tab-btn):not(.tab-active) { display: no
 .anomaly-row.fall .anom-kind { color: #ff5252; }
 .anomaly-row .anom-date { color: #888; }
 .anomaly-row .anom-peak { color: #fff; }
+
+/* Advanced detection-thresholds panel (collapsible). */
+.adv-settings {
+    margin: 8px 0 12px;
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 8px;
+}
+.adv-settings summary {
+    cursor: pointer;
+    padding: 8px 12px;
+    font-size: 0.78rem;
+    color: #b388ff;
+    letter-spacing: 0.02em;
+    user-select: none;
+}
+.adv-grid {
+    padding: 4px 12px 12px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 10px 16px;
+    align-items: end;
+}
+.adv-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 0.72rem; color: #aaa; }
+.adv-grid input[type="number"] {
+    background: rgba(0, 0, 0, 0.4);
+    color: #e0e0e0;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    padding: 4px 6px;
+    font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Consolas, monospace;
+    font-size: 0.78rem;
+}
+.adv-reset {
+    grid-column: 1 / -1;
+    justify-self: end;
+    background: transparent;
+    color: #888;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 4px;
+    padding: 4px 12px;
+    font-size: 0.72rem;
+    cursor: pointer;
+}
+.adv-reset:hover { color: #fff; border-color: #b388ff; }
 
 .sec-hint {
     font-size: 0.74rem;
