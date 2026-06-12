@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Wheel Forensics &middot; EUC Planet</title>
     <link rel="icon" href="static/favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="static/css/analytics.css?v=19" />
+    <link rel="stylesheet" href="static/css/analytics.css?v=20" />
     <script type="text/javascript">
         (function(c,l,a,r,i,t,y){
             c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
@@ -95,6 +95,7 @@
             <button type="button" class="tab-btn" data-tab="range" data-uses-weather>Range</button>
             <button type="button" class="tab-btn" data-tab="charging">Charging</button>
             <button type="button" class="tab-btn" data-tab="speed">Speed</button>
+            <button type="button" class="tab-btn" data-tab="gforce">G-Force</button>
             <button type="button" class="tab-btn" data-tab="efficiency">Efficiency</button>
             <button type="button" class="tab-btn" data-tab="motor">Motor</button>
             <button type="button" class="tab-btn" data-tab="thermal" data-uses-weather>Thermal</button>
@@ -216,6 +217,32 @@
                    pack sag as it ages.</p>
             </section>
 
+            <section class="chart-section" data-section="gforce" data-tab="gforce">
+                <h2><span class="forensic-tag">EVIDENCE</span> G-Force <span class="sec-meta" id="gforce-meta"></span></h2>
+                <div class="chart-host">
+                    <div class="chart-title">Peak G over time <span class="chart-title-axes">(per group: instantaneous and sustained for &geq; 1 s)</span></div>
+                    <canvas id="chart-gforce-trend"></canvas>
+                </div>
+                <div class="chart-takeaway" id="gforce-trend-takeaway"></div>
+                <div class="chart-host">
+                    <div class="chart-title">G-force distribution <span class="chart-title-axes">(peak |G| per trip)</span></div>
+                    <canvas id="chart-gforce-hist"></canvas>
+                </div>
+                <div class="chart-takeaway" id="gforce-hist-takeaway"></div>
+                <div class="chart-host tall" id="grip-host">
+                    <div class="chart-title">Grip envelope: lateral G vs speed <span class="chart-title-axes">(one dot per high-G sample, old &rarr; new)</span></div>
+                    <canvas id="chart-grip"></canvas>
+                </div>
+                <div class="chart-takeaway" id="grip-takeaway"></div>
+                <p class="sec-hint">We watch the IMU's <i>g-force</i> channel on every sample.
+                   <b>Peak</b> is the highest spike we saw, <b>sustained</b> is the highest G the wheel
+                   held for at least 1 second (a real cornering or braking force, not noise).
+                   The grip chart plots lateral G against the speed at that moment, so the upper
+                   envelope traces how hard you can lean at each speed. If your logger doesn't record
+                   IMU data, we estimate longitudinal G from how fast your speed was changing
+                   (<i>&Delta;V / &Delta;t / 9.81</i>) and mark the section as "estimated".</p>
+            </section>
+
             <section class="chart-section" data-section="anomalies" data-tab="speed">
                 <h2><span class="forensic-tag">ANOMALY</span> Free spins &amp; suspected falls <span class="sec-meta" id="anomalies-meta"></span></h2>
                 <details class="adv-settings" id="anom-settings">
@@ -330,6 +357,6 @@
         <div id="error-banner" class="hidden"></div>
     </div>
 
-    <script src="static/js/analytics.js?v=17"></script>
+    <script src="static/js/analytics.js?v=18"></script>
 </body>
 </html>

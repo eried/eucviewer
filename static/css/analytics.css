@@ -138,7 +138,21 @@ body::before {
 .weather-capsule {
     display: inline-flex;
     align-items: stretch;
+    flex-wrap: nowrap;
+    max-width: 100%;
 }
+.weather-capsule > * { white-space: nowrap; }
+/* Main button is the only segment that can shrink (sub-buttons keep their
+   fixed icon width). Allow ellipsis when there is no horizontal room left. */
+.weather-capsule #weather-btn {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+/* Sub-buttons stretch vertically with the main button so a wrapped row
+   reads as one capsule, not a tall pill with two stubby satellites. */
+.weather-capsule #weather-refresh-btn,
+.weather-capsule #weather-remove-btn { height: auto; align-self: stretch; }
 
 /* Weather button is a single pill when no data is loaded ("Add weather
    data"). Once data is loaded the right side ("Unlink") slides in and the

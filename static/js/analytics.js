@@ -510,6 +510,20 @@
     return best;
   }
 
+  // Return the slice of `gs` covering at least `seconds` worth of samples
+  // starting at index `startI`. Used to compute "sustained G": the lowest
+  // |G| value sustained over a 1-second window starting at a given sample.
+  function sliceFloor(gs, ts, startI, seconds) {
+    const t0 = ts[startI][SEC] || 0;
+    const out = [gs[startI]];
+    for (let j = startI + 1; j < ts.length; j++) {
+      const dt = (ts[j][SEC] || 0) - t0;
+      if (dt > seconds) break;
+      out.push(gs[j]);
+    }
+    return out;
+  }
+
   function computeTripMetrics(t) {
     const rawTs = Array.isArray(t.timeseries) ? t.timeseries : [];
     const lastAlive = lastAliveIndex(rawTs);
@@ -531,6 +545,13 @@
       centroid: null,
       // Forensic adds
       voltSagPct: null,         // (Vmax - Vmin under load) / Vmax * 100
+      gPeak: null,              // instantaneous peak |G| (estimated from speed if needed)
+      gSustained: null,         // peak |G| held continuously for >= 1s
+      gAvg: null,               // mean |G| while moving (>3 km/h)
+      gLatPeak: null,           // peak lateral |G| (steady cornering)
+      gLongPeak: null,          // peak longitudinal |G| (braking / launch)
+      gFromImu: false,          // true if the IMU logged real G, false = estimated
+      gripScatter: null,        // [ [speedKmh, latG], ... ] for the grip chart
       topSpeedKmh: null,        // verified max speed (excludes free spins)
       anomalies: [],            // free spins + falls detected within this trip
       accel25: null,            // best 0->25 km/h time (universally achievable)
@@ -701,6 +722,86 @@
     for (const row of ts) {
       const g = row[GFORCE];
       if (typeof g === "number" && g > m.maxGForce) m.maxGForce = g;
+    }
+
+    // ---- G-force forensic profile ----
+    // If the IMU column has any nonzero sample we trust it. If every G value
+    // is zero the logger simply didn't record IMU data, so we estimate the
+    // longitudinal component from speed deltas (dV/dt / 9.81). Lateral G is
+    // only computed when the dedicated column exists - estimating it from
+    // GPS heading curvature is too noisy for short trips.
+    {
+      const G_LAT = 14, G_LONG = 15, G_TOTAL = GFORCE;
+      let hasImuG = false;
+      for (const row of ts) {
+        if ((row[G_TOTAL] || 0) !== 0 || (row[G_LAT] || 0) !== 0 || (row[G_LONG] || 0) !== 0) { hasImuG = true; break; }
+      }
+      m.gFromImu = hasImuG;
+      // Build a per-sample |G| series.
+      const gs = new Array(ts.length).fill(0);
+      const grip = [];
+      let latPeak = 0, longPeak = 0;
+      for (let i = 0; i < ts.length; i++) {
+        const row = ts[i];
+        let absG = 0;
+        if (hasImuG) {
+          const total = Math.abs(row[G_TOTAL] || 0);
+          const lat = Math.abs(row[G_LAT] || 0);
+          const lng = Math.abs(row[G_LONG] || 0);
+          if (total > 0) absG = total;
+          else if (lat || lng) absG = Math.sqrt(lat * lat + lng * lng);
+          if (lat > latPeak) latPeak = lat;
+          if (lng > longPeak) longPeak = lng;
+          // Grip scatter: lateral G at the moment, against the wheel speed.
+          // Only when actually moving so we ignore stand-still IMU jitter.
+          const spd = row[SPD] || 0;
+          if (lat > 0.05 && spd > 5) grip.push([spd, lat]);
+        } else if (i > 0) {
+          // Estimate longitudinal G from dV/dt (m/s² / 9.81). No lateral
+          // estimate; we just expose the longitudinal magnitude.
+          const dt = (row[SEC] || 0) - (ts[i - 1][SEC] || 0);
+          if (dt > 0 && dt < 5) {
+            const dV = ((row[SPD] || 0) - (ts[i - 1][SPD] || 0)) / 3.6;
+            const accG = Math.abs(dV / dt) / 9.81;
+            if (accG < 2) absG = accG; // ignore obvious noise / free spin spikes
+            if (accG > longPeak && accG < 2) longPeak = accG;
+          }
+        }
+        gs[i] = absG;
+      }
+      // Peak instantaneous |G|, skipping anomaly indices so a free spin spike
+      // can't fake a launch.
+      let peak = 0;
+      for (let i = 0; i < gs.length; i++) {
+        if (anomIdx.has(i)) continue;
+        if (gs[i] > peak) peak = gs[i];
+      }
+      m.gPeak = peak > 0 ? peak : null;
+      // Sustained: peak |G| held continuously for >= 1 second. We walk through
+      // the time-series tracking a "current floor" - the minimum |G| over any
+      // 1s window - and remember the highest such floor across the trip.
+      let sustained = 0;
+      for (let i = 0; i < gs.length; i++) {
+        if (anomIdx.has(i)) continue;
+        const windowFloor = Math.min(...sliceFloor(gs, ts, i, 1));
+        if (windowFloor > sustained) sustained = windowFloor;
+      }
+      m.gSustained = sustained > 0 ? sustained : null;
+      // Average |G| while the wheel was actually moving.
+      let sum = 0, n = 0;
+      for (let i = 0; i < gs.length; i++) {
+        if (anomIdx.has(i)) continue;
+        if ((ts[i][SPD] || 0) < 3) continue;
+        sum += gs[i]; n++;
+      }
+      m.gAvg = n > 0 ? sum / n : null;
+      m.gLatPeak = latPeak > 0 ? latPeak : null;
+      m.gLongPeak = longPeak > 0 ? longPeak : null;
+      // Cap grip scatter to a sample so the JSON we store per metric stays small.
+      if (grip.length > 200) {
+        grip.sort((a, b) => b[1] - a[1]); // keep highest-G samples
+        m.gripScatter = grip.slice(0, 200);
+      } else m.gripScatter = grip;
     }
 
     // GPS centroid rounded to 0.1° (~11 km) — coarse on purpose, both for
@@ -2463,6 +2564,86 @@
           `<span style="color:#888">${dur}s</span>` +
         `</div>`;
       }).join("");
+    }
+
+    // G-Force section: peak / sustained trend + distribution + grip scatter.
+    {
+      const meta = document.getElementById("gforce-meta");
+      const usable = dated.filter((m) => m.gPeak != null).length;
+      if (usable < 3) {
+        setSectionEmpty("gforce", "No G-force data and not enough speed samples to estimate it.");
+        meta.textContent = "";
+        setTakeaway("gforce-trend-takeaway", []);
+        setTakeaway("gforce-hist-takeaway", []);
+        setTakeaway("grip-takeaway", []);
+      } else {
+        setSectionActive("gforce");
+        const anyImu = dated.some((m) => m.gFromImu);
+        meta.textContent = usable + " trips · " + (anyImu ? "IMU" : "estimated from speed Δ");
+        // Trend chart: two series, peak and sustained.
+        const peakStats = binStats(bins, (m) => m.gPeak, minPerBin);
+        const sustStats = binStats(bins, (m) => m.gSustained, minPerBin);
+        drawTrendChart(document.getElementById("chart-gforce-trend"), bins, [
+          { stats: peakStats, color: "#ff5252", label: "Peak", unit: "G", band: false, dp: 2 },
+          { stats: sustStats, color: "#ffd740", label: "Sustained 1 s", unit: "G", band: false, dp: 2 },
+        ], { rolling });
+        // Trend takeaway
+        const { peak: tPeak } = statsPeakTrough(peakStats, bins);
+        const allPeak = dated.map((m) => m.gPeak).filter((v) => v != null);
+        const allSust = dated.map((m) => m.gSustained).filter((v) => v != null);
+        allPeak.sort((a, b) => b - a);
+        allSust.sort((a, b) => b - a);
+        const dateFmt = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" });
+        const peakTrip = dated.find((m) => m.gPeak === allPeak[0]);
+        const sustTrip = dated.find((m) => m.gSustained === allSust[0]);
+        const trendParts = [];
+        if (allPeak.length) trendParts.push(`All-time peak: <b>${allPeak[0].toFixed(2)} G</b>` + (peakTrip && peakTrip.date ? ` on <b>${dateFmt.format(peakTrip.date)}</b>` : ""));
+        if (allSust.length) trendParts.push(`Highest sustained: <b>${allSust[0].toFixed(2)} G</b> for 1 s` + (sustTrip && sustTrip.date ? ` on <b>${dateFmt.format(sustTrip.date)}</b>` : ""));
+        if (!anyImu) trendParts.push("Source: <b>estimated</b> from ΔV/Δt");
+        setTakeaway("gforce-trend-takeaway", trendParts);
+        // Histogram of per-trip peak |G|
+        drawHistogram(document.getElementById("chart-gforce-hist"), allPeak, {
+          xLabel: "G", yLabel: "trips", nBins: 14,
+          colorTop: "rgba(255,82,82,0.9)", colorBot: "rgba(255,82,82,0.18)",
+        });
+        const sorted = allPeak.slice().sort((a, b) => a - b);
+        const med = sorted[Math.floor(sorted.length / 2)];
+        const p90 = sorted[Math.floor(sorted.length * 0.9)];
+        setTakeaway("gforce-hist-takeaway", [
+          `Typical peak: <b>${med.toFixed(2)} G</b>`,
+          `Top 10% beyond: <b>${p90.toFixed(2)} G</b>`,
+          `Hardest hit: <b>${sorted[sorted.length - 1].toFixed(2)} G</b>`,
+        ]);
+        // Grip scatter: lateral G vs speed (high-G samples across all trips)
+        const grip = [];
+        for (const m of dated) {
+          if (!m.gripScatter || !m.gripScatter.length) continue;
+          for (const [spd, lat] of m.gripScatter) {
+            grip.push({
+              x: UNITS.speed(spd),
+              y: lat,
+              epoch: m.epoch,
+              meta: `<b>${m.label}</b><br>Speed: <b>${fmtVal(UNITS.speed(spd), 1)}</b> ${UNITS.speedUnit}<br>Lateral G: <b>${lat.toFixed(2)}</b>`,
+            });
+          }
+        }
+        const gripHost = document.getElementById("grip-host");
+        if (grip.length >= 30) {
+          gripHost.classList.remove("hidden");
+          drawScatter(document.getElementById("chart-grip"), grip, {
+            xLabel: "speed (" + UNITS.speedUnit + ")", yLabel: "lateral G",
+          });
+          grip.sort((a, b) => b.y - a.y);
+          const top = grip[0];
+          setTakeaway("grip-takeaway", [
+            `Best grip held: <b>${top.y.toFixed(2)} G</b> at <b>${top.x.toFixed(0)} ${UNITS.speedUnit}</b>`,
+            `<b>${grip.length}</b> high-G samples across <b>${dated.filter((m) => m.gripScatter && m.gripScatter.length).length}</b> trips`,
+          ]);
+        } else {
+          gripHost.classList.add("hidden");
+          setTakeaway("grip-takeaway", []);
+        }
+      }
     }
 
     // 2. Efficiency.
