@@ -234,13 +234,24 @@
                     <canvas id="chart-grip"></canvas>
                 </div>
                 <div class="chart-takeaway" id="grip-takeaway"></div>
-                <p class="sec-hint">We watch the IMU's <i>g-force</i> channel on every sample.
-                   <b>Peak</b> is the highest spike we saw, <b>sustained</b> is the highest G the wheel
-                   held for at least 1 second (a real cornering or braking force, not noise).
-                   The grip chart plots lateral G against the speed at that moment, so the upper
-                   envelope traces how hard you can lean at each speed. If your logger doesn't record
-                   IMU data, we estimate longitudinal G from how fast your speed was changing
-                   (<i>&Delta;V / &Delta;t / 9.81</i>) and mark the section as "estimated".</p>
+                <p class="sec-hint">A raw G spike is usually just a pothole, a curb hit, or you picking the
+                   wheel up. We only count G that happened during a real <b>maneuver</b>:
+                   <br><br>
+                   <b>Corner</b>: GPS heading is rotating faster than 8 degrees per second for at least one
+                   second, and you were going faster than 15 km/h. The lateral G we keep is the centripetal
+                   force you held through the turn.
+                   <br>
+                   <b>Hard brake</b>: longitudinal G stayed at or below -0.15 for at least one second from
+                   over 15 km/h.
+                   <br>
+                   <b>Launch</b>: longitudinal G stayed at or above 0.15 for at least one second, starting
+                   from under 5 km/h.
+                   <br><br>
+                   The grip envelope plots <b>average speed in each corner</b> against the <b>peak lateral G
+                   you held</b> in that corner. The upper edge of the cloud is your friction envelope:
+                   how hard you can actually lean at each speed. If your logger doesn't have an IMU,
+                   we estimate centripetal G from <i>speed &times; heading rate</i> on the GPS track and
+                   mark the section as <i>GPS-estimated</i>.</p>
             </section>
 
             <section class="chart-section" data-section="anomalies" data-tab="speed">
@@ -357,6 +368,6 @@
         <div id="error-banner" class="hidden"></div>
     </div>
 
-    <script src="static/js/analytics.js?v=18"></script>
+    <script src="static/js/analytics.js?v=19"></script>
 </body>
 </html>
