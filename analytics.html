@@ -193,6 +193,16 @@
                     <canvas id="chart-range-temp"></canvas>
                 </div>
                 <div class="chart-takeaway" id="range-temp-takeaway"></div>
+                <div class="chart-host hidden" id="range-speed-host">
+                    <div class="chart-title">Range vs average riding speed <span class="chart-title-axes">(one dot per trip)</span></div>
+                    <canvas id="chart-range-speed"></canvas>
+                </div>
+                <div class="chart-takeaway" id="range-speed-takeaway"></div>
+                <div class="chart-host hidden" id="range-climb-host">
+                    <div class="chart-title">Range vs climb rate <span class="chart-title-axes">(meters of altitude gain per km of ride)</span></div>
+                    <canvas id="chart-range-climb"></canvas>
+                </div>
+                <div class="chart-takeaway" id="range-climb-takeaway"></div>
                 <p class="sec-hint">For every trip we compute <i>distance / battery used &times; 100</i> to
                    estimate how far you'd have gone on a full charge. The dot is the typical value for that
                    group (weighted by distance), the shaded band shows the middle half of the trips
@@ -434,6 +444,6 @@
         <div id="error-banner" class="hidden"></div>
     </div>
 
-    <script src="static/js/analytics.js?v=25"></script>
+    <script src="static/js/analytics.js?v=28"></script>
 </body>
 </html>

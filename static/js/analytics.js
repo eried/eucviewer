@@ -314,6 +314,43 @@
     const intercept = median(ix.map((i) => ys[i] - slope * xs[i]));
     return { slope, intercept };
   }
+  // Multiple linear regression by normal equations + Gaussian elimination.
+  // Returns the coefficient vector β such that y ≈ X β. Works for the small
+  // (n, p ≤ 6) problems we have: range vs (speed, temp, climb) etc.
+  function multipleLinearRegression(X, y) {
+    const n = X.length; if (!n) return null;
+    const p = X[0].length;
+    const XtX = [];
+    const Xty = [];
+    for (let i = 0; i < p; i++) { XtX.push(new Array(p).fill(0)); Xty.push(0); }
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < p; j++) {
+        Xty[j] += X[i][j] * y[i];
+        for (let k = 0; k < p; k++) XtX[j][k] += X[i][j] * X[i][k];
+      }
+    }
+    // Augmented matrix [XtX | Xty]
+    const aug = XtX.map((row, i) => row.concat(Xty[i]));
+    for (let i = 0; i < p; i++) {
+      // partial pivot
+      let maxRow = i;
+      for (let k = i + 1; k < p; k++) if (Math.abs(aug[k][i]) > Math.abs(aug[maxRow][i])) maxRow = k;
+      [aug[i], aug[maxRow]] = [aug[maxRow], aug[i]];
+      if (Math.abs(aug[i][i]) < 1e-10) return null; // singular
+      for (let k = i + 1; k < p; k++) {
+        const f = aug[k][i] / aug[i][i];
+        for (let j = i; j <= p; j++) aug[k][j] -= f * aug[i][j];
+      }
+    }
+    const β = new Array(p).fill(0);
+    for (let i = p - 1; i >= 0; i--) {
+      let s = aug[i][p];
+      for (let j = i + 1; j < p; j++) s -= aug[i][j] * β[j];
+      β[i] = s / aug[i][i];
+    }
+    return β;
+  }
+
   // Ordinary least-squares slope (used per trip for the V~I sag fit, where
   // n is small and the samples are already filtered).
   function lsSlope(xs, ys) {
@@ -2055,6 +2092,13 @@
 
   // Theil–Sen range-vs-ambient fit, recomputed whenever weather lands.
   let tempFit = null;
+  // Range vs avg ride speed: cruising at 20 km/h is a totally different
+  // load on the pack than pushing 40+ km/h. The slope tells you how many
+  // km of range you lose per 1 km/h faster you ride on average.
+  let speedFit = null;
+  // Range vs climb per km: hilly trips drain the pack faster. The slope
+  // tells you how many km of range you lose per meter of climbing per km.
+  let climbFit = null;
   function computeTempFit() {
     const xs = [], ys = [];
     for (const m of dated) {
@@ -2063,6 +2107,55 @@
     tempFit = xs.length >= 10 ? theilSen(xs, ys) : null;
     normalizeCheck.disabled = !tempFit;
     if (!tempFit) normalizeCheck.checked = false;
+  }
+  function computeSpeedFit() {
+    const xs = [], ys = [];
+    for (const m of dated) {
+      if (m.estRangeKm != null && m.avgMovingSpeed != null && m.avgMovingSpeed > 5) {
+        xs.push(m.avgMovingSpeed); ys.push(m.estRangeKm);
+      }
+    }
+    speedFit = xs.length >= 10 ? theilSen(xs, ys) : null;
+  }
+  function computeClimbFit() {
+    const xs = [], ys = [];
+    for (const m of dated) {
+      if (m.estRangeKm != null && m.distKm >= 2 && m.climbM != null && m.climbM >= 0) {
+        xs.push(m.climbM / m.distKm); ys.push(m.estRangeKm);
+      }
+    }
+    climbFit = xs.length >= 10 ? theilSen(xs, ys) : null;
+  }
+
+  // Multivariate fit: range as a function of avg speed, ambient temp, and
+  // climb rate, all at once. The univariate slopes above are confounded
+  // (faster trips tend to be longer cruise rides which also have higher
+  // estimated range). The multivariate slopes isolate each effect.
+  // Falls back to univariate fits for headlines when the multivariate
+  // fit isn't available (need all three features per trip + n ≥ 20).
+  let multiFit = null;
+  function computeMultiFit() {
+    const X = [], y = [];
+    for (const m of dated) {
+      if (m.estRangeKm == null) continue;
+      if (m.avgMovingSpeed == null || m.avgMovingSpeed <= 5) continue;
+      if (m.ambientC == null) continue;
+      if (m.climbM == null || m.distKm < 2) continue;
+      const climbPerKm = m.climbM / m.distKm;
+      if (climbPerKm < 0) continue;
+      X.push([1, m.avgMovingSpeed, m.ambientC, climbPerKm]);
+      y.push(m.estRangeKm);
+    }
+    if (X.length < 20) { multiFit = null; return; }
+    const β = multipleLinearRegression(X, y);
+    if (!β) { multiFit = null; return; }
+    multiFit = {
+      intercept: β[0],
+      speedSlope: β[1],   // km of range per km/h
+      tempSlope:  β[2],   // km of range per °C
+      climbSlope: β[3],   // km of range per (m climbed / km ridden)
+      n: X.length,
+    };
   }
 
   function normalizedRange(m) {
@@ -2209,6 +2302,42 @@
         html: `Every <b>10 ${UNITS.tempUnit}</b> drop in ambient costs ` +
               `<b>${Math.abs(slopeDisp * 10).toFixed(1)}</b> ${UNITS.distUnit} of range.`,
       });
+    }
+    // Speed sensitivity (multivariate slope — isolated effect).
+    const speedSlopeKm = multiFit ? multiFit.speedSlope : (speedFit ? speedFit.slope : null);
+    if (speedSlopeKm != null) {
+      const slopeDisp = UNITS.dist(speedSlopeKm) / UNITS.speed(1);
+      const sign = slopeDisp >= 0 ? "gains" : "loses";
+      out.push({
+        kind: slopeDisp < -0.5 ? "warn" : "info",
+        html: `Every <b>5 ${UNITS.speedUnit}</b> faster you ride on average ${sign} ` +
+              `<b>${Math.abs(slopeDisp * 5).toFixed(1)}</b> ${UNITS.distUnit} of range.`,
+      });
+    }
+    // Climb sensitivity (multivariate slope — isolated effect).
+    const climbSlopeKmPerMperKm = multiFit ? multiFit.climbSlope : (climbFit ? climbFit.slope : null);
+    if (climbSlopeKmPerMperKm != null) {
+      const slope = UNITS.dist(climbSlopeKmPerMperKm) / (UNITS.imperial ? 3.28084 : 1);
+      const unit = UNITS.imperial ? "ft/mi" : "m/km";
+      out.push({
+        kind: slope < -0.05 ? "warn" : "info",
+        html: `Climbing <b>100 ${unit}</b> costs ` +
+              `<b>${Math.abs(slope * 100).toFixed(1)}</b> ${UNITS.distUnit} of range.`,
+      });
+    }
+    // Predicted range at a standard condition: 25 km/h cruise, 20 °C, flat.
+    // Plugs the multivariate equation in and reports what the model says
+    // you'd get on an "ideal" ride. Concrete number the rider can compare
+    // against their own best/typical range.
+    if (multiFit) {
+      const predKm = multiFit.intercept + multiFit.speedSlope * 25 + multiFit.tempSlope * 20 + multiFit.climbSlope * 0;
+      if (isFinite(predKm) && predKm > 0) {
+        const std = UNITS.imperial ? "25 km/h cruise, 20 °C, flat" : "25 km/h cruise, 20 °C, flat";
+        out.push({
+          kind: "info",
+          html: `Model-predicted range at <i>${std}</i>: <b>${UNITS.dist(predKm).toFixed(1)} ${UNITS.distUnit}</b>.`,
+        });
+      }
     }
 
     // Best month by distance.
@@ -2631,8 +2760,35 @@
     drawTrendChart(canvas, bins, series, { rolling: false, zeroBase: false });
   }
 
-  // Range vs ambient scatter — only shown when weather is loaded. Includes
-  // the Theil–Sen fit line so the slope is visible, not just a number.
+  // Generic range-vs-X scatter helper. Plots one dot per trip plus a
+  // Theil–Sen fit line so the slope is visible, not just a number.
+  // `host` is hidden when there aren't enough points to fit.
+  function drawRangeFactorScatter(canvas, host, pts, opts) {
+    if (pts.length < 6) { host.classList.add("hidden"); return; }
+    host.classList.remove("hidden");
+    drawScatter(canvas, pts, { xLabel: opts.xLabel, yLabel: opts.yLabel });
+    if (pts.length >= 10 && canvas._scatterMap) {
+      const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
+      const fitDisp = theilSen(xs, ys);
+      if (fitDisp) {
+        const { xAt, yAt, xMin, xMax } = canvas._scatterMap;
+        const dpr = window.devicePixelRatio || 1;
+        const ctx = canvas.getContext("2d");
+        ctx.save();
+        ctx.scale(dpr, dpr);
+        ctx.strokeStyle = opts.fitColor || "rgba(255,241,118,0.75)";
+        ctx.lineWidth = 1.6;
+        ctx.setLineDash([4, 3]);
+        ctx.beginPath();
+        ctx.moveTo(xAt(xMin), yAt(fitDisp.slope * xMin + fitDisp.intercept));
+        ctx.lineTo(xAt(xMax), yAt(fitDisp.slope * xMax + fitDisp.intercept));
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.restore();
+      }
+    }
+  }
+  // Range vs ambient — only shown when weather is loaded.
   function drawRangeTempScatter(canvas) {
     const pts = [];
     for (const m of dated) {
@@ -2646,33 +2802,56 @@
               `<br>Battery used: <b>${fmtVal(m.battDelta, 1)}</b>%`,
       });
     }
-    if (pts.length < 6) { rangeTempHost.classList.add("hidden"); return; }
-    rangeTempHost.classList.remove("hidden");
-    drawScatter(canvas, pts, {
+    drawRangeFactorScatter(canvas, rangeTempHost, pts, {
       xLabel: "ambient (" + UNITS.tempUnit + ")",
       yLabel: "est. range (" + UNITS.distUnit + ")",
+      fitColor: "rgba(255,241,118,0.75)",
     });
-    // Overlay Theil–Sen fit line so the temperature relationship is visible.
-    if (pts.length >= 10 && canvas._scatterMap) {
-      const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
-      const fitDisp = theilSen(xs, ys);
-      if (fitDisp) {
-        const { xAt, yAt, xMin, xMax } = canvas._scatterMap;
-        const dpr = window.devicePixelRatio || 1;
-        const ctx = canvas.getContext("2d");
-        ctx.save();
-        ctx.scale(dpr, dpr);
-        ctx.strokeStyle = "rgba(255,241,118,0.75)";
-        ctx.lineWidth = 1.6;
-        ctx.setLineDash([4, 3]);
-        ctx.beginPath();
-        ctx.moveTo(xAt(xMin), yAt(fitDisp.slope * xMin + fitDisp.intercept));
-        ctx.lineTo(xAt(xMax), yAt(fitDisp.slope * xMax + fitDisp.intercept));
-        ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.restore();
-      }
+  }
+  // Range vs avg riding speed.
+  function drawRangeSpeedScatter(canvas) {
+    const host = document.getElementById("range-speed-host");
+    const pts = [];
+    for (const m of dated) {
+      if (m.estRangeKm == null || m.avgMovingSpeed == null || m.avgMovingSpeed <= 5) continue;
+      pts.push({
+        x: UNITS.speed(m.avgMovingSpeed),
+        y: UNITS.dist(m.estRangeKm),
+        epoch: m.epoch,
+        meta: `<b>${m.label}</b><br>Range: <b>${fmtVal(UNITS.dist(m.estRangeKm), 1)}</b> ${UNITS.distUnit}` +
+              `<br>Avg speed: <b>${fmtVal(UNITS.speed(m.avgMovingSpeed), 1)}</b> ${UNITS.speedUnit}` +
+              `<br>Battery used: <b>${fmtVal(m.battDelta, 1)}</b>%`,
+      });
     }
+    drawRangeFactorScatter(canvas, host, pts, {
+      xLabel: "avg speed (" + UNITS.speedUnit + ")",
+      yLabel: "est. range (" + UNITS.distUnit + ")",
+      fitColor: "rgba(124,199,255,0.8)",
+    });
+  }
+  // Range vs climb rate (meters of altitude gain per km of ride).
+  function drawRangeClimbScatter(canvas) {
+    const host = document.getElementById("range-climb-host");
+    const pts = [];
+    for (const m of dated) {
+      if (m.estRangeKm == null || m.distKm < 2 || m.climbM == null) continue;
+      const climbPerKm = m.climbM / m.distKm;
+      if (climbPerKm < 0) continue;
+      pts.push({
+        x: UNITS.imperial ? climbPerKm * 3.28084 : climbPerKm,
+        y: UNITS.dist(m.estRangeKm),
+        epoch: m.epoch,
+        meta: `<b>${m.label}</b><br>Range: <b>${fmtVal(UNITS.dist(m.estRangeKm), 1)}</b> ${UNITS.distUnit}` +
+              `<br>Climb rate: <b>${fmtVal(UNITS.imperial ? climbPerKm * 3.28084 : climbPerKm, 1)}</b> ${UNITS.imperial ? "ft" : "m"}/${UNITS.distUnit}` +
+              `<br>Total climb: <b>${fmtVal(UNITS.alt(m.climbM), 0)}</b> ${UNITS.altUnit}` +
+              `<br>Battery used: <b>${fmtVal(m.battDelta, 1)}</b>%`,
+      });
+    }
+    drawRangeFactorScatter(canvas, host, pts, {
+      xLabel: (UNITS.imperial ? "ft" : "m") + "/" + UNITS.distUnit,
+      yLabel: "est. range (" + UNITS.distUnit + ")",
+      fitColor: "rgba(255,160,0,0.8)",
+    });
   }
 
   // ---------- Render pipeline ----------
@@ -2684,6 +2863,9 @@
     const minPerBin = Number(minBinSel.value);
     for (const m of dated) applyRangeGating(m, minBattUse);
     computeTempFit();
+    computeSpeedFit();
+    computeClimbFit();
+    computeMultiFit();
 
     const bins = makeBins(dated, groupSel.value);
     const rolling = rollingCheck.checked;
@@ -2760,6 +2942,41 @@
         } else {
           rangeTempHost.classList.add("hidden");
           setTakeaway("range-temp-takeaway", []);
+        }
+        // Range vs avg riding speed. The chart's dashed yellow line is the
+        // univariate fit (what the eye sees), but the takeaway reports the
+        // multivariate slope (the conditional effect, holding temp+climb
+        // constant) — that's the one with the right sign and magnitude.
+        drawRangeSpeedScatter(document.getElementById("chart-range-speed"));
+        const speedSlopeKm = multiFit ? multiFit.speedSlope : (speedFit ? speedFit.slope : null);
+        if (speedSlopeKm != null) {
+          const slopeDisp = UNITS.dist(speedSlopeKm) / UNITS.speed(1);
+          const sign = slopeDisp < 0 ? "loses" : "gains";
+          const perStep = Math.abs(slopeDisp);
+          const tag = multiFit ? " (after factoring out temperature + climb)" : "";
+          setTakeaway("range-speed-takeaway", [
+            `Each <b>1 ${UNITS.speedUnit}</b> faster average ${sign} about <b>${perStep.toFixed(2)} ${UNITS.distUnit}</b> of range${tag}`,
+            `Going <b>5 ${UNITS.speedUnit}</b> harder is worth ${slopeDisp < 0 ? "−" : "+"}<b>${(perStep * 5).toFixed(1)} ${UNITS.distUnit}</b>`,
+          ], slopeDisp < 0 ? "warn" : null);
+        } else {
+          setTakeaway("range-speed-takeaway", []);
+        }
+
+        // Range vs climb rate. Same logic: multivariate slope for the
+        // takeaway, univariate for the visible fit line.
+        drawRangeClimbScatter(document.getElementById("chart-range-climb"));
+        const climbSlopeKmPerMperKm = multiFit ? multiFit.climbSlope : (climbFit ? climbFit.slope : null);
+        if (climbSlopeKmPerMperKm != null) {
+          const slope = UNITS.dist(climbSlopeKmPerMperKm) / (UNITS.imperial ? 3.28084 : 1);
+          const perStep = Math.abs(slope);
+          const unit = UNITS.imperial ? "ft/mi" : "m/km";
+          const tag = multiFit ? " (after factoring out temperature + speed)" : "";
+          setTakeaway("range-climb-takeaway", [
+            `Each <b>1 ${unit}</b> of climbing costs about <b>${perStep.toFixed(3)} ${UNITS.distUnit}</b> of range${tag}`,
+            `A <b>100 ${unit}</b> climb rate costs <b>${(perStep * 100).toFixed(1)} ${UNITS.distUnit}</b> of range`,
+          ], slope < 0 ? "warn" : null);
+        } else {
+          setTakeaway("range-climb-takeaway", []);
         }
       }
     }
