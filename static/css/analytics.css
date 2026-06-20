@@ -251,6 +251,134 @@ body.weather-loaded.weather-has-pending #weather-refresh-btn {
 body[data-layout="tabs"] .layout-toggle-btn .layout-icon-single { display: block; }
 body[data-layout="single"] .layout-toggle-btn .layout-icon-tabs { display: block; }
 
+/* Scope toggle button: hidden behind a small label next to the page title.
+   Lights up when a sub-range is active so the user always knows the
+   analyses are scoped. Sized to match the other action buttons in the
+   topbar (weather, layout, print) so the chrome reads as one row. */
+.scope-toggle {
+    background: rgba(255, 255, 255, 0.04);
+    color: #b388ff;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 5px;
+    padding: 6px 12px;
+    font-size: 0.78rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.scope-toggle:hover { color: #fff; background: rgba(179, 136, 255, 0.18); border-color: rgba(179, 136, 255, 0.5); }
+.scope-toggle.active {
+    color: #fff;
+    background: rgba(0, 229, 255, 0.18);
+    border-color: rgba(0, 229, 255, 0.6);
+    box-shadow: 0 0 8px rgba(0, 229, 255, 0.25);
+}
+
+/* Date-range scope filter: lets the user narrow the analyses to a sub-window
+   of their history. Two range inputs stacked with their thumbs overlapping
+   a single rail; a coloured fill spans the selected window. */
+#date-range-panel {
+    padding: 10px 16px 8px;
+    background: rgba(10, 10, 15, 0.55);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+.dr-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.72rem;
+    margin-bottom: 6px;
+}
+.dr-title {
+    color: #888;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Consolas, monospace;
+}
+.dr-summary {
+    color: #fff;
+    font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+}
+.dr-reset {
+    margin-left: auto;
+    background: transparent;
+    color: #888;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    padding: 3px 10px;
+    font-size: 0.7rem;
+    cursor: pointer;
+}
+.dr-reset:hover { color: #fff; border-color: #b388ff; }
+.dr-track {
+    position: relative;
+    height: 22px;
+    margin: 0 6px;
+}
+.dr-rail {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    height: 4px;
+    transform: translateY(-50%);
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 2px;
+    pointer-events: none;
+}
+.dr-fill {
+    position: absolute;
+    height: 100%;
+    background: linear-gradient(90deg, rgba(179, 136, 255, 0.55), rgba(0, 229, 255, 0.55));
+    border-radius: 2px;
+}
+.dr-track input[type="range"] {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    margin: 0;
+    background: transparent;
+    appearance: none;
+    -webkit-appearance: none;
+    pointer-events: none;
+    height: 22px;
+}
+.dr-track input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #fff;
+    border: 2px solid #b388ff;
+    cursor: pointer;
+    box-shadow: 0 0 6px rgba(179, 136, 255, 0.5);
+    pointer-events: auto;
+}
+.dr-track input[type="range"]::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #fff;
+    border: 2px solid #b388ff;
+    cursor: pointer;
+    box-shadow: 0 0 6px rgba(179, 136, 255, 0.5);
+    pointer-events: auto;
+}
+.dr-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.68rem;
+    color: #888;
+    margin-top: 2px;
+    font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+}
+
 /* Tab navigation bar (only visible in tabs layout) - pill-style */
 #tab-bar {
     display: flex;
@@ -748,6 +876,158 @@ body.weather-loaded .forensic-tag.weather-tag {
     max-width: 380px;
     text-align: center;
     z-index: 1000;
+}
+
+.print-btn {
+    background: rgba(255, 255, 255, 0.04);
+    color: #ddd;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 5px;
+    padding: 6px 12px;
+    font-size: 0.78rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.print-btn:hover { color: #fff; background: rgba(0, 229, 255, 0.18); border-color: rgba(0, 229, 255, 0.6); }
+
+/* === Print / PDF export ===
+   A proper light-theme report: white background, dark text, clean
+   chart backgrounds, all interactive chrome hidden. body.print-mode is
+   applied just before calling window.print(); the JS canvas redraw picks
+   a light palette when that class is set so axis labels / grid lines /
+   chart titles all stay readable on paper.
+*/
+body.print-mode,
+body.print-mode html {
+    background: #ffffff !important;
+    color: #1a1a1a !important;
+}
+body.print-mode::before { display: none !important; }
+body.print-mode #topbar {
+    background: #ffffff !important;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.15) !important;
+    position: static;
+    padding: 8px 16px;
+    backdrop-filter: none;
+}
+body.print-mode #page-name { color: #1a1a1a !important; }
+body.print-mode #page-name::before { color: rgba(0, 0, 0, 0.35) !important; }
+body.print-mode #page-subtitle { color: #555 !important; }
+body.print-mode #topbar .controls,
+body.print-mode #tab-bar,
+body.print-mode #date-range-panel,
+body.print-mode #scope-toggle,
+body.print-mode #print-btn,
+body.print-mode .layout-toggle-btn,
+body.print-mode .adv-settings,
+body.print-mode #weather-status,
+body.print-mode .weather-capsule { display: none !important; }
+body.print-mode[data-layout="tabs"] [data-tab]:not(.tab-btn):not(.tab-active) {
+    display: revert !important;
+}
+body.print-mode .stat-card {
+    background: #f7f5fc !important;
+    border: 1px solid rgba(0, 0, 0, 0.12) !important;
+}
+body.print-mode .stat-card .sv { color: #1a1a1a !important; }
+body.print-mode .stat-card .sv small,
+body.print-mode .stat-card .sl { color: #555 !important; }
+body.print-mode #insights {
+    background: #faf7ff !important;
+    border-color: rgba(124, 92, 200, 0.35) !important;
+}
+body.print-mode #insights h2,
+body.print-mode .chart-section h2 { color: #1a1a1a !important; }
+body.print-mode .insight { color: #222 !important; }
+body.print-mode .insight b,
+body.print-mode .chart-takeaway b { color: #000 !important; }
+body.print-mode .forensic-tag {
+    background: #f0e8ff !important;
+    color: #6b4ed0 !important;
+    border-color: rgba(124, 92, 200, 0.5) !important;
+}
+body.print-mode #insights h2 .forensic-tag {
+    background: #e0f8eb !important;
+    color: #2e8a55 !important;
+    border-color: rgba(46, 138, 85, 0.5) !important;
+}
+body.print-mode [data-section="gpsdelta"] .forensic-tag {
+    background: #e2f0fc !important;
+    color: #2167a5 !important;
+    border-color: rgba(33, 103, 165, 0.5) !important;
+}
+body.print-mode .weather-bit,
+body.print-mode body.weather-loaded .weather-bit { color: #b58b00 !important; }
+body.print-mode .forensic-tag.weather-tag,
+body.print-mode body.weather-loaded .forensic-tag.weather-tag {
+    background: #fff7d6 !important;
+    color: #8a6a00 !important;
+    border-color: rgba(181, 139, 0, 0.5) !important;
+}
+body.print-mode .chart-host {
+    background: #ffffff !important;
+    border: 1px solid rgba(0, 0, 0, 0.18) !important;
+}
+body.print-mode .chart-title {
+    color: #1a1a1a !important;
+    text-shadow: none !important;
+}
+body.print-mode .chart-title-axes { color: #666 !important; }
+body.print-mode .chart-takeaway {
+    background: #f1faf3 !important;
+    color: #1a1a1a !important;
+    border-left-color: #2e8a55 !important;
+}
+body.print-mode .chart-takeaway.warn {
+    background: #fff5e6 !important;
+    border-left-color: #c47800 !important;
+}
+body.print-mode .sec-hint { color: #555 !important; }
+body.print-mode .sec-meta { color: #777 !important; }
+body.print-mode .anomalies-list {
+    max-height: 300px;
+    overflow: hidden;
+}
+body.print-mode .anomaly-row {
+    background: #fafafa !important;
+    color: #1a1a1a !important;
+    border-color: rgba(0, 0, 0, 0.15) !important;
+}
+body.print-mode .anomaly-row .anom-date { color: #555 !important; }
+body.print-mode .anomaly-row .anom-peak { color: #000 !important; }
+
+@media print {
+    body, body.print-mode { background: #ffffff !important; }
+    body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+    body::before { display: none !important; }
+    #topbar .controls,
+    #tab-bar,
+    #date-range-panel,
+    #scope-toggle,
+    #print-btn,
+    .layout-toggle-btn,
+    .adv-settings,
+    #weather-status,
+    .weather-capsule { display: none !important; }
+    #topbar { position: static; padding: 8px 16px; }
+    body[data-layout="tabs"] [data-tab]:not(.tab-btn):not(.tab-active) { display: revert !important; }
+    .chart-section,
+    #lifetime-bar,
+    #insights {
+        break-inside: avoid;
+        page-break-inside: avoid;
+    }
+    .chart-section + .chart-section { break-before: page; }
+    .anomalies-list { max-height: 300px; overflow: hidden; }
+    @page {
+        size: A4;
+        margin: 12mm;
+    }
 }
 
 @media (max-width: 700px) {

@@ -1011,6 +1011,119 @@
   // Epoch position 0..1 for the old→new colour ramp on scatter charts.
   dated.forEach((m, i) => { m.epoch = dated.length > 1 ? i / (dated.length - 1) : 0.5; });
 
+  // Keep the unfiltered set: the date-range slider operates by replacing
+  // `dated` with a sub-slice of `datedFull`, then re-running renderAll().
+  const datedFull = dated.slice();
+  const subtitleFmt = new Intl.DateTimeFormat(undefined, { month: "short", year: "numeric" });
+  function refreshSubtitle() {
+    let totalKm = 0;
+    for (const m of dated) totalKm += m.distKm;
+    const lo = dated[0] ? dated[0].date : datedFull[0].date;
+    const hi = dated[dated.length - 1] ? dated[dated.length - 1].date : datedFull[datedFull.length - 1].date;
+    let sub = `${dated.length} trips · ${UNITS.dist(totalKm).toFixed(0)} ${UNITS.distUnit} · ` +
+              `${subtitleFmt.format(lo)} – ${subtitleFmt.format(hi)}`;
+    if (dated.length < datedFull.length) sub += ` · scoped from ${datedFull.length}`;
+    if (undatedCount) sub += ` · ${undatedCount} undated skipped`;
+    subtitleEl.textContent = sub;
+  }
+  let dateRangeStart = datedFull[0].date;
+  let dateRangeEnd = datedFull[datedFull.length - 1].date;
+  const drSummary = document.getElementById("dr-summary");
+  const drMin = document.getElementById("dr-min");
+  const drMax = document.getElementById("dr-max");
+  const drFill = document.getElementById("dr-fill");
+  const drLo = document.getElementById("dr-lo");
+  const drHi = document.getElementById("dr-hi");
+  const drReset = document.getElementById("dr-reset");
+  const drFmt = new Intl.DateTimeFormat(undefined, { month: "short", year: "2-digit", day: "numeric" });
+  function applyDateRange() {
+    const fullStart = datedFull[0].date.getTime();
+    const fullEnd = datedFull[datedFull.length - 1].date.getTime();
+    const span = Math.max(1, fullEnd - fullStart);
+    const minV = Math.min(Number(drMin.value), Number(drMax.value));
+    const maxV = Math.max(Number(drMin.value), Number(drMax.value));
+    dateRangeStart = new Date(fullStart + (minV / 100) * span);
+    dateRangeEnd = new Date(fullStart + (maxV / 100) * span);
+    drFill.style.left = minV + "%";
+    drFill.style.width = (maxV - minV) + "%";
+    drLo.textContent = drFmt.format(dateRangeStart);
+    drHi.textContent = drFmt.format(dateRangeEnd);
+    const sub = datedFull.filter((m) => m.date >= dateRangeStart && m.date <= dateRangeEnd);
+    dated.length = 0;
+    Array.prototype.push.apply(dated, sub);
+    dated.forEach((m, i) => { m.epoch = dated.length > 1 ? i / (dated.length - 1) : 0.5; });
+    const all = minV === 0 && maxV === 100;
+    drSummary.textContent = all
+      ? "All trips (" + datedFull.length + ")"
+      : sub.length + " of " + datedFull.length + " trips";
+    if (typeof renderAll === "function") renderAll();
+  }
+  function debounce(fn, ms) {
+    let id = null;
+    return function () { clearTimeout(id); id = setTimeout(fn, ms); };
+  }
+  const applyDateRangeDebounced = debounce(applyDateRange, 60);
+  drMin.addEventListener("input", () => {
+    if (Number(drMin.value) > Number(drMax.value) - 1) drMin.value = Number(drMax.value) - 1;
+    applyDateRangeDebounced();
+  });
+  drMax.addEventListener("input", () => {
+    if (Number(drMax.value) < Number(drMin.value) + 1) drMax.value = Number(drMin.value) + 1;
+    applyDateRangeDebounced();
+  });
+  drReset.addEventListener("click", () => {
+    drMin.value = 0; drMax.value = 100; applyDateRange();
+  });
+  // Initial visual sync (don't run renderAll yet, it isn't defined at this point)
+  drFill.style.left = "0%";
+  drFill.style.width = "100%";
+  drLo.textContent = drFmt.format(datedFull[0].date);
+  drHi.textContent = drFmt.format(datedFull[datedFull.length - 1].date);
+  drSummary.textContent = "All trips (" + datedFull.length + ")";
+
+  // Scope toggle: hide the slider panel behind a small button near the
+  // page title. The button glows whenever a sub-range is active so the
+  // user can't forget the analyses are scoped.
+  const scopeToggle = document.getElementById("scope-toggle");
+  const scopePanel = document.getElementById("date-range-panel");
+  if (scopeToggle && scopePanel) {
+    scopeToggle.addEventListener("click", () => {
+      scopePanel.classList.toggle("hidden");
+    });
+  }
+  function refreshScopeButton() {
+    if (!scopeToggle) return;
+    const active = dated.length !== datedFull.length;
+    scopeToggle.classList.toggle("active", active);
+    const span = scopeToggle.querySelector("span");
+    if (span) span.textContent = active ? "Scoped (" + dated.length + ")" : "Scope";
+  }
+
+  // Print: switch to a light-on-white theme, force single-page layout so
+  // every section renders, redraw every canvas with the light palette,
+  // then open the browser print dialog. Pick "Save as PDF" in the dialog
+  // for an exported report.
+  const printBtn = document.getElementById("print-btn");
+  if (printBtn) {
+    printBtn.addEventListener("click", () => {
+      const prevLayout = document.body.getAttribute("data-layout");
+      document.body.classList.add("print-mode");
+      document.body.setAttribute("data-layout", "single");
+      applyChartTheme(true);
+      if (typeof renderAll === "function") renderAll();
+      // Let the browser re-lay and paint before the print dialog grabs
+      // its snapshot; some browsers race window.print() against layout.
+      setTimeout(() => {
+        try { window.print(); } finally {
+          document.body.classList.remove("print-mode");
+          if (prevLayout) document.body.setAttribute("data-layout", prevLayout);
+          applyChartTheme(false);
+          if (typeof renderAll === "function") renderAll();
+        }
+      }, 350);
+    });
+  }
+
   // Charging events: a charge is detected when consecutive (date-sorted) trips
   // show the battery jumping back up between rides. Threshold of 5% suppresses
   // sensor noise / partial top-ups that aren't real plug-in events.
@@ -1032,15 +1145,7 @@
   }
   // Quick lookup: count charges per bin key when we render the section.
 
-  {
-    let totalKm = 0;
-    for (const m of dated) totalKm += m.distKm;
-    const fmt = new Intl.DateTimeFormat(undefined, { month: "short", year: "numeric" });
-    let sub = `${dated.length} trips · ${UNITS.dist(totalKm).toFixed(0)} ${UNITS.distUnit} · ` +
-              `${fmt.format(dated[0].date)} – ${fmt.format(dated[dated.length - 1].date)}`;
-    if (undatedCount) sub += ` · ${undatedCount} undated skipped`;
-    subtitleEl.textContent = sub;
-  }
+  // Subtitle now refreshes inside renderAll() so it tracks the current scope.
 
   // ---------- Binning ----------
   const MONTH_FMT = new Intl.DateTimeFormat(undefined, { month: "short", year: "2-digit" });
@@ -1389,10 +1494,27 @@
     ohmIR: "#ff5252",
     rolling: "#ffffff",
   };
-  const AXIS_COLOR = "rgba(255,255,255,0.35)";
-  const GRID_COLOR = "rgba(255,255,255,0.06)";
-  const GRID_MINOR_COLOR = "rgba(255,255,255,0.025)";
+  // Dynamic theme: the canvases use these resolved colors. When the user
+  // enters print mode we swap them for a dark-on-white palette so axis
+  // labels and grid lines stay readable on paper.
   const FONT = "10px -apple-system, sans-serif";
+  let AXIS_COLOR = "rgba(255,255,255,0.35)";
+  let GRID_COLOR = "rgba(255,255,255,0.06)";
+  let GRID_MINOR_COLOR = "rgba(255,255,255,0.025)";
+  let CHART_BG = null; // null = leave canvas transparent (dark theme); set to "white" in print mode
+  function applyChartTheme(printing) {
+    if (printing) {
+      AXIS_COLOR = "rgba(0,0,0,0.6)";
+      GRID_COLOR = "rgba(0,0,0,0.10)";
+      GRID_MINOR_COLOR = "rgba(0,0,0,0.045)";
+      CHART_BG = "#ffffff";
+    } else {
+      AXIS_COLOR = "rgba(255,255,255,0.35)";
+      GRID_COLOR = "rgba(255,255,255,0.06)";
+      GRID_MINOR_COLOR = "rgba(255,255,255,0.025)";
+      CHART_BG = null;
+    }
+  }
 
   const tooltip = document.createElement("div");
   tooltip.id = "an-tooltip";
@@ -1419,6 +1541,10 @@
     canvas.height = rect.height * dpr;
     const ctx = canvas.getContext("2d");
     ctx.scale(dpr, dpr);
+    if (CHART_BG) {
+      ctx.fillStyle = CHART_BG;
+      ctx.fillRect(0, 0, rect.width, rect.height);
+    }
     return { ctx, w: rect.width, h: rect.height };
   }
 
@@ -1440,6 +1566,28 @@
     if (dp != null) return v.toFixed(dp);
     const a = Math.abs(v);
     return v.toFixed(a >= 100 ? 0 : a >= 10 ? 1 : 2);
+  }
+
+  // Map an ambient temperature (°C) to a blue→green→red gradient color used
+  // as the per-bin background fill on the range chart. Cold = blue, hot = red.
+  // The opacity is the same across the range so the bars stay subtle.
+  function tempBandColor(c) {
+    // Cold -10°C, comfortable 20°C, hot 35°C
+    const t = Math.max(0, Math.min(1, (c - -10) / 45));
+    // 3-stop ramp: cyan -> green -> orange
+    let r, g, b;
+    if (t < 0.5) {
+      const k = t / 0.5;
+      r = Math.round(50  * (1 - k) + 80  * k);
+      g = Math.round(180 * (1 - k) + 220 * k);
+      b = Math.round(220 * (1 - k) + 110 * k);
+    } else {
+      const k = (t - 0.5) / 0.5;
+      r = Math.round(80  * (1 - k) + 240 * k);
+      g = Math.round(220 * (1 - k) + 110 * k);
+      b = Math.round(110 * (1 - k) + 40  * k);
+    }
+    return [r, g, b];
   }
 
   // Trend chart over bins: each series is {stats, color, label, unit, band}.
@@ -1479,6 +1627,24 @@
     });
 
     ctx.font = FONT;
+
+    // Optional weather gradient strip painted *behind* the chart contents:
+    // each bin's plot column gets a translucent fill in a blue→red ramp
+    // based on the mean ambient temperature of trips in that bin. Lets
+    // the user see seasons at a glance.
+    if (opts.weatherGradient) {
+      const colW = cw / Math.max(1, n);
+      for (let i = 0; i < n; i++) {
+        const trips = bins[i].trips || [];
+        let temps = 0, tn = 0;
+        for (const m of trips) if (m.ambientC != null) { temps += m.ambientC; tn++; }
+        if (!tn) continue;
+        const [r, g, b] = tempBandColor(temps / tn);
+        ctx.fillStyle = "rgba(" + r + "," + g + "," + b + ",0.10)";
+        ctx.fillRect(pad.left + i * colW, pad.top, colW, ch);
+      }
+    }
+
     // Grid + left axis labels off the first series' scale.
     const s0 = scales.find((s) => s);
     if (s0) {
@@ -2433,6 +2599,9 @@
 
   // ---------- Render pipeline ----------
   function renderAll() {
+    if (!dated.length) return;
+    refreshSubtitle();
+    refreshScopeButton();
     const minBattUse = Number(battMinSel.value);
     const minPerBin = Number(minBinSel.value);
     for (const m of dated) applyRangeGating(m, minBattUse);
@@ -2482,7 +2651,7 @@
           label: normalizeCheck.checked ? "Est. range (20 °C norm.)" : "Est. full range",
           unit: UNITS.distUnit, band: true, dp: 1,
         }];
-        drawTrendChart(document.getElementById("chart-range"), bins, series, { rolling, zeroBase: false });
+        drawTrendChart(document.getElementById("chart-range"), bins, series, { rolling, zeroBase: false, weatherGradient: weatherLoaded });
         let metaTxt = usable + " of " + dated.length + " trips usable";
         if (tempFit) {
           const slopeDisp = UNITS.dist(tempFit.slope) / (UNITS.imperial ? 1.8 : 1);
