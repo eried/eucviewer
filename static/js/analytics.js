@@ -422,6 +422,32 @@
         flags[i] = true;
         indices.add(i);
       }
+      // Phantom-speed check: a wheel reading 25+ km/h while the motor was
+      // completely idle is physics-impossible. A real EUC at that speed
+      // pulls amps. Loggers entering shutdown often emit phantom speed
+      // values with current = 0 / power = 0 — this catches them even
+      // when the GPS column was already corrupted (so the regular
+      // free-spin check would have missed them).
+      if (w >= 25) {
+        const cur = Math.abs(ts[i][CURRENT] || 0);
+        const pwr = Math.abs(ts[i][POWER] || 0);
+        if (cur < 1 && pwr < 100) {
+          // Sample wasn't pulling current. Did at least one neighbour
+          // in ±2 samples? Sustained riding at high speed almost always
+          // has *some* sample drawing current.
+          let neighborWorked = false;
+          for (let k = Math.max(0, i - 2); k <= Math.min(ts.length - 1, i + 2); k++) {
+            if (k === i) continue;
+            const c = Math.abs(ts[k][CURRENT] || 0);
+            const p = Math.abs(ts[k][POWER] || 0);
+            if (c >= 1 || p >= 100) { neighborWorked = true; break; }
+          }
+          if (!neighborWorked) {
+            flags[i] = true;
+            indices.add(i);
+          }
+        }
+      }
     }
     // Second pass: group contiguous flagged samples into events.
     let i = 0;
@@ -439,20 +465,38 @@
       }
       const endI = Math.min(ts.length - 1, j - 1);
       const durS = (ts[endI][SEC] || 0) - (ts[startI][SEC] || 0);
-      // Classify FALL vs LIFT. A real fall has:
-      //   1. The wheel sustained at speed BEFORE (>=15 km/h with GPS agree)
-      //      for at least 3 of the previous 12 samples — not just 1.
-      //   2. AFTER the event, the wheel did NOT smoothly return to the
-      //      previous riding speed — ground-truth speed drops to near zero
-      //      within the next ~20 samples and stays there.
-      // Otherwise it's a LIFT/test (brief pickup, GPS dropout in a turn, etc).
+      // Classify the event into one of three kinds:
+      //   GLITCH - logger malfunction (cascade of bad samples in a zero-motor
+      //            window). Not a rider event.
+      //   FALL   - the rider was *actually* riding fast (motor working AND
+      //            wheel/GPS agreed), then the wheel cut out and the rider's
+      //            ground speed crashed and stayed low.
+      //   LIFT   - everything else (pickup tests, brief GPS dropouts in
+      //            tunnels / turns, momentary safety beeps).
+      // A real fall requires BOTH the apparent ride speed and proof that the
+      // motor was doing work in the pre-window. A logger that reports fake
+      // 60 km/h with current = 0 can no longer fake a fall.
       let preFastCount = 0;
+      let preWorked = 0;
       for (let k = Math.max(0, startI - 12); k < startI; k++) {
         const w = ts[k][SPD] || 0, g = ts[k][GPSSPD];
         if (typeof g === "number" && g >= preFallSpd && w >= preFallSpd) preFastCount++;
+        const cur = Math.abs(ts[k][CURRENT] || 0);
+        const pwr = Math.abs(ts[k][POWER] || 0);
+        if (cur >= 1 || pwr >= 100) preWorked++;
+      }
+      // Logger-glitch: nothing in the surrounding ±8 sample window was
+      // actually driving the wheel — current and power were both flat.
+      // This is a cascade of phantom readings, not a rider event.
+      let surroundingWorked = false;
+      for (let k = Math.max(0, startI - 8); k <= Math.min(ts.length - 1, endI + 8); k++) {
+        if (k >= startI && k <= endI) continue;
+        const cur = Math.abs(ts[k][CURRENT] || 0);
+        const pwr = Math.abs(ts[k][POWER] || 0);
+        if (cur >= 1 || pwr >= 100) { surroundingWorked = true; break; }
       }
       let postCrashed = false;
-      if (preFastCount >= 3) {
+      if (preFastCount >= 3 && preWorked >= 3) {
         // Within the next 20 samples after the anomaly window, check if GPS
         // ground speed dropped to < 3 km/h and stayed there for a stretch.
         let lowStreak = 0, scanned = 0;
@@ -464,12 +508,39 @@
         }
         if (!postCrashed && scanned >= 6 && lowStreak >= Math.max(2, postStopStreak - 2)) postCrashed = true;
       }
+      // Strict LIFT: GPS confirms the wheel didn't move AND the motor was
+      // idle (no current / power being delivered) for the bulk of the
+      // event AND it lasted long enough that a hand-spinning rider could
+      // have actually triggered it. Otherwise it's just a sensor blip
+      // during normal riding (GPS dropout, brief noise).
+      let gpsLow = 0, gpsTotal = 0, motorIdle = 0;
+      const eventLen = endI - startI + 1;
+      for (let k = startI; k <= endI; k++) {
+        const g = ts[k][GPSSPD];
+        if (typeof g === "number") { gpsTotal++; if (g < 2) gpsLow++; }
+        const cur = Math.abs(ts[k][CURRENT] || 0);
+        const pwr = Math.abs(ts[k][POWER] || 0);
+        if (cur < 1 && pwr < 100) motorIdle++;
+      }
+      const gpsStationaryRatio = gpsTotal > 0 ? gpsLow / gpsTotal : 0;
+      const motorIdleRatio = motorIdle / eventLen;
+      let kind;
+      if (!surroundingWorked) {
+        kind = "glitch";
+      } else if (preFastCount >= 3 && preWorked >= 3 && postCrashed) {
+        kind = "fall";
+      } else if (gpsStationaryRatio >= 0.7 && motorIdleRatio >= 0.7 && eventLen >= 2) {
+        kind = "lift";
+      } else {
+        kind = "spike";
+      }
       events.push({
-        kind: preFastCount >= 3 && postCrashed ? "fall" : "lift",
+        kind,
         sec: ts[startI][SEC],
         peakSpd,
         durS,
         preFastCount,
+        preWorked,
       });
       i = j;
     }
@@ -2006,7 +2077,9 @@
     const a = Math.abs(v);
     if (a >= 1000) return { v: (v / 1000).toFixed(a >= 10000 ? 1 : 2) + "k", u: unit };
     if (a >= 100) return { v: v.toFixed(0), u: unit };
-    if (a >= 10) return { v: v.toFixed(1), u: unit };
+    // Drop the .0 on whole-number values (counts like Trips, Charges,
+    // Free spins/falls etc.). Floats keep their single decimal.
+    if (Number.isInteger(v)) return { v: String(v), u: unit };
     return { v: v.toFixed(1), u: unit };
   }
   function setStat(id, value, unit) {
@@ -2030,7 +2103,12 @@
       if (m.estRangeKm != null && m.estRangeKm > maxRangeKm) maxRangeKm = m.estRangeKm;
       if (m.topSpeedKmh != null && m.topSpeedKmh > topSpd) topSpd = m.topSpeedKmh;
       totalClimb += m.climbM || 0;
-      anomCount += (m.anomalies && m.anomalies.length) || 0;
+      // Only count rider events (lift / fall), not logger glitches.
+      if (m.anomalies) {
+        for (const ev of m.anomalies) {
+          if (ev.kind === "lift" || ev.kind === "fall") anomCount++;
+        }
+      }
       // Prefer to headline the 40 km/h time when achievable, else 25 km/h.
       if (m.accel40 != null && (bestAccelTarget < 40 || m.accel40 < bestAccel)) { bestAccel = m.accel40; bestAccelTarget = 40; }
       else if (bestAccelTarget < 40 && m.accel25 != null && (bestAccel == null || m.accel25 < bestAccel)) { bestAccel = m.accel25; bestAccelTarget = 25; }
@@ -2851,7 +2929,7 @@
       }
     }
 
-    // Anomalies: list every free spin or fall across the whole library.
+    // Anomalies: list every free spin, fall, or logger glitch.
     {
       const events = [];
       for (const m of dated) {
@@ -2863,14 +2941,19 @@
       const list = document.getElementById("anomalies-list");
       const falls = events.filter((e) => e.kind === "fall");
       const lifts = events.filter((e) => e.kind === "lift");
-      meta.textContent = events.length + " events (" + lifts.length + " lifts / " + falls.length + " falls)";
+      const glitches = events.filter((e) => e.kind === "glitch");
+      const spikes = events.filter((e) => e.kind === "spike");
+      meta.textContent = events.length + " events (" + lifts.length + " lifts / " + falls.length + " falls / " + spikes.length + " sensor spikes / " + glitches.length + " logger glitches)";
       setTakeaway("anomalies-takeaway", events.length ? [
         `Lifts / pickup tests: <b>${lifts.length}</b>`,
         `Suspected falls: <b>${falls.length}</b>`,
-      ] : ["No free-spin or fall samples detected"], falls.length > 0 ? "warn" : null);
-      // Render most recent 200 to avoid blowing up the DOM
-      events.sort((a, b) => (b.date?.getTime() || 0) - (a.date?.getTime() || 0));
-      const top = events.slice(0, 200);
+        `Sensor spikes during riding: <b>${spikes.length}</b>`,
+        `Logger glitches: <b>${glitches.length}</b>`,
+      ] : ["No anomaly samples detected"], falls.length > 0 ? "warn" : null);
+      // Render most recent 200 lifts + falls (the rider-event types).
+      const riderEvents = events.filter((e) => e.kind === "lift" || e.kind === "fall");
+      riderEvents.sort((a, b) => (b.date?.getTime() || 0) - (a.date?.getTime() || 0));
+      const top = riderEvents.slice(0, 200);
       const fmt = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" });
       list.innerHTML = top.map((e) => {
         const peak = UNITS.speed(e.peakSpd).toFixed(0);

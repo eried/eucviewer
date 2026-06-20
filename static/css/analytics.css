@@ -778,6 +778,8 @@ body.weather-loaded .forensic-tag.weather-tag {
 }
 .anomaly-row.lift .anom-kind { color: #7cc7ff; }
 .anomaly-row.fall .anom-kind { color: #ff5252; }
+.anomaly-row.glitch .anom-kind { color: #888; }
+.anomaly-row.glitch { opacity: 0.7; }
 .anomaly-row .anom-date { color: #888; }
 .anomaly-row .anom-peak { color: #fff; }
 
