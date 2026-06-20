@@ -915,8 +915,14 @@
       // Lag: shift the GPS series by k samples and pick the k that lines up
       // best with the wheel speed. Positive k means GPS arrives k samples
       // *after* the wheel reading, i.e. GPS lags. Window: ±3 samples.
+      //
+      // Sample rate is coarse on most loggers (2-4 s), so a purely integer-k
+      // result quantises every trip to either 0 or ±sample_interval. We fit
+      // a parabola through the three MSE values around the integer minimum
+      // to recover sub-sample precision (typical receiver lag is 0.3-1.5 s,
+      // well below one sample).
       if (diffs.length >= 30 && dtN > 0) {
-        let bestK = 0, bestMse = Infinity;
+        const mses = [];
         for (let k = -3; k <= 3; k++) {
           let mse = 0, n = 0;
           const start = Math.max(0, -k);
@@ -928,10 +934,22 @@
             if (typeof g !== "number" || g < 0.5 || w < 5) continue;
             const d = w - g; mse += d * d; n++;
           }
-          if (n >= 10 && mse / n < bestMse) { bestMse = mse / n; bestK = k; }
+          mses.push({ k, mse: n >= 10 ? mse / n : Infinity });
+        }
+        let bestIdx = 0;
+        for (let i = 1; i < mses.length; i++) if (mses[i].mse < mses[bestIdx].mse) bestIdx = i;
+        let kFine = mses[bestIdx].k;
+        if (bestIdx > 0 && bestIdx < mses.length - 1) {
+          const y0 = mses[bestIdx - 1].mse, y1 = mses[bestIdx].mse, y2 = mses[bestIdx + 1].mse;
+          const denom = y0 - 2 * y1 + y2;
+          if (denom > 0 && isFinite(y0) && isFinite(y2)) {
+            const offset = (y0 - y2) / (2 * denom);
+            // Clamp to ±1 sample so a noisy parabola can't fling us out of range.
+            kFine = mses[bestIdx].k + Math.max(-1, Math.min(1, offset));
+          }
         }
         const meanDt = sumDt / dtN;
-        m.gpsLagSec = bestK * meanDt;
+        m.gpsLagSec = kFine * meanDt;
       }
     }
 
@@ -2740,23 +2758,29 @@
         }], { rolling });
         const allLags = dated.map((m) => m.gpsLagSec).filter((v) => v != null);
         if (allLags.length) {
-          const sortedLag = allLags.slice().sort((a, b) => a - b);
-          const medLag = sortedLag[Math.floor(sortedLag.length / 2)];
-          const dir = medLag > 0 ? "behind" : medLag < 0 ? "ahead of" : "matched with";
-          const parts = [
-            `Typical: GPS arrives <b>${Math.abs(medLag).toFixed(2)} s ${dir}</b> the wheel reading`,
-          ];
-          // Early vs late thirds to flag improvement
+          // Mean is more meaningful than median here because individual trips
+          // round to a few sub-sample values; mean recovers the central trend.
+          const meanLag = allLags.reduce((a, b) => a + b, 0) / allLags.length;
+          const absLags = allLags.map(Math.abs).sort((a, b) => a - b);
+          const medAbs = absLags[Math.floor(absLags.length / 2)];
+          const p90Abs = absLags[Math.floor(absLags.length * 0.9)];
+          const parts = [];
+          if (Math.abs(meanLag) < 0.15) {
+            parts.push(`On average GPS and wheel are <b>essentially in sync</b> (mean offset ${meanLag >= 0 ? "+" : ""}<b>${meanLag.toFixed(2)} s</b>)`);
+          } else {
+            parts.push(`On average GPS arrives <b>${Math.abs(meanLag).toFixed(2)} s ${meanLag > 0 ? "behind" : "ahead of"}</b> the wheel reading`);
+          }
+          parts.push(`Per-trip offset is typically <b>${medAbs.toFixed(2)} s</b>, top 10% beyond <b>${p90Abs.toFixed(2)} s</b>`);
           const sortedByDate = dated.filter((m) => m.gpsLagSec != null).slice().sort((a, b) => a.date - b.date);
           if (sortedByDate.length >= 12) {
             const third = Math.floor(sortedByDate.length / 3);
-            const earlyMed = sortedByDate.slice(0, third).map((m) => Math.abs(m.gpsLagSec)).sort((a, b) => a - b)[Math.floor(third / 2)];
-            const lateMed  = sortedByDate.slice(-third).map((m) => Math.abs(m.gpsLagSec)).sort((a, b) => a - b)[Math.floor(third / 2)];
-            const change = ((lateMed - earlyMed) / Math.max(0.01, earlyMed)) * 100;
-            if (Math.abs(change) >= 10) {
-              parts.push(`Lag has ${change < 0 ? "tightened" : "widened"} by <b>${Math.abs(change).toFixed(0)}%</b> from your first third to your last third`);
+            const earlyAbs = sortedByDate.slice(0, third).map((m) => Math.abs(m.gpsLagSec)).reduce((a, b) => a + b, 0) / third;
+            const lateAbs  = sortedByDate.slice(-third).map((m) => Math.abs(m.gpsLagSec)).reduce((a, b) => a + b, 0) / third;
+            const change = ((lateAbs - earlyAbs) / Math.max(0.01, earlyAbs)) * 100;
+            if (Math.abs(change) >= 15) {
+              parts.push(`Offset has ${change < 0 ? "tightened" : "widened"} by <b>${Math.abs(change).toFixed(0)}%</b> from your first third to your last third`);
             } else {
-              parts.push("Lag is stable across your history");
+              parts.push("Offset is stable across your history");
             }
           }
           setTakeaway("gpsdelta-lag-takeaway", parts);
