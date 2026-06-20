@@ -552,6 +552,13 @@
       gLongPeak: null,          // peak longitudinal |G| (braking / launch)
       gFromImu: false,          // true if the IMU logged real G, false = estimated
       gripScatter: null,        // [ [speedKmh, latG], ... ] for the grip chart
+      // Wheel vs GPS speed agreement
+      gpsMeanDiff: null,        // mean (wheel - gps) km/h, positive = wheel reads higher
+      gpsMeanAbsDiff: null,     // mean |wheel - gps|, typical disagreement
+      gpsP90AbsDiff: null,      // 90th percentile of |wheel - gps|, the spike tail
+      gpsSpikeCount: 0,         // count of samples where |wheel - gps| > 5 km/h
+      gpsLagSec: null,          // signed lag of GPS behind wheel (positive = GPS later)
+      gpsAgreementSamples: 0,   // count of samples where both > thresholds
       topSpeedKmh: null,        // verified max speed (excludes free spins)
       anomalies: [],            // free spins + falls detected within this trip
       accel25: null,            // best 0->25 km/h time (universally achievable)
@@ -871,6 +878,61 @@
         .slice(0, 200);
       // Headline counts so the section can tell the user what we found.
       m.gforceCounts = { corners: corners.length, brakes: brakes.length, launches: launches.length };
+    }
+
+    // ---- Wheel speed vs GPS speed agreement ----
+    // Compare the wheel's reported speed against the ground-truth GPS speed
+    // sample-by-sample. Surfaces three things the rider/diagnostician cares about:
+    //   bias   - does the wheel typically read higher or lower than GPS?
+    //   spread - how far apart are they on a typical sample (mean and p90 |Δ|)?
+    //   lag    - which one is leading? GPS is normally a hair behind because
+    //            of the receiver's filtering. We cross-correlate ±3 samples
+    //            and pick the offset that minimises mean squared error.
+    {
+      const diffs = [];
+      let sumDt = 0, dtN = 0;
+      for (let i = 0; i < ts.length; i++) {
+        if (anomIdx.has(i)) continue;
+        const w = ts[i][SPD] || 0, g = ts[i][GPSSPD];
+        // Both must be plausibly moving so we don't compare 0 vs 0.
+        if (typeof g !== "number" || g < 0.5 || w < 5) continue;
+        diffs.push(w - g);
+        if (Math.abs(w - g) > 5) m.gpsSpikeCount++;
+        if (i > 0) {
+          const dt = (ts[i][SEC] || 0) - (ts[i - 1][SEC] || 0);
+          if (dt > 0 && dt < 5) { sumDt += dt; dtN++; }
+        }
+      }
+      if (diffs.length >= 10) {
+        let sum = 0, sumAbs = 0;
+        for (const d of diffs) { sum += d; sumAbs += Math.abs(d); }
+        m.gpsMeanDiff = sum / diffs.length;
+        m.gpsMeanAbsDiff = sumAbs / diffs.length;
+        const sortedAbs = diffs.map(Math.abs).sort((a, b) => a - b);
+        m.gpsP90AbsDiff = sortedAbs[Math.floor(sortedAbs.length * 0.9)];
+        m.gpsAgreementSamples = diffs.length;
+      }
+      // Lag: shift the GPS series by k samples and pick the k that lines up
+      // best with the wheel speed. Positive k means GPS arrives k samples
+      // *after* the wheel reading, i.e. GPS lags. Window: ±3 samples.
+      if (diffs.length >= 30 && dtN > 0) {
+        let bestK = 0, bestMse = Infinity;
+        for (let k = -3; k <= 3; k++) {
+          let mse = 0, n = 0;
+          const start = Math.max(0, -k);
+          const end = ts.length - Math.max(0, k);
+          for (let i = start; i < end; i++) {
+            if (anomIdx.has(i)) continue;
+            const w = ts[i][SPD] || 0;
+            const g = ts[i + k] ? ts[i + k][GPSSPD] : null;
+            if (typeof g !== "number" || g < 0.5 || w < 5) continue;
+            const d = w - g; mse += d * d; n++;
+          }
+          if (n >= 10 && mse / n < bestMse) { bestMse = mse / n; bestK = k; }
+        }
+        const meanDt = sumDt / dtN;
+        m.gpsLagSec = bestK * meanDt;
+      }
     }
 
     // GPS centroid rounded to 0.1° (~11 km) — coarse on purpose, both for
@@ -2633,6 +2695,88 @@
           `<span style="color:#888">${dur}s</span>` +
         `</div>`;
       }).join("");
+    }
+
+    // Wheel vs GPS speed diagnostic.
+    {
+      const meta = document.getElementById("gpsdelta-meta");
+      const usable = dated.filter((m) => m.gpsMeanAbsDiff != null).length;
+      if (usable < 3) {
+        setSectionEmpty("gpsdelta", "Not enough trips with both wheel speed and GPS speed to compare.");
+        meta.textContent = "";
+        setTakeaway("gpsdelta-trend-takeaway", []);
+        setTakeaway("gpsdelta-lag-takeaway", []);
+        setTakeaway("gpsdelta-hist-takeaway", []);
+      } else {
+        setSectionActive("gpsdelta");
+        const totalSamples = dated.reduce((s, m) => s + (m.gpsAgreementSamples || 0), 0);
+        const totalSpikes = dated.reduce((s, m) => s + (m.gpsSpikeCount || 0), 0);
+        meta.textContent = usable + " trips · " + totalSamples.toLocaleString() + " comparable samples · " + totalSpikes + " spikes";
+        // Trend: typical disagreement
+        const diffStats = binStats(bins, (m) => m.gpsMeanAbsDiff, minPerBin);
+        drawTrendChart(document.getElementById("chart-gpsdelta-trend"), bins, [{
+          stats: diffStats, color: "#7cc7ff", label: "Typical |wheel − GPS|", unit: "km/h", band: true, dp: 2,
+        }], { rolling, zeroBase: true });
+        const { peak: dPeak, trough: dTrough } = statsPeakTrough(diffStats, bins);
+        const allDiffs = dated.map((m) => m.gpsMeanAbsDiff).filter((v) => v != null);
+        const allBias = dated.map((m) => m.gpsMeanDiff).filter((v) => v != null);
+        const sortedDiffs = allDiffs.slice().sort((a, b) => a - b);
+        const medDiff = sortedDiffs[Math.floor(sortedDiffs.length / 2)];
+        const sortedBias = allBias.slice().sort((a, b) => a - b);
+        const medBias = sortedBias[Math.floor(sortedBias.length / 2)];
+        const trendParts = [
+          `Typical gap: <b>${medDiff.toFixed(2)} km/h</b>`,
+          `Wheel reads <b>${Math.abs(medBias).toFixed(2)} km/h ${medBias >= 0 ? "higher" : "lower"}</b> than GPS on average`,
+        ];
+        if (dPeak && dTrough && dPeak.label !== dTrough.label) {
+          trendParts.push(`Best: <b>${dTrough.v.toFixed(2)}</b> in <b>${dTrough.label}</b> · worst: <b>${dPeak.v.toFixed(2)}</b> in <b>${dPeak.label}</b>`);
+        }
+        setTakeaway("gpsdelta-trend-takeaway", trendParts);
+
+        // Trend: GPS lag (signed)
+        const lagStats = binStats(bins, (m) => m.gpsLagSec, minPerBin);
+        drawTrendChart(document.getElementById("chart-gpsdelta-lag"), bins, [{
+          stats: lagStats, color: "#ffd740", label: "GPS lag", unit: "s", band: true, dp: 2,
+        }], { rolling });
+        const allLags = dated.map((m) => m.gpsLagSec).filter((v) => v != null);
+        if (allLags.length) {
+          const sortedLag = allLags.slice().sort((a, b) => a - b);
+          const medLag = sortedLag[Math.floor(sortedLag.length / 2)];
+          const dir = medLag > 0 ? "behind" : medLag < 0 ? "ahead of" : "matched with";
+          const parts = [
+            `Typical: GPS arrives <b>${Math.abs(medLag).toFixed(2)} s ${dir}</b> the wheel reading`,
+          ];
+          // Early vs late thirds to flag improvement
+          const sortedByDate = dated.filter((m) => m.gpsLagSec != null).slice().sort((a, b) => a.date - b.date);
+          if (sortedByDate.length >= 12) {
+            const third = Math.floor(sortedByDate.length / 3);
+            const earlyMed = sortedByDate.slice(0, third).map((m) => Math.abs(m.gpsLagSec)).sort((a, b) => a - b)[Math.floor(third / 2)];
+            const lateMed  = sortedByDate.slice(-third).map((m) => Math.abs(m.gpsLagSec)).sort((a, b) => a - b)[Math.floor(third / 2)];
+            const change = ((lateMed - earlyMed) / Math.max(0.01, earlyMed)) * 100;
+            if (Math.abs(change) >= 10) {
+              parts.push(`Lag has ${change < 0 ? "tightened" : "widened"} by <b>${Math.abs(change).toFixed(0)}%</b> from your first third to your last third`);
+            } else {
+              parts.push("Lag is stable across your history");
+            }
+          }
+          setTakeaway("gpsdelta-lag-takeaway", parts);
+        } else {
+          setTakeaway("gpsdelta-lag-takeaway", []);
+        }
+
+        // Histogram of per-trip mean |wheel − GPS|
+        drawHistogram(document.getElementById("chart-gpsdelta-hist"), allDiffs, {
+          xLabel: "km/h", yLabel: "trips", nBins: 16,
+          colorTop: "rgba(124,199,255,0.9)", colorBot: "rgba(124,199,255,0.18)",
+        });
+        const p25 = sortedDiffs[Math.floor(sortedDiffs.length * 0.25)];
+        const p75 = sortedDiffs[Math.floor(sortedDiffs.length * 0.75)];
+        const max = sortedDiffs[sortedDiffs.length - 1];
+        setTakeaway("gpsdelta-hist-takeaway", [
+          `Most rides land in the <b>${p25.toFixed(2)} − ${p75.toFixed(2)} km/h</b> band`,
+          `Worst trip: <b>${max.toFixed(2)} km/h</b> typical gap`,
+        ]);
+      }
     }
 
     // G-Force section: now scored only on real maneuvers (corners, hard

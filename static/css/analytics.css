@@ -441,6 +441,12 @@ body[data-layout="tabs"] [data-tab]:not(.tab-btn):not(.tab-active) { display: no
     background: rgba(179, 136, 255, 0.08);
 }
 #insights h2 .forensic-tag { border-color: rgba(105, 240, 174, 0.4); color: #69f0ae; background: rgba(105, 240, 174, 0.08); }
+/* DIAGNOSTIC chip: blue, reads as a different kind of report than EVIDENCE/FINDINGS. */
+[data-section="gpsdelta"] .forensic-tag {
+    border-color: rgba(124, 199, 255, 0.4);
+    color: #7cc7ff;
+    background: rgba(124, 199, 255, 0.08);
+}
 .chart-section.no-data .chart-host { display: none; }
 
 .chart-host {

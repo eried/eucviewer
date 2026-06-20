@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Wheel Forensics &middot; EUC Planet</title>
     <link rel="icon" href="static/favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="static/css/analytics.css?v=20" />
+    <link rel="stylesheet" href="static/css/analytics.css?v=21" />
     <script type="text/javascript">
         (function(c,l,a,r,i,t,y){
             c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
@@ -217,6 +217,39 @@
                    pack sag as it ages.</p>
             </section>
 
+            <section class="chart-section" data-section="gpsdelta" data-tab="speed">
+                <h2><span class="forensic-tag">DIAGNOSTIC</span> Wheel speed vs GPS speed <span class="sec-meta" id="gpsdelta-meta"></span></h2>
+                <div class="chart-host">
+                    <div class="chart-title">Typical disagreement over time <span class="chart-title-axes">(median |wheel &minus; GPS| per group, km/h)</span></div>
+                    <canvas id="chart-gpsdelta-trend"></canvas>
+                </div>
+                <div class="chart-takeaway" id="gpsdelta-trend-takeaway"></div>
+                <div class="chart-host">
+                    <div class="chart-title">GPS lag over time <span class="chart-title-axes">(seconds GPS arrives behind the wheel reading)</span></div>
+                    <canvas id="chart-gpsdelta-lag"></canvas>
+                </div>
+                <div class="chart-takeaway" id="gpsdelta-lag-takeaway"></div>
+                <div class="chart-host">
+                    <div class="chart-title">Difference distribution <span class="chart-title-axes">(per-trip mean |wheel &minus; GPS|)</span></div>
+                    <canvas id="chart-gpsdelta-hist"></canvas>
+                </div>
+                <div class="chart-takeaway" id="gpsdelta-hist-takeaway"></div>
+                <p class="sec-hint">For every sample where you're actually moving and the GPS has a fix,
+                   we compare what the wheel says you're doing against what the GPS says you're doing.
+                   <br><br>
+                   <b>Disagreement</b>: the typical gap between the two readings. Lower is better. A small
+                   constant gap usually means the wheel sensor is mis-scaled (tire wear, wrong wheel size in
+                   the firmware). A growing gap with speed means slip / dropouts.
+                   <br>
+                   <b>Lag</b>: we slide the GPS series back and forth across the wheel series and find the
+                   offset that lines them up best. Positive means GPS arrives that many seconds behind the
+                   wheel - usually true because GPS receivers smooth their output. The lag tightening over
+                   time means newer firmware / newer phone GPS is keeping up better.
+                   <br>
+                   <b>Spikes</b>: samples where the two readings disagreed by more than 5 km/h. Usually a
+                   tunnel / GPS dropout, occasionally wheel-side noise.</p>
+            </section>
+
             <section class="chart-section" data-section="gforce" data-tab="gforce">
                 <h2><span class="forensic-tag">EVIDENCE</span> G-Force <span class="sec-meta" id="gforce-meta"></span></h2>
                 <div class="chart-host">
@@ -368,6 +401,6 @@
         <div id="error-banner" class="hidden"></div>
     </div>
 
-    <script src="static/js/analytics.js?v=19"></script>
+    <script src="static/js/analytics.js?v=20"></script>
 </body>
 </html>
