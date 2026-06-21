@@ -290,6 +290,23 @@
     });
   }
 
+  function showInlineStatus(msg, isError) {
+    let el = document.getElementById("dropbox-inline-status");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "dropbox-inline-status";
+      const actions = document.getElementById("upload-actions");
+      if (actions && actions.parentNode) actions.parentNode.insertBefore(el, actions.nextSibling);
+      else document.body.appendChild(el);
+    }
+    el.className = "dropbox-inline-status" + (isError ? " is-error" : "");
+    el.textContent = msg;
+  }
+  function clearInlineStatus() {
+    const el = document.getElementById("dropbox-inline-status");
+    if (el) el.remove();
+  }
+
   async function runDropboxDirectLoad() {
     const dbx = window.DropboxSource;
     const progressArea = document.getElementById("progress-area");
@@ -297,6 +314,7 @@
     const progressFill = document.getElementById("progress-fill");
     const uploadActions = document.getElementById("upload-actions");
 
+    clearInlineStatus();
     if (uploadActions) uploadActions.classList.add("hidden");
     if (progressArea) progressArea.classList.remove("hidden");
     if (progressText) {
@@ -305,14 +323,18 @@
     }
     if (progressFill) progressFill.style.width = "10%";
 
+    const bail = (msg) => {
+      if (progressArea) progressArea.classList.add("hidden");
+      if (progressFill) progressFill.style.width = "0%";
+      if (progressText) progressText.textContent = "";
+      if (uploadActions) uploadActions.classList.remove("hidden");
+      showInlineStatus(msg, true);
+    };
+
     try {
       const files = await dbx.listTripFiles();
       if (!files.length) {
-        if (progressText) {
-          progressText.textContent = "No trips in Apps/EUC Planet/trips/ yet.";
-          progressText.classList.add("error");
-        }
-        if (uploadActions) uploadActions.classList.remove("hidden");
+        bail("No trips in Apps/EUC Planet/trips/ yet.");
         return;
       }
       const blob = await downloadAndBundle(files, (i, total) => {
@@ -328,11 +350,7 @@
         throw new Error("Viewer not ready");
       }
     } catch (e) {
-      if (progressText) {
-        progressText.textContent = "Dropbox load failed: " + (e.message || e);
-        progressText.classList.add("error");
-      }
-      if (uploadActions) uploadActions.classList.remove("hidden");
+      bail("Dropbox load failed: " + (e.message || e));
     }
   }
 

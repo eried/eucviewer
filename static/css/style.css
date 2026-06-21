@@ -399,6 +399,16 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
 #dropbox-btn svg { color: #0061ff; flex: 0 0 auto; }
 #dropbox-btn:hover svg { color: #4a8bff; }
 
+.dropbox-inline-status {
+    margin-top: 0.9rem;
+    font-size: 0.85rem;
+    color: rgba(224, 232, 240, 0.7);
+    text-align: center;
+}
+.dropbox-inline-status.is-error {
+    color: #ffa080;
+}
+
 /* Progress */
 #progress-area { margin-top: 1.5rem; }
 
