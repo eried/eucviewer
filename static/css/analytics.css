@@ -462,7 +462,17 @@ body[data-layout="tabs"] [data-tab]:not(.tab-btn):not(.tab-active) { display: no
     flex-direction: column;
     gap: 4px;
     min-height: 64px;
+    transition: background 0.12s, border-color 0.12s, transform 0.08s;
 }
+/* Clickable cards (the ones with a jump target) get a cursor and a
+   subtle hover lift, so the user knows they're interactive. */
+.stat-card[data-jump-tab] { cursor: pointer; }
+.stat-card[data-jump-tab]:hover {
+    background: rgba(179, 136, 255, 0.07);
+    border-color: rgba(179, 136, 255, 0.2);
+    border-left-color: #b388ff;
+}
+.stat-card[data-jump-tab]:active { transform: translateY(1px); }
 .stat-card .sv {
     color: #fff;
     font-size: 1.15rem;

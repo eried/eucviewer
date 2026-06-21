@@ -6,7 +6,7 @@
     <title>Wheel Forensics &middot; EUC Planet</title>
     <link rel="icon" href="static/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="static/css/analytics.css?v=43" />
+    <link rel="stylesheet" href="static/css/analytics.css?v=44" />
     <script type="text/javascript">
         (function(c,l,a,r,i,t,y){
             c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
@@ -150,19 +150,19 @@
 
         <main id="sections">
             <section id="lifetime-bar" data-tab="overview">
-                <div class="stat-card"><span class="sv" id="lf-trips">&hellip;</span><span class="sl">Trips</span></div>
-                <div class="stat-card"><span class="sv" id="lf-dist">&hellip;</span><span class="sl">Distance</span></div>
-                <div class="stat-card"><span class="sv" id="lf-hours">&hellip;</span><span class="sl">Riding hours</span></div>
-                <div class="stat-card"><span class="sv" id="lf-energy">&hellip;</span><span class="sl">Energy used</span></div>
-                <div class="stat-card"><span class="sv" id="lf-topspd">&hellip;</span><span class="sl">Top speed</span></div>
-                <div class="stat-card"><span class="sv" id="lf-maxrange">&hellip;</span><span class="sl">Best est. range</span></div>
-                <div class="stat-card"><span class="sv" id="lf-days">&hellip;</span><span class="sl">Active days</span></div>
-                <div class="stat-card"><span class="sv" id="lf-cadence">&hellip;</span><span class="sl">Rides / month</span></div>
-                <div class="stat-card"><span class="sv" id="lf-charges">&hellip;</span><span class="sl">Charges logged</span></div>
-                <div class="stat-card"><span class="sv" id="lf-chargedpct">&hellip;</span><span class="sl">Total charged %</span></div>
-                <div class="stat-card" title="Best 0 to 40 km/h time across every trip, excluding samples flagged as free spin or impossible acceleration."><span class="sv" id="lf-accel40">&hellip;</span><span class="sl">Best 0&hairsp;&rarr;&hairsp;40&hairsp;km/h</span></div>
-                <div class="stat-card" title="Lifts (pickup tests) and falls only. Sensor spikes during riding and logger glitches are classified separately and not counted here."><span class="sv" id="lf-anomalies">&hellip;</span><span class="sl">Free spins / falls</span></div>
-                <div class="stat-card"><span class="sv" id="lf-climb">&hellip;</span><span class="sl">Total climb</span></div>
+                <div class="stat-card" data-jump-tab="overview" data-jump-section="activity"><span class="sv" id="lf-trips">&hellip;</span><span class="sl">Trips</span></div>
+                <div class="stat-card" data-jump-tab="overview" data-jump-section="activity"><span class="sv" id="lf-dist">&hellip;</span><span class="sl">Distance</span></div>
+                <div class="stat-card" data-jump-tab="overview" data-jump-section="activity"><span class="sv" id="lf-hours">&hellip;</span><span class="sl">Riding hours</span></div>
+                <div class="stat-card" data-jump-tab="efficiency" data-jump-section="efficiency"><span class="sv" id="lf-energy">&hellip;</span><span class="sl">Energy used</span></div>
+                <div class="stat-card" data-jump-tab="speed" data-jump-section="speed"><span class="sv" id="lf-topspd">&hellip;</span><span class="sl">Top speed</span></div>
+                <div class="stat-card" data-jump-tab="range" data-jump-section="range"><span class="sv" id="lf-maxrange">&hellip;</span><span class="sl">Best est. range</span></div>
+                <div class="stat-card" data-jump-tab="overview" data-jump-section="activity"><span class="sv" id="lf-days">&hellip;</span><span class="sl">Active days</span></div>
+                <div class="stat-card" data-jump-tab="overview" data-jump-section="activity"><span class="sv" id="lf-cadence">&hellip;</span><span class="sl">Rides / month</span></div>
+                <div class="stat-card" data-jump-tab="charging" data-jump-section="charging"><span class="sv" id="lf-charges">&hellip;</span><span class="sl">Charges logged</span></div>
+                <div class="stat-card" data-jump-tab="charging" data-jump-section="charging"><span class="sv" id="lf-chargedpct">&hellip;</span><span class="sl">Total charged %</span></div>
+                <div class="stat-card" data-jump-tab="speed" data-jump-section="accel" title="Best 0 to 40 km/h time across every trip, excluding samples flagged as free spin or impossible acceleration."><span class="sv" id="lf-accel40">&hellip;</span><span class="sl">Best 0&hairsp;&rarr;&hairsp;40&hairsp;km/h</span></div>
+                <div class="stat-card" data-jump-tab="speed" data-jump-section="anomalies" title="Lifts (pickup tests) and falls only. Sensor spikes during riding and logger glitches are classified separately and not counted here."><span class="sv" id="lf-anomalies">&hellip;</span><span class="sl">Free spins / falls</span></div>
+                <div class="stat-card" data-jump-tab="range" data-jump-section="range" title="Total ascent across all loaded trips."><span class="sv" id="lf-climb">&hellip;</span><span class="sl">Total climb</span></div>
             </section>
 
             <section id="insights" class="hidden" data-tab="overview">
@@ -685,6 +685,6 @@
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="static/js/analytics.js?v=60"></script>
+    <script src="static/js/analytics.js?v=61"></script>
 </body>
 </html>

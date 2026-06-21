@@ -5229,6 +5229,24 @@
     }
   }
 
+  // Make each lifetime stat card a click target. Jumps to the related
+  // tab + scrolls to the matching section. In one-page layout the tab
+  // switch is a no-op, the scroll still lands on the right chart.
+  document.querySelectorAll('#lifetime-bar .stat-card[data-jump-tab]').forEach((card) => {
+    card.addEventListener('click', () => {
+      const tab = card.dataset.jumpTab;
+      const section = card.dataset.jumpSection;
+      if (tab && tab !== activeTab) applyTab(tab);
+      if (section) {
+        // Wait one frame so the tab content is laid out before scrolling.
+        requestAnimationFrame(() => {
+          const target = document.querySelector(`section[data-section="${section}"]`);
+          if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+      }
+    });
+  });
+
   groupSel.addEventListener("change", renderAll);
   battMinSel.addEventListener("change", renderAll);
   minBinSel.addEventListener("change", renderAll);
