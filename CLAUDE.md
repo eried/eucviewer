@@ -24,6 +24,15 @@ to mirroring into that repo, ignore them.)
   The modal hosts a draggable `javascript:` bookmarklet; clicking it inside a logged-in euc.world
   tab loads `euc-world-export.js`, which paginates `POST /webapi/userTours` and fetches
   `/xlsx/{key}` per tour, then triggers a `.dbb` download (store-mode ZIP, no external libs).
+- `source-hints.js` + `dropbox-source.js` power the "Load trips from Dropbox" modal. The viewer
+  is a Dropbox **Scoped App (App Folder)** — read access is limited to `Apps/EUC Planet/`.
+  OAuth uses **PKCE** (no client secret), token in localStorage, redirect back to the same
+  page URL with `?code=...`. Once connected, `list_folder` enumerates the `/trips` subfolder,
+  the user clicks "Load N trips" and the modal downloads every file, bundles them via JSZip
+  (STORE mode) into a single synthetic `.dbb`, and hands it to `window.eucViewerLoadFile` so
+  it flows through the normal `handleFile` parse + recents pipeline. The Dropbox app needs
+  these redirect URIs registered in the App Console: `https://eucviewer.ried.no/` and any
+  local-dev origins (e.g. `http://localhost:8000/`).
 - `inspector.html` + `inspector.js` is a standalone page. It reads the `?i=<index>` query param,
   fetches tracks from IndexedDB (store `eucplanet-trip-viewer/currentSession` key `"tracks"`),
   falls back to `localStorage["dbb_tracks"]`, then drives a MapLibre terrain map + 5 canvas

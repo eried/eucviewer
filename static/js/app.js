@@ -2434,6 +2434,12 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   };
 
+  // Exposed so the Dropbox source can hand a Blob (built from N downloaded
+  // CSVs zipped into a synthetic .dbb) into the normal parse + recents flow.
+  window.eucViewerLoadFile = function (file, opts) {
+    return handleFile(file, !!(opts && opts.append));
+  };
+
   // --- Init ---
   const isEmbedded = new URLSearchParams(location.search).has("embedded");
   if (isEmbedded) {

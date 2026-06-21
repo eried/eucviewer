@@ -1,5 +1,6 @@
 // Source-specific "how to export from X" modal shown on the upload screen.
-// Currently knows DarknessBot (info-only) and euc.world (bookmarklet export).
+// Knows DarknessBot (info-only), euc.world (bookmarklet export), and
+// Dropbox (PKCE OAuth + bulk load from the app folder).
 (function () {
   "use strict";
 
@@ -15,13 +16,22 @@
       });
     });
 
-    // Close on backdrop click / Escape.
     root.addEventListener("click", (ev) => {
       if (ev.target === root) closeModal(root);
     });
     document.addEventListener("keydown", (ev) => {
       if (ev.key === "Escape" && !root.classList.contains("hidden")) closeModal(root);
     });
+
+    // If we just came back from a Dropbox OAuth round-trip, pop the modal
+    // open in its connected state once the token exchange resolves.
+    if (window.DropboxSource && DropboxSource.maybeHandleCallback) {
+      DropboxSource.maybeHandleCallback().then((ok) => {
+        if (ok || DropboxSource.consumeJustConnected()) {
+          openModal(root, "dropbox");
+        }
+      });
+    }
   }
 
   function openModal(root, source) {
@@ -30,6 +40,7 @@
     document.body.classList.add("src-modal-open");
     if (source === "eucworld") root.innerHTML = wrap(eucWorldBody());
     else if (source === "darknessbot") root.innerHTML = wrap(darknessBotBody());
+    else if (source === "dropbox") { renderDropbox(root); return; }
     else { closeModal(root); return; }
     const close = root.querySelector(".src-close");
     if (close) close.addEventListener("click", () => closeModal(root));
@@ -54,8 +65,6 @@
 
   function detectBrowser() {
     const ua = navigator.userAgent;
-    // Mobile check first — bookmarklets don't drag-and-drop on phones.
-    // iPad in Safari Desktop mode reports as Macintosh but has touch points.
     const isMobile =
       /Android|iPhone|iPad|iPod|Opera Mini/i.test(ua) ||
       (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
@@ -134,6 +143,187 @@
         <li>Drop the <code>.csv</code> here.</li>
       </ol>
     `;
+  }
+
+  // --- Dropbox source ---------------------------------------------------
+
+  function renderDropbox(root) {
+    const dbx = window.DropboxSource;
+    if (!dbx) {
+      root.innerHTML = wrap(`
+        <header class="src-head">
+          <h3>From Dropbox</h3>
+          <button type="button" class="src-close" aria-label="Close">&times;</button>
+        </header>
+        <p class="src-note">Dropbox helper script failed to load. Refresh and try again.</p>
+      `);
+      const c = root.querySelector(".src-close");
+      if (c) c.addEventListener("click", () => closeModal(root));
+      return;
+    }
+
+    if (dbx.isAuthenticated()) {
+      renderDropboxConnected(root, dbx);
+    } else {
+      renderDropboxIntro(root, dbx);
+    }
+  }
+
+  function renderDropboxIntro(root, dbx) {
+    root.innerHTML = wrap(`
+      <header class="src-head">
+        <h3>Load trips from Dropbox</h3>
+        <button type="button" class="src-close" aria-label="Close">&times;</button>
+      </header>
+      <p class="src-sub">Sync your EUC Planet app folder</p>
+      <ol class="src-steps">
+        <li>In the EUC Planet phone app, turn on the Dropbox export so it writes a CSV per ride into <code>Apps/EUC Planet/trips/</code>.</li>
+        <li>Connect this viewer to Dropbox (read-only on that folder).</li>
+        <li>Load every trip in one click. Repeat any time to pick up new rides.</li>
+      </ol>
+      <div class="src-action">
+        <button type="button" id="dbx-connect" class="src-primary-btn">
+          <span>Connect Dropbox</span>
+        </button>
+        <p class="src-hint">Permission is limited to the app's own folder — no access to the rest of your Dropbox.</p>
+      </div>
+    `);
+    root.querySelector(".src-close").addEventListener("click", () => closeModal(root));
+    root.querySelector("#dbx-connect").addEventListener("click", () => {
+      dbx.startOAuth().catch((e) => alert("Could not start sign-in: " + e.message));
+    });
+  }
+
+  function renderDropboxConnected(root, dbx) {
+    const acc = dbx.accountName();
+    root.innerHTML = wrap(`
+      <header class="src-head">
+        <h3>Dropbox connected</h3>
+        <button type="button" class="src-close" aria-label="Close">&times;</button>
+      </header>
+      <p class="src-sub">${acc ? escapeHtml(acc) : "Signed in"} &middot; Apps/EUC Planet/trips/</p>
+      <div id="dbx-listing" class="dbx-listing">
+        <div class="dbx-loading">Listing trips…</div>
+      </div>
+      <div class="src-action src-action-row">
+        <button type="button" id="dbx-load" class="src-primary-btn" disabled>
+          <span id="dbx-load-label">Load trips</span>
+        </button>
+        <button type="button" id="dbx-signout" class="src-link-btn">Sign out</button>
+      </div>
+      <div id="dbx-status" class="src-hint dbx-status"></div>
+    `);
+
+    const closeBtn = root.querySelector(".src-close");
+    const loadBtn = root.querySelector("#dbx-load");
+    const loadLabel = root.querySelector("#dbx-load-label");
+    const signoutBtn = root.querySelector("#dbx-signout");
+    const status = root.querySelector("#dbx-status");
+    const listing = root.querySelector("#dbx-listing");
+
+    closeBtn.addEventListener("click", () => closeModal(root));
+    signoutBtn.addEventListener("click", () => {
+      dbx.signOut();
+      renderDropbox(root);
+    });
+
+    let files = [];
+
+    dbx.listTripFiles().then((entries) => {
+      files = entries;
+      if (!entries.length) {
+        listing.innerHTML = `<div class="dbx-empty">No trips found in <code>Apps/EUC Planet/trips/</code> yet. Once the phone app writes its first CSV, come back here and refresh.</div>`;
+        loadLabel.textContent = "Nothing to load";
+        return;
+      }
+      const totalBytes = entries.reduce((s, e) => s + (e.size || 0), 0);
+      listing.innerHTML = `
+        <div class="dbx-summary">
+          <strong>${entries.length}</strong> trip ${entries.length === 1 ? "file" : "files"}
+          <span class="dbx-summary-sep">&middot;</span>
+          ${formatBytes(totalBytes)}
+        </div>
+        <div class="dbx-recent">
+          Newest: <code>${escapeHtml(entries[0].name)}</code>
+        </div>
+      `;
+      loadLabel.textContent = `Load ${entries.length} ${entries.length === 1 ? "trip" : "trips"}`;
+      loadBtn.disabled = false;
+    }).catch((e) => {
+      listing.innerHTML = `<div class="dbx-error">Couldn't list folder: ${escapeHtml(e.message || String(e))}</div>`;
+      loadLabel.textContent = "Retry";
+      loadBtn.disabled = false;
+      loadBtn.dataset.mode = "retry";
+    });
+
+    loadBtn.addEventListener("click", async () => {
+      if (loadBtn.dataset.mode === "retry") {
+        renderDropbox(root);
+        return;
+      }
+      if (!files.length) return;
+      loadBtn.disabled = true;
+      signoutBtn.disabled = true;
+      try {
+        const blob = await downloadAndBundle(files, (i, total, name) => {
+          status.textContent = `Downloading ${i} of ${total}: ${name}`;
+        });
+        status.textContent = "Handing off to the parser…";
+        const stamp = new Date().toISOString().slice(0, 10);
+        const file = new File([blob], `dropbox_${stamp}.dbb`, { type: "application/zip" });
+        closeModal(root);
+        if (typeof window.eucViewerLoadFile === "function") {
+          window.eucViewerLoadFile(file);
+        } else {
+          alert("Viewer not ready — try refreshing the page.");
+        }
+      } catch (e) {
+        status.textContent = "Failed: " + (e.message || e);
+        loadBtn.disabled = false;
+        signoutBtn.disabled = false;
+      }
+    });
+  }
+
+  async function downloadAndBundle(files, onProgress) {
+    if (typeof window.JSZip === "undefined") throw new Error("ZIP library not loaded");
+    const zip = new window.JSZip();
+    const used = new Set();
+    for (let i = 0; i < files.length; i += 1) {
+      const f = files[i];
+      if (onProgress) onProgress(i + 1, files.length, f.name);
+      const blob = await window.DropboxSource.downloadBlob(f.path);
+      const name = uniqueName(f.name, used);
+      zip.file(name, blob);
+    }
+    return await zip.generateAsync({ type: "blob", compression: "STORE" });
+  }
+
+  function uniqueName(base, used) {
+    if (!used.has(base)) { used.add(base); return base; }
+    const dot = base.lastIndexOf(".");
+    const stem = dot > 0 ? base.slice(0, dot) : base;
+    const ext = dot > 0 ? base.slice(dot) : "";
+    for (let n = 2; n < 1000; n += 1) {
+      const c = stem + "_" + n + ext;
+      if (!used.has(c)) { used.add(c); return c; }
+    }
+    return base;
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (ch) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+    }[ch]));
+  }
+
+  function formatBytes(n) {
+    if (!n) return "0 KB";
+    const u = ["B", "KB", "MB", "GB"];
+    let i = 0;
+    let v = n;
+    while (v >= 1024 && i < u.length - 1) { v /= 1024; i += 1; }
+    return v.toFixed(v >= 100 || i === 0 ? 0 : 1) + " " + u[i];
   }
 
   if (document.readyState === "loading") {
