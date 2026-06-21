@@ -350,6 +350,14 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
     min-height: 1.1rem;
 }
 
+#upload-actions {
+    display: flex;
+    align-items: stretch;
+    justify-content: center;
+    gap: 0.6rem;
+    margin-top: 0.5rem;
+    flex-wrap: wrap;
+}
 #upload-label {
     display: inline-block;
     padding: 0.75rem 2rem;
@@ -359,10 +367,31 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
     border-radius: 8px;
     cursor: pointer;
     transition: background 0.2s;
-    margin-top: 0.5rem;
 }
 #upload-label:hover { background: #00b8d4; }
 #upload-label input { display: none; }
+#dropbox-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.2rem;
+    background: rgba(255, 255, 255, 0.06);
+    color: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 8px;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 600;
+    font-size: 1rem;
+    transition: background 0.18s, border-color 0.18s, color 0.18s;
+}
+#dropbox-btn:hover {
+    background: rgba(0, 97, 255, 0.18);
+    border-color: rgba(0, 97, 255, 0.55);
+    color: #cfe2ff;
+}
+#dropbox-btn svg { color: #0061ff; flex: 0 0 auto; }
+#dropbox-btn:hover svg { color: #4a8bff; }
 
 /* Progress */
 #progress-area { margin-top: 1.5rem; }

@@ -6,7 +6,7 @@
     <title>EUC Planet Trip Viewer</title>
     <link rel="icon" href="static/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="static/css/style.css?v=33" />
+    <link rel="stylesheet" href="static/css/style.css?v=34" />
     <script type="text/javascript">
         (function(c,l,a,r,i,t,y){
             c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
@@ -71,12 +71,20 @@
             <h1><a id="app-link" href="https://eucplanet.ried.no/" target="_blank" rel="noopener"><strong>EUC Planet</strong></a> Trip Viewer</h1>
             <div id="upload-hint">
                 <p>In EUC Planet, open <strong>Trips</strong> and share a ride, or pick <strong>Export all</strong> from the top-right menu.</p>
-                <p class="upload-hint-aside">Exports from <a href="#" class="hint-source" data-source="darknessbot">DarknessBot</a> or <a href="#" class="hint-source" data-source="eucworld">euc.world</a> also work, or <a href="#" class="hint-source" data-source="dropbox">load from Dropbox</a>.</p>
+                <p class="upload-hint-aside">Exports from <a href="#" class="hint-source" data-source="darknessbot">DarknessBot</a> or <a href="#" class="hint-source" data-source="eucworld">euc.world</a> also work, or <a href="#" class="hint-source" data-source="dropbox" data-dropbox-modal="1">load from Dropbox</a>.</p>
             </div>
-            <label id="upload-label" for="file-input">
-                Load trips
-                <input type="file" id="file-input" accept=".dbb,.csv,.gpx,.xlsx" />
-            </label>
+            <div id="upload-actions">
+                <label id="upload-label" for="file-input">
+                    Upload trips
+                    <input type="file" id="file-input" accept=".dbb,.csv,.gpx,.xlsx" />
+                </label>
+                <button type="button" id="dropbox-btn" class="hint-source" data-source="dropbox" title="Load trips from Dropbox">
+                    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                        <path fill="currentColor" d="M6 2 0 6l6 4 6-4-6-4zm12 0-6 4 6 4 6-4-6-4zM0 14l6 4 6-4-6-4-6 4zm18-4-6 4 6 4 6-4-6-4zM6 19l6 4 6-4-6-4-6 4z"/>
+                    </svg>
+                    <span>Dropbox</span>
+                </button>
+            </div>
             <div id="source-instructions" class="hidden"></div>
             <div id="progress-area" class="hidden">
                 <div id="progress-bar"><div id="progress-fill"></div></div>
@@ -118,6 +126,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script src="static/js/app.js?v=58"></script>
     <script src="static/js/dropbox-source.js?v=1"></script>
-    <script src="static/js/source-hints.js?v=13"></script>
+    <script src="static/js/source-hints.js?v=14"></script>
 </body>
 </html>

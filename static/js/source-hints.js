@@ -5,14 +5,25 @@
   "use strict";
 
   function init() {
-    const links = document.querySelectorAll("#upload-hint a.hint-source");
+    const links = document.querySelectorAll(".hint-source");
     const root = document.getElementById("source-instructions");
     if (!links.length || !root) return;
 
-    links.forEach((a) => {
-      a.addEventListener("click", (ev) => {
+    links.forEach((el) => {
+      el.addEventListener("click", (ev) => {
         ev.preventDefault();
-        openModal(root, a.dataset.source);
+        const source = el.dataset.source;
+        // Big "Dropbox" button: when already linked, skip the modal and
+        // start the trip download right away. The hint-aside link still
+        // has data-dropbox-modal so the user can reach Sign out.
+        if (source === "dropbox"
+            && !el.dataset.dropboxModal
+            && window.DropboxSource
+            && DropboxSource.isAuthenticated()) {
+          runDropboxDirectLoad();
+          return;
+        }
+        openModal(root, source);
       });
     });
 
@@ -172,20 +183,14 @@
   function renderDropboxIntro(root, dbx) {
     root.innerHTML = wrap(`
       <header class="src-head">
-        <h3>Load trips from Dropbox</h3>
+        <h3>Dropbox</h3>
         <button type="button" class="src-close" aria-label="Close">&times;</button>
       </header>
-      <p class="src-sub">Sync your EUC Planet app folder</p>
-      <ol class="src-steps">
-        <li>In the EUC Planet phone app, turn on the Dropbox export so it writes a CSV per ride into <code>Apps/EUC Planet/trips/</code>.</li>
-        <li>Connect this viewer to Dropbox (read-only on that folder).</li>
-        <li>Load every trip in one click. Repeat any time to pick up new rides.</li>
-      </ol>
+      <p class="src-body">Loads every CSV in <code>Apps/EUC Planet/trips/</code>. Read-only.</p>
       <div class="src-action">
         <button type="button" id="dbx-connect" class="src-primary-btn">
           <span>Connect Dropbox</span>
         </button>
-        <p class="src-hint">Permission is limited to the app's own folder — no access to the rest of your Dropbox.</p>
       </div>
     `);
     root.querySelector(".src-close").addEventListener("click", () => closeModal(root));
@@ -283,6 +288,52 @@
         signoutBtn.disabled = false;
       }
     });
+  }
+
+  async function runDropboxDirectLoad() {
+    const dbx = window.DropboxSource;
+    const progressArea = document.getElementById("progress-area");
+    const progressText = document.getElementById("progress-text");
+    const progressFill = document.getElementById("progress-fill");
+    const uploadActions = document.getElementById("upload-actions");
+
+    if (uploadActions) uploadActions.classList.add("hidden");
+    if (progressArea) progressArea.classList.remove("hidden");
+    if (progressText) {
+      progressText.textContent = "Listing Dropbox trips…";
+      progressText.classList.remove("error");
+    }
+    if (progressFill) progressFill.style.width = "10%";
+
+    try {
+      const files = await dbx.listTripFiles();
+      if (!files.length) {
+        if (progressText) {
+          progressText.textContent = "No trips in Apps/EUC Planet/trips/ yet.";
+          progressText.classList.add("error");
+        }
+        if (uploadActions) uploadActions.classList.remove("hidden");
+        return;
+      }
+      const blob = await downloadAndBundle(files, (i, total) => {
+        if (progressText) progressText.textContent = `Fetching ${i} of ${total}`;
+        if (progressFill) progressFill.style.width = Math.round((i / total) * 90) + "%";
+      });
+      if (progressFill) progressFill.style.width = "100%";
+      const stamp = new Date().toISOString().slice(0, 10);
+      const file = new File([blob], `dropbox_${stamp}.dbb`, { type: "application/zip" });
+      if (typeof window.eucViewerLoadFile === "function") {
+        window.eucViewerLoadFile(file);
+      } else {
+        throw new Error("Viewer not ready");
+      }
+    } catch (e) {
+      if (progressText) {
+        progressText.textContent = "Dropbox load failed: " + (e.message || e);
+        progressText.classList.add("error");
+      }
+      if (uploadActions) uploadActions.classList.remove("hidden");
+    }
   }
 
   async function downloadAndBundle(files, onProgress) {
