@@ -122,6 +122,17 @@
   const duration = ts[ts.length - 1][SEC] - ts[0][SEC];
   const t0 = ts[0][SEC];
 
+  // Optional ?t=<sec> URL param: start the playhead at that point in the
+  // trip (seconds from trip start, before the trip's t0 offset). Used by
+  // the analytics anomaly list so a clicked event lands near its moment.
+  const initialT = (() => {
+    const raw = params.get("t");
+    if (raw == null) return 0;
+    const n = Number(raw);
+    if (!isFinite(n)) return 0;
+    return Math.max(0, Math.min(duration, n));
+  })();
+
   // Cumulative distance (km) aligned with timeseries
   const cumKm = new Float32Array(ts.length);
   function haversineKm(lat1, lon1, lat2, lon2) {
@@ -1247,7 +1258,7 @@
   });
 
   // ---------- Playback state ----------
-  let currentTime = 0;   // seconds from start
+  let currentTime = initialT;   // seconds from start (may be ?t= jump)
   let currentSampleIdx = 0;
   let playing = false;
   let lastFrame = 0;
@@ -1443,9 +1454,16 @@
   // Wait a frame so layout settles, then size canvases and start auto-play.
   requestAnimationFrame(() => {
     resizeCharts();
-    setCurrentTime(0);
-    // Auto-play on load.
-    setPlayingState(true);
+    // Honor ?t=<sec> when provided so the playhead lands near an event the
+    // analytics page linked us to. Pause instead of autoplay in that case
+    // so the rider can see the moment before motion blurs it.
+    if (initialT > 0) {
+      setCurrentTime(initialT);
+      setPlayingState(false);
+    } else {
+      setCurrentTime(0);
+      setPlayingState(true);
+    }
     lastFrame = performance.now();
     requestAnimationFrame(loop);
   });

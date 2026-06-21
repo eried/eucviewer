@@ -56,7 +56,7 @@
   // Anomaly detector settings - persisted per-browser so the user can
   // tune them once for their wheel/loadout and keep the result.
   const ANOM_STORAGE_KEY = "wheel-forensics-anom-settings";
-  const ANOM_DEFAULTS = { gpsThresh: 2, accelThresh: 6, preFallSpd: 12, postStopStreak: 5 };
+  const ANOM_DEFAULTS = { gpsThresh: 2, accelThresh: 6, preFallSpd: 12, postStopStreak: 5, minEventLen: 2, motorActiveA: 1 };
   let anomalySettings = (() => {
     try {
       const raw = localStorage.getItem(ANOM_STORAGE_KEY);
@@ -76,6 +76,8 @@
       ["anom-accel-thresh", "accelThresh"],
       ["anom-prefall-spd", "preFallSpd"],
       ["anom-poststop", "postStopStreak"],
+      ["anom-min-event-len", "minEventLen"],
+      ["anom-motor-active", "motorActiveA"],
     ];
     for (const [id, key] of inputs) {
       const el = document.getElementById(id);
@@ -315,8 +317,9 @@
     return { slope, intercept };
   }
   // Multiple linear regression by normal equations + Gaussian elimination.
-  // Returns the coefficient vector β such that y ≈ X β. Works for the small
-  // (n, p ≤ 6) problems we have: range vs (speed, temp, climb) etc.
+  // Returns { beta, rss, ssTot, n, r2 } so callers can gauge fit quality.
+  // Works for the small (n, p ≤ 6) problems we have: range vs (speed,
+  // temp, climb) etc.
   function multipleLinearRegression(X, y) {
     const n = X.length; if (!n) return null;
     const p = X[0].length;
@@ -342,13 +345,28 @@
         for (let j = i; j <= p; j++) aug[k][j] -= f * aug[i][j];
       }
     }
-    const β = new Array(p).fill(0);
+    const beta = new Array(p).fill(0);
     for (let i = p - 1; i >= 0; i--) {
       let s = aug[i][p];
-      for (let j = i + 1; j < p; j++) s -= aug[i][j] * β[j];
-      β[i] = s / aug[i][i];
+      for (let j = i + 1; j < p; j++) s -= aug[i][j] * beta[j];
+      beta[i] = s / aug[i][i];
     }
-    return β;
+    // R² = 1 - (Σ(y_i - ŷ_i)²) / (Σ(y_i - ȳ)²). Compute both sums in one
+    // pass alongside the fitted predictions for downstream display.
+    let yMean = 0;
+    for (let i = 0; i < n; i++) yMean += y[i];
+    yMean /= n;
+    let rss = 0, ssTot = 0;
+    for (let i = 0; i < n; i++) {
+      let yHat = 0;
+      for (let j = 0; j < p; j++) yHat += X[i][j] * beta[j];
+      const r = y[i] - yHat;
+      rss += r * r;
+      const d = y[i] - yMean;
+      ssTot += d * d;
+    }
+    const r2 = ssTot > 0 ? 1 - rss / ssTot : 0;
+    return { beta, rss, ssTot, n, r2 };
   }
 
   // Ordinary least-squares slope (used per trip for the V~I sag fit, where
@@ -435,6 +453,11 @@
     const accelThresh = opts.accelThresh != null ? opts.accelThresh : 6;
     const preFallSpd = opts.preFallSpd != null ? opts.preFallSpd : 12;
     const postStopStreak = opts.postStopStreak != null ? opts.postStopStreak : 5;
+    const minEventLen = opts.minEventLen != null ? opts.minEventLen : 2;
+    // Motor "doing work" threshold. The watts cutoff scales with amps so the
+    // pair stays in step: bumping amps to 2 also bumps power to 200 W.
+    const motorActiveA = opts.motorActiveA != null ? opts.motorActiveA : 1;
+    const motorActiveW = motorActiveA * 100;
     const indices = new Set();
     const events = [];
     if (ts.length < 4) return { indices, events };
@@ -468,7 +491,7 @@
       if (w >= 25) {
         const cur = Math.abs(ts[i][CURRENT] || 0);
         const pwr = Math.abs(ts[i][POWER] || 0);
-        if (cur < 1 && pwr < 100) {
+        if (cur < motorActiveA && pwr < motorActiveW) {
           // Sample wasn't pulling current. Did at least one neighbour
           // in ±2 samples? Sustained riding at high speed almost always
           // has *some* sample drawing current.
@@ -477,7 +500,7 @@
             if (k === i) continue;
             const c = Math.abs(ts[k][CURRENT] || 0);
             const p = Math.abs(ts[k][POWER] || 0);
-            if (c >= 1 || p >= 100) { neighborWorked = true; break; }
+            if (c >= motorActiveA || p >= motorActiveW) { neighborWorked = true; break; }
           }
           if (!neighborWorked) {
             flags[i] = true;
@@ -515,12 +538,14 @@
       // 60 km/h with current = 0 can no longer fake a fall.
       let preFastCount = 0;
       let preWorked = 0;
+      let prePeakGps = 0;
       for (let k = Math.max(0, startI - 12); k < startI; k++) {
         const w = ts[k][SPD] || 0, g = ts[k][GPSSPD];
         if (typeof g === "number" && g >= preFallSpd && w >= preFallSpd) preFastCount++;
+        if (typeof g === "number" && g > prePeakGps) prePeakGps = g;
         const cur = Math.abs(ts[k][CURRENT] || 0);
         const pwr = Math.abs(ts[k][POWER] || 0);
-        if (cur >= 1 || pwr >= 100) preWorked++;
+        if (cur >= motorActiveA || pwr >= motorActiveW) preWorked++;
       }
       // Logger-glitch: nothing in the surrounding ±8 sample window was
       // actually driving the wheel — current and power were both flat.
@@ -530,20 +555,31 @@
         if (k >= startI && k <= endI) continue;
         const cur = Math.abs(ts[k][CURRENT] || 0);
         const pwr = Math.abs(ts[k][POWER] || 0);
-        if (cur >= 1 || pwr >= 100) { surroundingWorked = true; break; }
+        if (cur >= motorActiveA || pwr >= motorActiveW) { surroundingWorked = true; break; }
       }
+      // Stricter pre-window check: a real fall happens AFTER the rider was
+      // genuinely cruising, not after a 12 km/h hop. Require at least half
+      // of the pre-window samples to show riding speed + motor work, AND a
+      // peak GPS speed that crosses the pre-fall threshold (not just a few
+      // borderline samples averaging up).
+      const PRE_REQUIRED = Math.max(6, Math.ceil((preFallSpd >= 20 ? 8 : 6)));
+      const preLooksLikeRiding = preFastCount >= PRE_REQUIRED
+        && preWorked >= PRE_REQUIRED
+        && prePeakGps >= preFallSpd + 5;
+      // Stricter post-window: stay still for a sustained stretch (default
+      // 12 samples, roughly 40-60 s on most loggers). Real falls don't
+      // recover that fast. The old "scanned >= 6" fallback was too loose
+      // and let brief 4-5 sample GPS dropouts count.
+      const POST_REQUIRED = Math.max(postStopStreak, 12);
       let postCrashed = false;
-      if (preFastCount >= 3 && preWorked >= 3) {
-        // Within the next 20 samples after the anomaly window, check if GPS
-        // ground speed dropped to < 3 km/h and stayed there for a stretch.
-        let lowStreak = 0, scanned = 0;
-        for (let k = endI + 1; k < Math.min(ts.length, endI + 21); k++) {
-          scanned++;
+      if (preLooksLikeRiding) {
+        // Look further ahead too: 40 samples = ~3 minutes on a 4 s logger.
+        let lowStreak = 0;
+        for (let k = endI + 1; k < Math.min(ts.length, endI + 41); k++) {
           const g = ts[k][GPSSPD];
           if (typeof g === "number" && g < 3) lowStreak++; else lowStreak = 0;
-          if (lowStreak >= postStopStreak) { postCrashed = true; break; }
+          if (lowStreak >= POST_REQUIRED) { postCrashed = true; break; }
         }
-        if (!postCrashed && scanned >= 6 && lowStreak >= Math.max(2, postStopStreak - 2)) postCrashed = true;
       }
       // Strict LIFT: GPS confirms the wheel didn't move AND the motor was
       // idle (no current / power being delivered) for the bulk of the
@@ -557,16 +593,21 @@
         if (typeof g === "number") { gpsTotal++; if (g < 2) gpsLow++; }
         const cur = Math.abs(ts[k][CURRENT] || 0);
         const pwr = Math.abs(ts[k][POWER] || 0);
-        if (cur < 1 && pwr < 100) motorIdle++;
+        if (cur < motorActiveA && pwr < motorActiveW) motorIdle++;
       }
       const gpsStationaryRatio = gpsTotal > 0 ? gpsLow / gpsTotal : 0;
       const motorIdleRatio = motorIdle / eventLen;
+      // Fall events have to LOOK like a fall: the wheel reached freespin
+      // speed during the event (>= 20 km/h) AND the rider was clearly
+      // cruising before (peak GPS >= 18 km/h). A 6 km/h peak event isn't
+      // a fall, and a fall after a 12 km/h hop isn't credible either.
+      const peakLooksLikeFall = peakSpd >= 20 && prePeakGps >= 18;
       let kind;
       if (!surroundingWorked) {
         kind = "glitch";
-      } else if (preFastCount >= 3 && preWorked >= 3 && postCrashed) {
+      } else if (preLooksLikeRiding && postCrashed && peakLooksLikeFall) {
         kind = "fall";
-      } else if (gpsStationaryRatio >= 0.7 && motorIdleRatio >= 0.7 && eventLen >= 2) {
+      } else if (gpsStationaryRatio >= 0.7 && motorIdleRatio >= 0.7 && eventLen >= minEventLen) {
         kind = "lift";
       } else {
         kind = "spike";
@@ -646,6 +687,9 @@
       battStart: null, battEnd: null, battDelta: null,
       kmPerPct: null,
       energyWh: null, whPerKm: null,
+      driveWh: null,           // Wh drawn from the battery (positive power)
+      regenWh: null,           // Wh fed back into the battery (negative power)
+      regenPct: null,          // regenWh / driveWh * 100
       avgMovingSpeed: null, avgCurrent: null, avgPower: null,
       ohmIR: null,
       tempMax: null, tempStart: null,
@@ -707,18 +751,63 @@
       if ((row[VOLT] || 0) !== 0) hasVolt = true;
       if ((row[CURRENT] || 0) !== 0) hasCurrent = true;
     }
+    // Detect "stuck current sensor" — runs of 8+ consecutive identical
+    // non-zero current readings while the wheel is moving. Real motor
+    // current varies sample-to-sample from balance pulses + road texture;
+    // a flat-line stretch like that is the logger freezing, not real regen.
+    // Skipping these samples from energy integration prevents fake "regen"
+    // from inflating the totals (one trip had 11 minutes stuck at -6.2 A,
+    // worth ~157 fake Wh).
+    const stuck = new Set();
+    if (hasCurrent) {
+      let runVal = null, runStart = 0, runLen = 0;
+      const flushRun = () => {
+        if (runLen < 8 || runVal == null || Math.abs(runVal) < 0.1) return;
+        let moving = 0;
+        for (let k = runStart; k < runStart + runLen; k++) {
+          if ((ts[k][SPD] || 0) > 5) moving++;
+        }
+        if (moving / runLen < 0.7) return;
+        for (let k = runStart; k < runStart + runLen; k++) stuck.add(k);
+      };
+      for (let i = 0; i < ts.length; i++) {
+        const cur = ts[i][CURRENT];
+        if (typeof cur !== "number") { flushRun(); runVal = null; runLen = 0; continue; }
+        if (cur === runVal) { runLen++; }
+        else { flushRun(); runVal = cur; runStart = i; runLen = 1; }
+      }
+      flushRun();
+    }
+    m.stuckCurrentSamples = stuck.size;
+
     if (hasPower || (hasVolt && hasCurrent)) {
-      let wh = 0;
+      let wh = 0, drive = 0, regen = 0;
       for (let i = 1; i < ts.length; i++) {
         const dtSec = Math.max(0, ts[i][SEC] - ts[i - 1][SEC]);
         if (dtSec === 0 || dtSec > 300) continue; // gap in the log — skip
+        if (stuck.has(i) || stuck.has(i - 1)) continue; // sensor frozen — discard
         const pNow = hasPower ? (ts[i][POWER] || 0) : (ts[i][VOLT] || 0) * (ts[i][CURRENT] || 0);
         const pPrev = hasPower ? (ts[i - 1][POWER] || 0) : (ts[i - 1][VOLT] || 0) * (ts[i - 1][CURRENT] || 0);
         wh += ((pNow + pPrev) / 2) * dtSec / 3600;
+        const whThis = (pNow * dtSec) / 3600;
+        if (pNow > 0) drive += whThis;
+        else if (pNow < 0) regen += -whThis;
       }
       if (wh > 0) {
         m.energyWh = wh;
         if (m.distKm >= 1) m.whPerKm = wh / m.distKm;
+      }
+      if (drive > 0 || regen > 0) {
+        m.driveWh = drive;
+        // The motor's POWER column logs gross battery flow (V x I), which on
+        // a descent includes huge brake pulses that mostly become heat in the
+        // motor windings / FETs. A single trip can't physically recover more
+        // than it drew, so we cap regen at the drive total. This keeps the
+        // metric honest as "share of drive energy that was braked back" rather
+        // than the raw integral (which can balloon past 100% on big descents).
+        m.regenWh = Math.min(regen, drive);
+        m.regenWhRaw = regen;
+        m.regenPct = drive > 0 ? (m.regenWh / drive) * 100 : 0;
       }
     }
 
@@ -1094,7 +1183,9 @@
   progressStrip.classList.remove("hidden");
   const tripMetrics = [];
   for (let i = 0; i < tracks.length; i++) {
-    tripMetrics.push(computeTripMetrics(tracks[i]));
+    const m = computeTripMetrics(tracks[i]);
+    m.tripIdx = i; // position in tracksRef so the regen card can link to inspector
+    tripMetrics.push(m);
     if (i % 200 === 199) {
       progressFill.style.width = Math.round((i / tracks.length) * 100) + "%";
       await new Promise((r) => setTimeout(r, 0));
@@ -1704,7 +1795,10 @@
     const cv = setupCanvas(canvas);
     if (!cv) return;
     const { ctx, w, h } = cv;
-    const pad = { top: 12, bottom: 22, left: 44, right: series.length > 1 ? 44 : 14 };
+    // top: 42 leaves a clear band under the HTML chart-title overlay
+    // (title + italic axes hint, ~36 px tall) so data lines never sit
+    // behind the heading text. Same logic on every chart below.
+    const pad = { top: 42, bottom: 22, left: 44, right: series.length > 1 ? 44 : 14 };
     const cw = w - pad.left - pad.right;
     const ch = h - pad.top - pad.bottom;
     const n = bins.length;
@@ -1889,7 +1983,7 @@
     const cv = setupCanvas(canvas);
     if (!cv) return;
     const { ctx, w, h } = cv;
-    const pad = { top: 14, bottom: 26, left: 44, right: 14 };
+    const pad = { top: 42, bottom: 26, left: 44, right: 14 };
     const cw = w - pad.left - pad.right;
     const ch = h - pad.top - pad.bottom;
     let xMin = Infinity, xMax = -Infinity, yMin = Infinity, yMax = -Infinity;
@@ -2136,6 +2230,7 @@
   let multiFit = null;
   function computeMultiFit() {
     const X = [], y = [];
+    const speeds = [], temps = [], climbs = [];
     for (const m of dated) {
       if (m.estRangeKm == null) continue;
       if (m.avgMovingSpeed == null || m.avgMovingSpeed <= 5) continue;
@@ -2145,16 +2240,25 @@
       if (climbPerKm < 0) continue;
       X.push([1, m.avgMovingSpeed, m.ambientC, climbPerKm]);
       y.push(m.estRangeKm);
+      speeds.push(m.avgMovingSpeed);
+      temps.push(m.ambientC);
+      climbs.push(climbPerKm);
     }
     if (X.length < 20) { multiFit = null; return; }
-    const β = multipleLinearRegression(X, y);
-    if (!β) { multiFit = null; return; }
+    const fit = multipleLinearRegression(X, y);
+    if (!fit) { multiFit = null; return; }
     multiFit = {
-      intercept: β[0],
-      speedSlope: β[1],   // km of range per km/h
-      tempSlope:  β[2],   // km of range per °C
-      climbSlope: β[3],   // km of range per (m climbed / km ridden)
-      n: X.length,
+      intercept: fit.beta[0],
+      speedSlope: fit.beta[1],   // km of range per km/h
+      tempSlope:  fit.beta[2],   // km of range per °C
+      climbSlope: fit.beta[3],   // km of range per (m climbed / km ridden)
+      n: fit.n,
+      r2: fit.r2,
+      rss: fit.rss,
+      ssTot: fit.ssTot,
+      medSpeedKmh: median(speeds),
+      medTempC:    median(temps),
+      medClimbMperKm: median(climbs),
     };
   }
 
@@ -2162,6 +2266,125 @@
     if (m.estRangeKm == null) return null;
     if (!normalizeCheck.checked || !tempFit || m.ambientC == null) return m.estRangeKm;
     return m.estRangeKm + tempFit.slope * (20 - m.ambientC);
+  }
+
+  // ---------- What-if range calculator ----------
+  // Three sliders drive a live prediction from `multiFit` (the multivariate
+  // OLS). Sliders are calibrated in the user's unit system; values are
+  // converted back to internal km/h, °C, m/km before plugging into the
+  // model. Hidden when there's no fit (too few usable trips).
+  const whatIfEls = {
+    panel:   document.getElementById("range-whatif"),
+    speed:   document.getElementById("rw-speed"),
+    temp:    document.getElementById("rw-temp"),
+    climb:   document.getElementById("rw-climb"),
+    speedO:  document.getElementById("rw-speed-out"),
+    tempO:   document.getElementById("rw-temp-out"),
+    climbO:  document.getElementById("rw-climb-out"),
+    result:  document.getElementById("rw-result"),
+  };
+  let whatIfInit = false;
+  function whatIfPredKm() {
+    if (!multiFit) return null;
+    const sKmh = Number(whatIfEls.speed.dataset.km);
+    const tC = Number(whatIfEls.temp.dataset.c);
+    const cMperKm = Number(whatIfEls.climb.dataset.mperkm);
+    if (!isFinite(sKmh) || !isFinite(tC) || !isFinite(cMperKm)) return null;
+    return multiFit.intercept
+         + multiFit.speedSlope * sKmh
+         + multiFit.tempSlope  * tC
+         + multiFit.climbSlope * cMperKm;
+  }
+  function fmtSpeedOut(kmh) {
+    return `${UNITS.speed(kmh).toFixed(0)} ${UNITS.speedUnit}`;
+  }
+  function fmtTempOut(c) {
+    const v = UNITS.temp(c);
+    return `${v >= 0 ? "" : ""}${v.toFixed(0)} ${UNITS.tempUnit}`;
+  }
+  function fmtClimbOut(mPerKm) {
+    if (UNITS.imperial) return `${(mPerKm * 5.2808).toFixed(0)} ft/mi`;
+    return `${mPerKm.toFixed(0)} m/km`;
+  }
+  function refreshWhatIf() {
+    const r = whatIfPredKm();
+    if (r == null || !isFinite(r)) {
+      whatIfEls.result.innerHTML = "&mdash;";
+      return;
+    }
+    const v = UNITS.dist(r);
+    whatIfEls.result.innerHTML = `${v.toFixed(1)}<small>${UNITS.distUnit}</small>`;
+  }
+  function bindWhatIf() {
+    const onSpeed = () => {
+      const display = Number(whatIfEls.speed.value);
+      // Slider stores user-units; convert to km/h internal.
+      const km = UNITS.imperial ? display / 0.621371 : display;
+      whatIfEls.speed.dataset.km = km.toFixed(2);
+      whatIfEls.speedO.value = `${display} ${UNITS.speedUnit}`;
+      refreshWhatIf();
+    };
+    const onTemp = () => {
+      const display = Number(whatIfEls.temp.value);
+      const c = UNITS.imperial ? (display - 32) * 5 / 9 : display;
+      whatIfEls.temp.dataset.c = c.toFixed(2);
+      whatIfEls.tempO.value = `${display} ${UNITS.tempUnit}`;
+      refreshWhatIf();
+    };
+    const onClimb = () => {
+      const display = Number(whatIfEls.climb.value);
+      const mPerKm = UNITS.imperial ? display / 5.2808 : display;
+      whatIfEls.climb.dataset.mperkm = mPerKm.toFixed(3);
+      whatIfEls.climbO.value = UNITS.imperial ? `${display} ft/mi` : `${display} m/km`;
+      refreshWhatIf();
+    };
+    whatIfEls.speed.addEventListener("input", onSpeed);
+    whatIfEls.temp.addEventListener("input", onTemp);
+    whatIfEls.climb.addEventListener("input", onClimb);
+    whatIfEls._onSpeed = onSpeed;
+    whatIfEls._onTemp = onTemp;
+    whatIfEls._onClimb = onClimb;
+  }
+  function updateWhatIf() {
+    if (!whatIfEls.panel) return;
+    if (!multiFit) { whatIfEls.panel.classList.add("hidden"); return; }
+    whatIfEls.panel.classList.remove("hidden");
+    if (!whatIfInit) { bindWhatIf(); whatIfInit = true; }
+    // Calibrate slider ranges + defaults to the user's data + units.
+    const speeds = dated.filter((m) => m.avgMovingSpeed != null).map((m) => m.avgMovingSpeed);
+    const temps  = dated.filter((m) => m.ambientC != null).map((m) => m.ambientC);
+    const climbs = dated.filter((m) => m.climbM != null && m.distKm >= 2).map((m) => m.climbM / m.distKm);
+    const medS = speeds.length ? median(speeds) : 25;
+    const medT = temps.length  ? median(temps)  : 20;
+    const medC = climbs.length ? median(climbs) : 0;
+    // Range bounds widen 30% beyond data range, clamped to physical limits.
+    const sMin = 10, sMax = 55; // km/h sensible bounds
+    const tMin = -15, tMax = 40; // °C
+    const cMin = 0, cMax = 40;   // m/km
+    const sDispMin = Math.round(UNITS.speed(sMin));
+    const sDispMax = Math.round(UNITS.speed(sMax));
+    const tDispMin = Math.round(UNITS.temp(tMin));
+    const tDispMax = Math.round(UNITS.temp(tMax));
+    const cDispMax = UNITS.imperial ? Math.round(cMax * 5.2808) : cMax;
+    const sDispDef = Math.max(sDispMin, Math.min(sDispMax, Math.round(UNITS.speed(medS))));
+    const tDispDef = Math.max(tDispMin, Math.min(tDispMax, Math.round(UNITS.temp(medT))));
+    const cDispDef = Math.max(0, Math.min(cDispMax, Math.round(UNITS.imperial ? medC * 5.2808 : medC)));
+    whatIfEls.speed.min = String(sDispMin);
+    whatIfEls.speed.max = String(sDispMax);
+    whatIfEls.temp.min  = String(tDispMin);
+    whatIfEls.temp.max  = String(tDispMax);
+    whatIfEls.climb.min = "0";
+    whatIfEls.climb.max = String(cDispMax);
+    // Only seed defaults on first show, so the user's drag isn't reset
+    // every re-render. Detect "first show" by an empty dataset cache.
+    if (!whatIfEls.speed.dataset.km) {
+      whatIfEls.speed.value = String(sDispDef);
+      whatIfEls.temp.value  = String(tDispDef);
+      whatIfEls.climb.value = String(cDispDef);
+    }
+    whatIfEls._onSpeed();
+    whatIfEls._onTemp();
+    whatIfEls._onClimb();
   }
 
   // ---------- Lifetime / insights / activity ----------
@@ -2230,6 +2453,8 @@
 
   // Insight generation. Compares the first vs last third of dated trips so a
   // single noisy bin can't dominate the headline. Each item is { kind, html }.
+  // User-facing copy on these reads as "old vs new" so the rider can tell
+  // we're not comparing best vs worst trips, we're tracking drift over time.
   function computeInsights() {
     const out = [];
     if (dated.length < 6) return out;
@@ -2264,7 +2489,8 @@
       out.push({
         kind: pct < -5 ? "warn" : pct > 5 ? "good" : "info",
         html: `Estimated range ${pct >= 0 ? "up" : "down"} <b>${Math.abs(pct).toFixed(0)}%</b> ` +
-              `(<b>${dispA.toFixed(1)}</b> to <b>${dispB.toFixed(1)}</b> ${UNITS.distUnit})` +
+              `from your first third of trips (<b>${dispA.toFixed(1)} ${UNITS.distUnit}</b>) ` +
+              `to your last third (<b>${dispB.toFixed(1)} ${UNITS.distUnit}</b>)` +
               (useNorm ? ", normalized to 20 °C." : ". Add weather to factor out temperature."),
       });
     }
@@ -2276,8 +2502,8 @@
       const pct = fmtPct(ir0, ir1);
       out.push({
         kind: pct > 15 ? "warn" : pct < -10 ? "good" : "info",
-        html: `Internal resistance ${pct >= 0 ? "rose" : "fell"} from <b>${(ir0 * 1000).toFixed(0)}</b> mΩ to ` +
-              `<b>${(ir1 * 1000).toFixed(0)}</b> mΩ (${pct >= 0 ? "+" : ""}${pct.toFixed(0)}%).`,
+        html: `Internal resistance ${pct >= 0 ? "rose" : "fell"} from <b>${(ir0 * 1000).toFixed(0)} mΩ</b> ` +
+              `in your first third of trips to <b>${(ir1 * 1000).toFixed(0)} mΩ</b> in your last third (${pct >= 0 ? "+" : ""}${pct.toFixed(0)}%).`,
       });
     }
 
@@ -2290,7 +2516,8 @@
       out.push({
         kind: pct > 8 ? "warn" : pct < -5 ? "good" : "info",
         html: `Energy use ${pct >= 0 ? "up" : "down"} <b>${Math.abs(pct).toFixed(0)}%</b> ` +
-              `(<b>${dA.toFixed(1)}</b> to <b>${dB.toFixed(1)}</b> Wh/${UNITS.distUnit}).`,
+              `from <b>${dA.toFixed(1)} Wh/${UNITS.distUnit}</b> in your first third of trips ` +
+              `to <b>${dB.toFixed(1)} Wh/${UNITS.distUnit}</b> in your last third.`,
       });
     }
 
@@ -2314,28 +2541,45 @@
               `<b>${Math.abs(slopeDisp * 5).toFixed(1)}</b> ${UNITS.distUnit} of range.`,
       });
     }
-    // Climb sensitivity (multivariate slope — isolated effect).
+    // Climb sensitivity (multivariate slope, isolated effect). Anchor the
+    // example to a climb rate the user actually rides instead of an
+    // arbitrary 10% grade extrapolation that may sit far outside the
+    // training data. We use the 90th percentile climb rate so the example
+    // is "your steepest typical trip", well within the model's fit region.
     const climbSlopeKmPerMperKm = multiFit ? multiFit.climbSlope : (climbFit ? climbFit.slope : null);
     if (climbSlopeKmPerMperKm != null) {
-      const slope = UNITS.dist(climbSlopeKmPerMperKm) / (UNITS.imperial ? 3.28084 : 1);
-      const unit = UNITS.imperial ? "ft/mi" : "m/km";
+      const climbs = dated.map((m) => (m.climbM != null && m.distKm >= 2) ? m.climbM / m.distKm : null).filter((v) => v != null);
+      const sortedC = climbs.slice().sort((a, b) => a - b);
+      const p90Climb = sortedC.length ? sortedC[Math.floor(sortedC.length * 0.9)] : 50;
+      const exampleClimbMperKm = Math.max(20, Math.round(p90Climb / 5) * 5);
+      const exampleDispRate = UNITS.imperial ? exampleClimbMperKm * 3.28084 : exampleClimbMperKm;
+      const exampleUnit = UNITS.imperial ? "ft/mi" : "m/km";
+      const examplePctGrade = (exampleClimbMperKm / 10).toFixed(1);
+      const slopePerMperKm = climbSlopeKmPerMperKm;
+      const lossKm = -slopePerMperKm * exampleClimbMperKm;
+      const lossDisp = UNITS.dist(Math.abs(lossKm));
+      const r2 = Math.max(0, Math.min(1, multiFit ? multiFit.r2 : 0));
+      const trustNote = r2 < 0.3 ? " Model fit is loose (R²=" + r2.toFixed(2) + "), so treat this as a ballpark." : "";
       out.push({
-        kind: slope < -0.05 ? "warn" : "info",
-        html: `Climbing <b>100 ${unit}</b> costs ` +
-              `<b>${Math.abs(slope * 100).toFixed(1)}</b> ${UNITS.distUnit} of range.`,
+        kind: lossKm > 1 ? "warn" : "info",
+        html: `Climbing at your steepest typical rate (<b>${exampleDispRate.toFixed(0)} ${exampleUnit}</b>, about <b>${examplePctGrade}%</b> grade) ` +
+              `costs about <b>${lossDisp.toFixed(1)} ${UNITS.distUnit}</b> of full-charge range.${trustNote}`,
       });
     }
     // Predicted range at a standard condition: 25 km/h cruise, 20 °C, flat.
     // Plugs the multivariate equation in and reports what the model says
     // you'd get on an "ideal" ride. Concrete number the rider can compare
-    // against their own best/typical range.
+    // against their own best/typical range. R² + n tag tells the reader
+    // how trustworthy the prediction is.
     if (multiFit) {
       const predKm = multiFit.intercept + multiFit.speedSlope * 25 + multiFit.tempSlope * 20 + multiFit.climbSlope * 0;
       if (isFinite(predKm) && predKm > 0) {
-        const std = UNITS.imperial ? "25 km/h cruise, 20 °C, flat" : "25 km/h cruise, 20 °C, flat";
+        const std = "25 km/h cruise, 20 °C, flat";
+        const r2 = Math.max(0, Math.min(1, multiFit.r2 || 0));
+        const tag = ` <span class="model-quality">(n=${multiFit.n} · R²=${r2.toFixed(2)})</span>`;
         out.push({
-          kind: "info",
-          html: `Model-predicted range at <i>${std}</i>: <b>${UNITS.dist(predKm).toFixed(1)} ${UNITS.distUnit}</b>.`,
+          kind: r2 < 0.3 ? "warn" : "info",
+          html: `Model-predicted range at <i>${std}</i>: <b>${UNITS.dist(predKm).toFixed(1)} ${UNITS.distUnit}</b>.${tag}`,
         });
       }
     }
@@ -2374,6 +2618,14 @@
   // Populate the green-bordered takeaway strip below a chart with the
   // headline number for that chart. `parts` is an array of HTML strings
   // joined with a visual separator.
+  // Wraps a label (e.g. "Jan 25", "trip_20260604_190757") in an inspector
+  // link when we have a representative trip index. Falls back to the plain
+  // label otherwise so the takeaway still reads cleanly without "view →"
+  // suffixes that look odd in a report.
+  function tripLink(label, tripIdx) {
+    if (tripIdx == null || !isFinite(tripIdx)) return label;
+    return `<a class="ta-link-inline" href="inspector.html?i=${tripIdx}" target="_blank" rel="noopener" title="Open this ride in the inspector">${label}</a>`;
+  }
   function setTakeaway(id, parts, kind) {
     const el = document.getElementById(id);
     if (!el) return;
@@ -2383,13 +2635,30 @@
     el.innerHTML = filtered.length ? filtered.join('<span class="ta-sep">·</span>') : "";
   }
   // Find peak / trough labels in a stats array (skipping null bins).
-  function statsPeakTrough(stats, bins, label) {
+  // When `metricFn` is provided, also locate a representative trip inside
+  // the peak/trough bin (max for peak, min for trough) so the caller can
+  // turn the group label into a clickable inspector link.
+  function statsPeakTrough(stats, bins, label, metricFn) {
     let peak = null, trough = null;
     for (let i = 0; i < stats.length; i++) {
       const st = stats[i];
       if (!st || st.med == null) continue;
-      if (!peak || st.med > peak.v) peak = { v: st.med, label: bins[i].label };
-      if (!trough || st.med < trough.v) trough = { v: st.med, label: bins[i].label };
+      if (!peak || st.med > peak.v) peak = { v: st.med, label: bins[i].label, binIdx: i };
+      if (!trough || st.med < trough.v) trough = { v: st.med, label: bins[i].label, binIdx: i };
+    }
+    if (metricFn) {
+      const pickRep = (binIdx, maximize) => {
+        const trips = (bins[binIdx] && bins[binIdx].trips) || [];
+        let best = null, bestV = null;
+        for (const t of trips) {
+          const v = metricFn(t);
+          if (v == null || !isFinite(v)) continue;
+          if (best == null || (maximize ? v > bestV : v < bestV)) { best = t; bestV = v; }
+        }
+        return best ? best.tripIdx : null;
+      };
+      if (peak)   peak.tripIdx   = pickRep(peak.binIdx, true);
+      if (trough) trough.tripIdx = pickRep(trough.binIdx, false);
     }
     return { peak, trough };
   }
@@ -2399,7 +2668,7 @@
     const cv = setupCanvas(canvas);
     if (!cv) return;
     const { ctx, w, h } = cv;
-    const pad = { top: 14, bottom: 24, left: 46, right: 52 };
+    const pad = { top: 42, bottom: 24, left: 46, right: 52 };
     const cw = w - pad.left - pad.right;
     const ch = h - pad.top - pad.bottom;
     const n = bins.length;
@@ -2511,7 +2780,7 @@
     const cv = setupCanvas(canvas);
     if (!cv || !values.length) return;
     const { ctx, w, h } = cv;
-    const pad = { top: 20, bottom: 28, left: 44, right: 14 };
+    const pad = { top: 42, bottom: 28, left: 44, right: 14 };
     const cw = w - pad.left - pad.right;
     const ch = h - pad.top - pad.bottom;
     const nBins = opts.nBins || 16;
@@ -2595,7 +2864,7 @@
     const cv = setupCanvas(canvas);
     if (!cv) return;
     const { ctx, w, h } = cv;
-    const pad = { top: 14, bottom: 24, left: 40, right: 14 };
+    const pad = { top: 42, bottom: 24, left: 40, right: 14 };
     const cw = w - pad.left - pad.right;
     const ch = h - pad.top - pad.bottom;
     const n = bins.length;
@@ -2647,7 +2916,7 @@
     const cv = setupCanvas(canvas);
     if (!cv || !list.length) return;
     const { ctx, w, h } = cv;
-    const pad = { top: 24, bottom: 28, left: 42, right: 14 };
+    const pad = { top: 42, bottom: 28, left: 42, right: 14 };
     const cw = w - pad.left - pad.right;
     const ch = h - pad.top - pad.bottom;
     const t0 = list[0].date.getTime();
@@ -2760,32 +3029,88 @@
     drawTrendChart(canvas, bins, series, { rolling: false, zeroBase: false });
   }
 
-  // Generic range-vs-X scatter helper. Plots one dot per trip plus a
-  // Theil–Sen fit line so the slope is visible, not just a number.
-  // `host` is hidden when there aren't enough points to fit.
+  // Generic range-vs-X scatter helper.
+  // - Dashed yellow Theil–Sen line: what the eye sees in this 2D slice
+  //   (confounded by the other predictors).
+  // - Solid purple model line: the multivariate slope, sliced through the
+  //   median of the other predictors. This is the "after factoring out
+  //   the others" line and matches the takeaway number.
+  // A small legend in the top-left explains which is which.
   function drawRangeFactorScatter(canvas, host, pts, opts) {
     if (pts.length < 6) { host.classList.add("hidden"); return; }
     host.classList.remove("hidden");
     drawScatter(canvas, pts, { xLabel: opts.xLabel, yLabel: opts.yLabel });
-    if (pts.length >= 10 && canvas._scatterMap) {
-      const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
-      const fitDisp = theilSen(xs, ys);
-      if (fitDisp) {
-        const { xAt, yAt, xMin, xMax } = canvas._scatterMap;
-        const dpr = window.devicePixelRatio || 1;
-        const ctx = canvas.getContext("2d");
-        ctx.save();
-        ctx.scale(dpr, dpr);
-        ctx.strokeStyle = opts.fitColor || "rgba(255,241,118,0.75)";
-        ctx.lineWidth = 1.6;
-        ctx.setLineDash([4, 3]);
-        ctx.beginPath();
-        ctx.moveTo(xAt(xMin), yAt(fitDisp.slope * xMin + fitDisp.intercept));
-        ctx.lineTo(xAt(xMax), yAt(fitDisp.slope * xMax + fitDisp.intercept));
-        ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.restore();
+    if (!canvas._scatterMap) return;
+    const { xAt, yAt, xMin, xMax } = canvas._scatterMap;
+    const dpr = window.devicePixelRatio || 1;
+    const ctx = canvas.getContext("2d");
+
+    const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
+    const univariate = pts.length >= 10 ? theilSen(xs, ys) : null;
+    const modelPredict = opts.modelLine || null;
+
+    function drawSegmented(predictY, color, width, dashed) {
+      ctx.save();
+      ctx.scale(dpr, dpr);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      if (dashed) ctx.setLineDash(dashed);
+      ctx.beginPath();
+      const N = 32;
+      let started = false;
+      for (let i = 0; i <= N; i++) {
+        const x = xMin + (xMax - xMin) * (i / N);
+        const y = predictY(x);
+        if (y == null || !isFinite(y)) { started = false; continue; }
+        if (!started) { ctx.moveTo(xAt(x), yAt(y)); started = true; }
+        else ctx.lineTo(xAt(x), yAt(y));
       }
+      ctx.stroke();
+      if (dashed) ctx.setLineDash([]);
+      ctx.restore();
+    }
+
+    if (univariate) {
+      // Faint dashed univariate fit so the reader can see the "naive" slope
+      // and visually compare it against the multivariate model line.
+      drawSegmented(
+        (x) => univariate.slope * x + univariate.intercept,
+        modelPredict ? "rgba(255,241,118,0.45)" : (opts.fitColor || "rgba(255,241,118,0.75)"),
+        1.4,
+        [4, 3],
+      );
+    }
+    if (modelPredict) {
+      drawSegmented(modelPredict, "rgba(179,136,255,0.95)", 2.2, null);
+    }
+
+    // Legend chip top-left. Drawn after the lines so it sits on top.
+    if (univariate || modelPredict) {
+      ctx.save();
+      ctx.scale(dpr, dpr);
+      const lx = 12, ly = 14, lineH = 13;
+      const items = [];
+      if (modelPredict) items.push({ label: "model (multi)", color: "rgba(179,136,255,0.95)", width: 2.2, dash: null });
+      if (univariate) items.push({ label: modelPredict ? "this view" : "fit", color: opts.fitColor || "rgba(255,241,118,0.75)", width: 1.4, dash: [4, 3] });
+      // Soft background pill so the legend stays legible on dotty areas.
+      ctx.font = "10px ui-monospace, SFMono-Regular, Consolas, monospace";
+      let maxW = 0;
+      for (const it of items) maxW = Math.max(maxW, ctx.measureText(it.label).width);
+      ctx.fillStyle = "rgba(15,15,22,0.65)";
+      ctx.fillRect(lx - 4, ly - 9, maxW + 32, items.length * lineH + 4);
+      let y = ly;
+      for (const it of items) {
+        ctx.strokeStyle = it.color;
+        ctx.lineWidth = it.width;
+        if (it.dash) ctx.setLineDash(it.dash);
+        ctx.beginPath();
+        ctx.moveTo(lx, y - 3); ctx.lineTo(lx + 18, y - 3); ctx.stroke();
+        if (it.dash) ctx.setLineDash([]);
+        ctx.fillStyle = "rgba(220,220,230,0.85)";
+        ctx.fillText(it.label, lx + 24, y);
+        y += lineH;
+      }
+      ctx.restore();
     }
   }
   // Range vs ambient — only shown when weather is loaded.
@@ -2802,10 +3127,20 @@
               `<br>Battery used: <b>${fmtVal(m.battDelta, 1)}</b>%`,
       });
     }
+    let modelLine = null;
+    if (multiFit) {
+      const sKmh = multiFit.medSpeedKmh, cMperKm = multiFit.medClimbMperKm;
+      modelLine = (xDisp) => {
+        const tC = UNITS.imperial ? (xDisp - 32) * 5 / 9 : xDisp;
+        const km = multiFit.intercept + multiFit.speedSlope * sKmh + multiFit.tempSlope * tC + multiFit.climbSlope * cMperKm;
+        return UNITS.dist(km);
+      };
+    }
     drawRangeFactorScatter(canvas, rangeTempHost, pts, {
       xLabel: "ambient (" + UNITS.tempUnit + ")",
       yLabel: "est. range (" + UNITS.distUnit + ")",
       fitColor: "rgba(255,241,118,0.75)",
+      modelLine,
     });
   }
   // Range vs avg riding speed.
@@ -2823,10 +3158,20 @@
               `<br>Battery used: <b>${fmtVal(m.battDelta, 1)}</b>%`,
       });
     }
+    let modelLine = null;
+    if (multiFit) {
+      const tC = multiFit.medTempC, cMperKm = multiFit.medClimbMperKm;
+      modelLine = (xDisp) => {
+        const sKmh = UNITS.imperial ? xDisp / 0.621371 : xDisp;
+        const km = multiFit.intercept + multiFit.speedSlope * sKmh + multiFit.tempSlope * tC + multiFit.climbSlope * cMperKm;
+        return UNITS.dist(km);
+      };
+    }
     drawRangeFactorScatter(canvas, host, pts, {
       xLabel: "avg speed (" + UNITS.speedUnit + ")",
       yLabel: "est. range (" + UNITS.distUnit + ")",
       fitColor: "rgba(124,199,255,0.8)",
+      modelLine,
     });
   }
   // Range vs climb rate (meters of altitude gain per km of ride).
@@ -2847,11 +3192,1143 @@
               `<br>Battery used: <b>${fmtVal(m.battDelta, 1)}</b>%`,
       });
     }
+    let modelLine = null;
+    if (multiFit) {
+      const sKmh = multiFit.medSpeedKmh, tC = multiFit.medTempC;
+      modelLine = (xDisp) => {
+        const mPerKm = UNITS.imperial ? xDisp / 3.28084 : xDisp;
+        const km = multiFit.intercept + multiFit.speedSlope * sKmh + multiFit.tempSlope * tC + multiFit.climbSlope * mPerKm;
+        return UNITS.dist(km);
+      };
+    }
     drawRangeFactorScatter(canvas, host, pts, {
       xLabel: (UNITS.imperial ? "ft" : "m") + "/" + UNITS.distUnit,
       yLabel: "est. range (" + UNITS.distUnit + ")",
       fitColor: "rgba(255,160,0,0.8)",
+      modelLine,
     });
+  }
+
+  // ---------- Ride planner (modal calculator) ----------
+  // Lives in the topbar; takes battery / distance / speed / climb / ambient
+  // and plays them through the same `multiFit` that drives the what-if panel.
+  // Outputs pessimistic / neutral / optimistic bands derived from the OLS
+  // residual standard error so the user sees how much wiggle the prediction has.
+  const calcEls = {
+    btn:      document.getElementById("calc-btn"),
+    modal:    document.getElementById("calc-modal"),
+    batt:     document.getElementById("calc-batt"),
+    dist:     document.getElementById("calc-dist"),
+    speed:    document.getElementById("calc-speed"),
+    climb:    document.getElementById("calc-climb"),
+    temp:     document.getElementById("calc-temp"),
+    roundtrip: document.getElementById("calc-roundtrip"),
+    battOut:  document.getElementById("calc-batt-out"),
+    distOut:  document.getElementById("calc-dist-out"),
+    speedOut: document.getElementById("calc-speed-out"),
+    climbOut: document.getElementById("calc-climb-out"),
+    tempOut:  document.getElementById("calc-temp-out"),
+    time:     document.getElementById("calc-time"),
+    battUse:  document.getElementById("calc-batt-use"),
+    battArr:  document.getElementById("calc-batt-arr"),
+    legBack:  document.getElementById("calc-leg-back"),
+    timeTotal: document.getElementById("calc-time-total"),
+    battUseTotal: document.getElementById("calc-batt-use-total"),
+    battArrTotal: document.getElementById("calc-batt-arr-total"),
+    verdict:  document.getElementById("calc-verdict"),
+    canvas:   document.getElementById("calc-canvas"),
+  };
+  let calcWired = false;
+  function calcModelSigmaKm() {
+    if (!multiFit) return 0;
+    const dof = Math.max(1, multiFit.n - 4);
+    return Math.sqrt(multiFit.rss / dof);
+  }
+  function calcRangeKm(sKmh, tC, climbMperKm) {
+    if (!multiFit) return null;
+    return multiFit.intercept
+         + multiFit.speedSlope * sKmh
+         + multiFit.tempSlope  * tC
+         + multiFit.climbSlope * climbMperKm;
+  }
+  // Battery-used (pess / neut / opt) for a single leg of distance D km,
+  // given internal-units inputs. Pessimistic = the worst (largest) battery
+  // draw, derived from the shorter range that sits at neutral - sigma.
+  function calcLegBatt(distKm, sKmh, tC, climbMperKm, sigmaKm) {
+    const rangeNeutral = calcRangeKm(sKmh, tC, climbMperKm);
+    if (rangeNeutral == null || !isFinite(rangeNeutral)) return null;
+    const rangeOpt  = rangeNeutral + sigmaKm;
+    const rangePess = Math.max(0.5, rangeNeutral - sigmaKm);
+    return {
+      rangeNeutral, rangeOpt, rangePess,
+      battPess: 100 * distKm / rangePess,
+      battNeut: 100 * distKm / Math.max(0.5, rangeNeutral),
+      battOpt:  100 * distKm / rangeOpt,
+    };
+  }
+  function calcFmtBand(pess, neut, opt, unit) {
+    const u = unit || "";
+    return `<span class="calc-pess">${pess.toFixed(0)}${u}</span>` +
+           `<span class="calc-sep">·</span>` +
+           `<span class="calc-neut">${neut.toFixed(0)}${u}</span>` +
+           `<span class="calc-sep">·</span>` +
+           `<span class="calc-opt">${opt.toFixed(0)}${u}</span>`;
+  }
+  function calcDistKm(d)  { return UNITS.imperial ? d / 0.621371 : d; }
+  function calcClimbM(c)  { return UNITS.imperial ? c / 3.28084  : c; }
+  function calcSpeedKmh(s){ return UNITS.imperial ? s / 0.621371 : s; }
+  function calcTempC(t)   { return UNITS.imperial ? (t - 32) * 5 / 9 : t; }
+  function updateCalculator(srcEvt) {
+    if (!calcEls.modal || !multiFit) return;
+    const B = Number(calcEls.batt.value);
+    let dDisp = Number(calcEls.dist.value);
+    const sDisp = Number(calcEls.speed.value);
+    const cDisp = Number(calcEls.climb.value);
+    const tDisp = Number(calcEls.temp.value);
+    const sKmh = calcSpeedKmh(sDisp);
+    const tC = calcTempC(tDisp);
+    // Dynamic distance-slider ceiling: a bit beyond the optimistic max range
+    // for the *current* battery + speed + temp + climb. We don't know the
+    // climb-per-km until we know distance, so use the user's current climb
+    // total at the prevailing rate (or flat = 0) for the projection.
+    const climbMTotal = calcClimbM(cDisp);
+    const climbProjPerKm = dDisp > 0 ? climbMTotal / calcDistKm(dDisp) : 0;
+    const rangeOptKm = (multiFit.intercept + multiFit.speedSlope * sKmh + multiFit.tempSlope * tC + multiFit.climbSlope * climbProjPerKm) + calcModelSigmaKm();
+    const maxOptKm = Math.max(2, (B / 100) * Math.max(0.5, rangeOptKm));
+    const newMaxDisp = Math.max(5, Math.ceil(UNITS.dist(maxOptKm) * 1.15));
+    const srcId = srcEvt && srcEvt.target && srcEvt.target.id;
+    // Don't move the ceiling while the user is dragging the distance slider —
+    // that would force the thumb to jump under their finger. Also leave the
+    // slider alone when a route lock pinned it to a real-world distance.
+    if (srcId !== "calc-dist" && !routeLocked) {
+      calcEls.dist.max = String(newMaxDisp);
+      if (Number(calcEls.dist.value) > newMaxDisp) {
+        calcEls.dist.value = String(newMaxDisp);
+        dDisp = newMaxDisp;
+      }
+    }
+    const distKm = calcDistKm(dDisp);
+    const climbM = climbMTotal;
+    const climbMperKm = distKm > 0 ? climbM / distKm : 0;
+    // Slider labels in user units.
+    calcEls.battOut.textContent = `${B}%`;
+    calcEls.distOut.textContent = `${dDisp} ${UNITS.distUnit}`;
+    calcEls.speedOut.textContent = `${sDisp} ${UNITS.speedUnit}`;
+    const altUnit = UNITS.imperial ? "ft" : "m";
+    const signC = cDisp >= 0 ? "+" : "";
+    calcEls.climbOut.textContent = `${signC}${cDisp} ${altUnit}`;
+    calcEls.tempOut.textContent = `${tDisp} ${UNITS.tempUnit}`;
+
+    const sigma = calcModelSigmaKm();
+    const legA = calcLegBatt(distKm, sKmh, tC, climbMperKm, sigma);
+    if (!legA) { calcEls.verdict.textContent = "Model not ready."; return; }
+    const fmtDur = (h) => {
+      if (!isFinite(h) || h <= 0) return "—";
+      const totalMin = Math.round(h * 60);
+      const hh = Math.floor(totalMin / 60);
+      const mm = totalMin % 60;
+      return hh > 0 ? `${hh}h ${String(mm).padStart(2, "0")}m` : `${mm} min`;
+    };
+    const timeH = sKmh > 0 ? distKm / sKmh : 0;
+    calcEls.time.textContent = fmtDur(timeH);
+    calcEls.battUse.innerHTML = calcFmtBand(legA.battPess, legA.battNeut, legA.battOpt, " %");
+    const arrPess = B - legA.battPess;
+    const arrNeut = B - legA.battNeut;
+    const arrOpt  = B - legA.battOpt;
+    calcEls.battArr.innerHTML = calcFmtBand(arrPess, arrNeut, arrOpt, " %");
+
+    let totalPess = legA.battPess, totalNeut = legA.battNeut, totalOpt = legA.battOpt;
+    if (calcEls.roundtrip.checked) {
+      const legB = calcLegBatt(distKm, sKmh, tC, -climbMperKm, sigma);
+      calcEls.legBack.classList.remove("hidden");
+      if (legB) {
+        calcEls.timeTotal.textContent = fmtDur(timeH * 2);
+        totalPess = legA.battPess + legB.battPess;
+        totalNeut = legA.battNeut + legB.battNeut;
+        totalOpt  = legA.battOpt  + legB.battOpt;
+        calcEls.battUseTotal.innerHTML = calcFmtBand(totalPess, totalNeut, totalOpt, " %");
+        calcEls.battArrTotal.innerHTML = calcFmtBand(B - totalPess, B - totalNeut, B - totalOpt, " %");
+      }
+    } else {
+      calcEls.legBack.classList.add("hidden");
+    }
+
+    const arrTotalPess = B - totalPess;
+    let cls = "", msg = "";
+    if (arrTotalPess >= 25) {
+      msg = `You'll make it with margin to spare &mdash; <b>${arrTotalPess.toFixed(0)}%</b> left in the pessimistic case.`;
+    } else if (arrTotalPess >= 10) {
+      cls = "warn";
+      msg = `Tight: pessimistic arrival is only <b>${arrTotalPess.toFixed(0)}%</b>. Slower speed or a flatter route helps.`;
+    } else if (arrTotalPess >= 0) {
+      cls = "warn";
+      msg = `Very thin margin: pessimistic arrival is <b>${arrTotalPess.toFixed(0)}%</b>.`;
+    } else {
+      cls = "bad";
+      msg = `Won't make it in the pessimistic case &mdash; short by <b>${Math.abs(arrTotalPess).toFixed(0)}%</b>. ` +
+            `Neutral needs <b>${totalNeut.toFixed(0)}%</b> vs your <b>${B}%</b> on hand.`;
+    }
+    calcEls.verdict.className = "calc-verdict" + (cls ? " " + cls : "");
+    calcEls.verdict.innerHTML = msg;
+
+    drawCalcChart(B, distKm, sKmh, tC, climbMperKm, calcEls.roundtrip.checked);
+  }
+  // Stash the chart state so the mouseover handler can recompute battery,
+  // distance, and time at the hovered X without re-reading sliders.
+  let calcChartState = null;
+  // Battery depletion curve: 3 lines (pess/neut/opt) descending from the
+  // starting battery, slope = battery used per km in each scenario.
+  // The band between pessimistic and optimistic is hatched so the
+  // uncertainty range reads at a glance. Hovering shows a vertical
+  // crosshair with battery, time, and range remaining at that distance.
+  function drawCalcChart(B, distKm, sKmh, tC, climbMperKm, isRound) {
+    const c = calcEls.canvas;
+    if (!c || !multiFit) return;
+    calcChartLastArgs = [B, distKm, sKmh, tC, climbMperKm, isRound];
+    const dpr = window.devicePixelRatio || 1;
+    const cssW = c.clientWidth || c.width;
+    const cssH = c.clientHeight || c.height;
+    c.width = Math.round(cssW * dpr);
+    c.height = Math.round(cssH * dpr);
+    const ctx = c.getContext("2d");
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, cssW, cssH);
+
+    // padT matches the trend / scatter / histogram offsets so the HTML
+    // "Battery depletion" title + axes hint sits in a clear band.
+    const padL = 38, padR = 14, padT = 42, padB = 28;
+    const W = cssW - padL - padR, H = cssH - padT - padB;
+    if (W <= 0 || H <= 0) return;
+
+    const sigma = calcModelSigmaKm();
+    // Battery-used-per-km for the three scenarios at each leg's climb.
+    const legBattPerKm = (climbMperKm_) => {
+      const rN = calcRangeKm(sKmh, tC, climbMperKm_);
+      if (rN == null || !isFinite(rN)) return null;
+      const rO = rN + sigma, rP = Math.max(0.5, rN - sigma);
+      return { pess: 100 / rP, neut: 100 / rN, opt: 100 / rO };
+    };
+    const legA = legBattPerKm(climbMperKm);
+    const legB = isRound ? legBattPerKm(-climbMperKm) : null;
+    if (!legA) return;
+
+    const totalDist = distKm * (isRound ? 2 : 1);
+    // Domain: 0 .. max(plannedDist × 1.15, "where opt hits 0").
+    const xToWhereZero = (slope, start) => start / slope; // km until 0%
+    const exhaustOpt = xToWhereZero(legA.opt, B);
+    const xMin = 0;
+    const xMax = Math.max(totalDist * 1.15, Math.min(exhaustOpt * 1.1, totalDist * 2.5), 1);
+    const xToPx = (x) => padL + ((x - xMin) / (xMax - xMin)) * W;
+    const yToPx = (y) => padT + (1 - (y / 100)) * H;
+
+    // Grid + axes.
+    ctx.strokeStyle = "rgba(255,255,255,0.07)";
+    ctx.lineWidth = 1;
+    ctx.font = "10px ui-monospace, SFMono-Regular, Consolas, monospace";
+    ctx.fillStyle = "#888";
+    // Horizontal grid every 25%.
+    for (let p = 0; p <= 100; p += 25) {
+      const y = yToPx(p);
+      ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL + W, y); ctx.stroke();
+      ctx.textAlign = "right"; ctx.textBaseline = "middle";
+      ctx.fillText(p + "%", padL - 4, y);
+    }
+    // Vertical grid at quarters of xMax.
+    const xStep = niceStep(xMax / 4);
+    ctx.textAlign = "center"; ctx.textBaseline = "top";
+    for (let x = 0; x <= xMax; x += xStep) {
+      const px = xToPx(x);
+      ctx.strokeStyle = "rgba(255,255,255,0.04)";
+      ctx.beginPath(); ctx.moveTo(px, padT); ctx.lineTo(px, padT + H); ctx.stroke();
+      ctx.fillStyle = "#888";
+      ctx.fillText(Math.round(UNITS.dist(x)) + " " + UNITS.distUnit, px, padT + H + 4);
+    }
+
+    // Planned-distance marker (vertical accent line).
+    {
+      const px = xToPx(totalDist);
+      ctx.strokeStyle = "rgba(255,255,255,0.32)";
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath(); ctx.moveTo(px, padT); ctx.lineTo(px, padT + H); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = "#ddd"; ctx.textAlign = "center"; ctx.textBaseline = "bottom";
+      ctx.fillText(isRound ? "round-trip end" : "destination", px, padT + 12);
+    }
+    // Turnaround marker (vertical at plannedDist for round trip).
+    if (isRound) {
+      const px = xToPx(distKm);
+      ctx.strokeStyle = "rgba(124,199,255,0.4)";
+      ctx.setLineDash([2, 4]);
+      ctx.beginPath(); ctx.moveTo(px, padT); ctx.lineTo(px, padT + H); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = "#7cc7ff"; ctx.textAlign = "center"; ctx.textBaseline = "bottom";
+      ctx.fillText("turn around", px, padT + 12);
+    }
+    // Zero-battery axis line.
+    ctx.strokeStyle = "rgba(255,82,82,0.4)";
+    ctx.beginPath(); ctx.moveTo(padL, yToPx(0)); ctx.lineTo(padL + W, yToPx(0)); ctx.stroke();
+
+    // Pure-math battery curve evaluator (no canvas). Returns battery % at
+    // a given distance for one scenario, accounting for the turnaround
+    // when the trip is a round trip.
+    function batteryAt(x, slope1, slope2) {
+      const xTurn = legB ? distKm : Infinity;
+      if (x <= xTurn) {
+        return Math.max(0, B - slope1 * x);
+      }
+      const yTurn = Math.max(0, B - slope1 * xTurn);
+      return Math.max(0, yTurn - slope2 * (x - xTurn));
+    }
+    function polylineFor(key) {
+      // Build the (x, y) sequence for plotting / hit-testing
+      const slope1 = legA[key];
+      const slope2 = legB ? legB[key] : slope1;
+      const pts = [];
+      const N = 64;
+      for (let i = 0; i <= N; i++) {
+        const x = xMin + (xMax - xMin) * (i / N);
+        pts.push({ x, y: batteryAt(x, slope1, slope2) });
+      }
+      return pts;
+    }
+    const pessPts = polylineFor("pess");
+    const neutPts = polylineFor("neut");
+    const optPts  = polylineFor("opt");
+
+    // Helper that draws diagonal hatching inside an arbitrary clip path.
+    // Step and angle are tuned so the textures read as distinct without
+    // muddying the foreground lines.
+    function hatchClip(buildPath, lineColor, fillColor, step, dirDown) {
+      ctx.save();
+      ctx.beginPath();
+      buildPath();
+      if (fillColor) { ctx.fillStyle = fillColor; ctx.fill(); }
+      ctx.clip();
+      ctx.strokeStyle = lineColor;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      const maxDiag = cssW + cssH;
+      for (let d = -cssH; d < maxDiag; d += step) {
+        if (dirDown) { ctx.moveTo(d, 0); ctx.lineTo(d + cssH, cssH); }
+        else         { ctx.moveTo(d + cssH, 0); ctx.lineTo(d, cssH); }
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // 1) Faint hatched fill under the optimistic line (down to the 0% axis).
+    //    Reads as "battery the route could plausibly leave in the tank."
+    //    Direction is opposite to the band so the textures don't merge.
+    hatchClip(() => {
+      ctx.moveTo(xToPx(optPts[0].x), yToPx(0));
+      for (const p of optPts) ctx.lineTo(xToPx(p.x), yToPx(p.y));
+      ctx.lineTo(xToPx(optPts[optPts.length - 1].x), yToPx(0));
+      ctx.closePath();
+    }, "rgba(105, 240, 174, 0.10)", "rgba(105, 240, 174, 0.03)", 10, false);
+
+    // 2) Denser hatched band between pess and opt. The uncertainty region.
+    hatchClip(() => {
+      ctx.moveTo(xToPx(optPts[0].x), yToPx(optPts[0].y));
+      for (const p of optPts) ctx.lineTo(xToPx(p.x), yToPx(p.y));
+      for (let i = pessPts.length - 1; i >= 0; i--) ctx.lineTo(xToPx(pessPts[i].x), yToPx(pessPts[i].y));
+      ctx.closePath();
+    }, "rgba(179, 136, 255, 0.22)", "rgba(179, 136, 255, 0.07)", 8, true);
+
+    // Plot the three lines.
+    function strokePolyline(pts, color, width) {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.beginPath();
+      pts.forEach((p, i) => { if (i === 0) ctx.moveTo(xToPx(p.x), yToPx(p.y)); else ctx.lineTo(xToPx(p.x), yToPx(p.y)); });
+      ctx.stroke();
+    }
+    strokePolyline(pessPts, "#ffa000", 2);
+    strokePolyline(optPts,  "#69f0ae", 2);
+    strokePolyline(neutPts, "#ffffff", 2.4);
+
+    // Mini legend top-left.
+    const legend = [
+      { lbl: "optimistic", color: "#69f0ae" },
+      { lbl: "neutral",    color: "#ffffff" },
+      { lbl: "pessimistic",color: "#ffa000" },
+    ];
+    ctx.font = "10px ui-monospace, SFMono-Regular, Consolas, monospace";
+    ctx.textAlign = "left"; ctx.textBaseline = "middle";
+    let ly = padT + 12;
+    for (const l of legend) {
+      ctx.strokeStyle = l.color; ctx.lineWidth = 2.2;
+      ctx.beginPath(); ctx.moveTo(padL + 8, ly); ctx.lineTo(padL + 22, ly); ctx.stroke();
+      ctx.fillStyle = "rgba(220,220,230,0.9)";
+      ctx.fillText(l.lbl, padL + 28, ly);
+      ly += 14;
+    }
+    // Save state for the mouseover handler.
+    calcChartState = {
+      B, distKm, sKmh, isRound,
+      legA, legB,
+      xMin, xMax, padL, padR, padT, padB, W, H, cssW, cssH, dpr,
+      batteryAt,
+    };
+  }
+  // Crosshair + tooltip on hover. Paints on top of the existing chart so
+  // we don't repaint the (expensive) base every mousemove. When the cursor
+  // leaves the canvas, a single redraw clears the overlay.
+  let lastCrosshairX = null;
+  function onCalcChartMove(e) {
+    const c = calcEls.canvas;
+    const tip = document.getElementById("calc-canvas-tooltip");
+    const state = calcChartState;
+    if (!c || !state || !tip) return;
+    const rect = c.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    if (mx < state.padL || mx > state.cssW - state.padR || my < state.padT || my > state.padT + state.H) {
+      onCalcChartLeave();
+      return;
+    }
+    // Distance at cursor
+    const xRange = state.xMax - state.xMin;
+    const xVal = state.xMin + ((mx - state.padL) / state.W) * xRange;
+    const slopePess2 = state.legB ? state.legB.pess : state.legA.pess;
+    const slopeNeut2 = state.legB ? state.legB.neut : state.legA.neut;
+    const slopeOpt2  = state.legB ? state.legB.opt  : state.legA.opt;
+    const pess = state.batteryAt(xVal, state.legA.pess, slopePess2);
+    const neut = state.batteryAt(xVal, state.legA.neut, slopeNeut2);
+    const opt  = state.batteryAt(xVal, state.legA.opt,  slopeOpt2);
+    // Repaint: redraw base then overlay crosshair. Lightweight enough for
+    // 60Hz hover; expensive elevation/route fetches don't re-trigger.
+    redrawCalcChartBase();
+    drawCalcCrosshair(mx, [pess, neut, opt]);
+    lastCrosshairX = mx;
+    // Compute remaining range for each scenario (km from cursor until 0%)
+    const yToKm = (y0, slope1, slope2) => {
+      // From current x to end-of-curve (battery hits 0)
+      const xTurn = state.isRound ? state.distKm : Infinity;
+      if (xVal <= xTurn) {
+        const xZero1 = xVal + y0 / slope1;
+        if (xZero1 <= xTurn) return xZero1 - xVal;
+        const yAtTurn = y0 - slope1 * (xTurn - xVal);
+        if (yAtTurn <= 0) return xTurn - xVal;
+        return (xTurn - xVal) + yAtTurn / slope2;
+      }
+      return y0 / slope2;
+    };
+    const remPess = yToKm(pess, state.legA.pess, slopePess2);
+    const remNeut = yToKm(neut, state.legA.neut, slopeNeut2);
+    const remOpt  = yToKm(opt,  state.legA.opt,  slopeOpt2);
+    const timeH = state.sKmh > 0 ? xVal / state.sKmh : 0;
+    const tipHtml = `
+      <div class="ctt-head">at ${UNITS.dist(xVal).toFixed(1)} ${UNITS.distUnit} (${formatRideTime(timeH)})</div>
+      <div class="ctt-row"><span class="ctt-key">battery</span>
+        <span><span class="ctt-pess">${pess.toFixed(0)}%</span> <span class="ctt-neut">${neut.toFixed(0)}%</span> <span class="ctt-opt">${opt.toFixed(0)}%</span></span></div>
+      <div class="ctt-row"><span class="ctt-key">range left</span>
+        <span><span class="ctt-pess">${UNITS.dist(remPess).toFixed(1)}</span> <span class="ctt-neut">${UNITS.dist(remNeut).toFixed(1)}</span> <span class="ctt-opt">${UNITS.dist(remOpt).toFixed(1)} ${UNITS.distUnit}</span></span></div>
+    `;
+    tip.innerHTML = tipHtml;
+    tip.classList.remove("hidden");
+    // Position tooltip near the cursor (offset so it doesn't sit under the mouse)
+    const containerRect = c.parentElement.getBoundingClientRect();
+    const tipRect = tip.getBoundingClientRect();
+    let tipX = mx + 14;
+    let tipY = my - 16;
+    if (mx + 14 + tipRect.width > state.cssW) tipX = mx - 14 - tipRect.width;
+    if (tipY < 0) tipY = 0;
+    tip.style.left = tipX + "px";
+    tip.style.top  = tipY + "px";
+  }
+  function onCalcChartLeave() {
+    const tip = document.getElementById("calc-canvas-tooltip");
+    if (tip) tip.classList.add("hidden");
+    if (lastCrosshairX != null) {
+      redrawCalcChartBase();
+      lastCrosshairX = null;
+    }
+  }
+  function formatRideTime(h) {
+    if (!isFinite(h) || h <= 0) return "0 min";
+    const totalMin = Math.round(h * 60);
+    const hh = Math.floor(totalMin / 60);
+    const mm = totalMin % 60;
+    return hh > 0 ? `${hh}h ${String(mm).padStart(2, "0")}m` : `${mm} min`;
+  }
+  function drawCalcCrosshair(mx, [pess, neut, opt]) {
+    const c = calcEls.canvas;
+    if (!c || !calcChartState) return;
+    const state = calcChartState;
+    const ctx = c.getContext("2d");
+    ctx.save();
+    ctx.scale(state.dpr, state.dpr);
+    // Vertical line
+    ctx.strokeStyle = "rgba(255,255,255,0.4)";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(mx, state.padT);
+    ctx.lineTo(mx, state.padT + state.H);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // Dots on each line
+    const yToPx = (y) => state.padT + (1 - (y / 100)) * state.H;
+    const drawDot = (y, color) => {
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(mx, yToPx(Math.max(0, Math.min(100, y))), 4, 0, Math.PI * 2);
+      ctx.fill();
+    };
+    drawDot(pess, "#ffa000");
+    drawDot(opt,  "#69f0ae");
+    drawDot(neut, "#ffffff");
+    ctx.restore();
+  }
+  // Re-runs only the canvas draw using stashed state. Avoids touching sliders.
+  let calcChartLastArgs = null;
+  function redrawCalcChartBase() {
+    if (!calcChartLastArgs) return;
+    drawCalcChart(...calcChartLastArgs);
+  }
+  function niceStep(rough) {
+    if (rough <= 0) return 1;
+    const pow = Math.pow(10, Math.floor(Math.log10(rough)));
+    const m = rough / pow;
+    if (m < 1.5) return pow;
+    if (m < 3) return 2 * pow;
+    if (m < 7) return 5 * pow;
+    return 10 * pow;
+  }
+  function calcSetSliderRanges() {
+    if (!calcEls.modal) return;
+    const speeds = dated.filter((m) => m.avgMovingSpeed != null).map((m) => m.avgMovingSpeed);
+    const dists  = dated.map((m) => m.distKm).filter((d) => d > 0);
+    const temps  = dated.filter((m) => m.ambientC != null).map((m) => m.ambientC);
+    const climbs = dated.filter((m) => m.climbM != null).map((m) => m.climbM);
+    const medS = speeds.length ? median(speeds) : 25;
+    const medD = dists.length  ? median(dists)  : 10;
+    const medT = temps.length  ? median(temps)  : 20;
+    const maxD = dists.length ? percentile(dists, 0.99) * 1.5 : 50;
+    const maxC = climbs.length ? Math.max(500, percentile(climbs.map(Math.abs), 0.95) * 1.5) : 500;
+    const sMin = 10, sMax = 55, tMin = -15, tMax = 40;
+    const sMinD = Math.round(UNITS.speed(sMin));
+    const sMaxD = Math.round(UNITS.speed(sMax));
+    const tMinD = Math.round(UNITS.temp(tMin));
+    const tMaxD = Math.round(UNITS.temp(tMax));
+    const dMaxD = Math.max(5, Math.round(UNITS.dist(maxD)));
+    // Round to a multiple of the slider step (10) so 0 lands on a valid stop.
+    const cMaxD = Math.ceil(UNITS.alt(maxC) / 100) * 100;
+    calcEls.speed.min = String(sMinD);
+    calcEls.speed.max = String(sMaxD);
+    calcEls.temp.min  = String(tMinD);
+    calcEls.temp.max  = String(tMaxD);
+    calcEls.dist.min  = "1";
+    calcEls.dist.max  = String(dMaxD);
+    calcEls.climb.min = String(-cMaxD);
+    calcEls.climb.max = String(cMaxD);
+    if (!calcEls.batt.dataset.seeded) {
+      calcEls.batt.value = "100";
+      calcEls.dist.value = String(Math.max(1, Math.min(dMaxD, Math.round(UNITS.dist(medD)))));
+      calcEls.speed.value = String(Math.max(sMinD, Math.min(sMaxD, Math.round(UNITS.speed(medS)))));
+      calcEls.climb.value = "0";
+      calcEls.temp.value = String(Math.max(tMinD, Math.min(tMaxD, Math.round(UNITS.temp(medT)))));
+      calcEls.batt.dataset.seeded = "1";
+    }
+  }
+  function openCalc() {
+    if (!calcEls.modal) return;
+    calcSetSliderRanges();
+    calcEls.modal.classList.remove("hidden");
+    updateCalculator();
+  }
+  function closeCalc() {
+    if (!calcEls.modal) return;
+    calcEls.modal.classList.add("hidden");
+    // Reset to the main calc view so the next open isn't stranded in a
+    // subview (map / weather). Doesn't clear locked state or user inputs.
+    if (calcMode !== "calc") setCalcMode("calc");
+  }
+  function wireCalculator() {
+    if (calcWired || !calcEls.modal) return;
+    calcWired = true;
+    ["batt", "dist", "speed", "climb", "temp"].forEach((k) => {
+      calcEls[k].addEventListener("input", updateCalculator);
+    });
+    calcEls.roundtrip.addEventListener("change", updateCalculator);
+    if (calcEls.btn) calcEls.btn.addEventListener("click", openCalc);
+    calcEls.modal.querySelectorAll("[data-calc-close]").forEach((el) => {
+      el.addEventListener("click", closeCalc);
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && calcEls.modal && !calcEls.modal.classList.contains("hidden")) {
+        if (calcMode !== "calc") setCalcMode("calc"); else closeCalc();
+      }
+    });
+    // Source buttons (route / weather)
+    calcEls.modal.querySelectorAll(".calc-source-btn").forEach((b) => {
+      b.addEventListener("click", () => setCalcMode(b.dataset.source === "route" ? "map" : "weather"));
+    });
+    calcEls.modal.querySelectorAll(".calc-source-reset").forEach((b) => {
+      b.addEventListener("click", () => {
+        const src = b.dataset.source || b.dataset.cancel;
+        if (b.dataset.cancel) {
+          // Cancel a sub-view without changing state.
+          if (src === "route") clearMapPicks();
+          if (src === "weather") { pendingWeather = null; document.getElementById("calc-weather-apply").disabled = true; }
+          setCalcMode("calc");
+        } else {
+          if (src === "route") resetRoute();
+          if (src === "weather") resetWeather();
+        }
+      });
+    });
+    const mapApply = document.getElementById("calc-map-apply");
+    if (mapApply) mapApply.addEventListener("click", applyRoute);
+    const weatherApply = document.getElementById("calc-weather-apply");
+    if (weatherApply) weatherApply.addEventListener("click", applyWeather);
+    const weatherRefresh = document.getElementById("calc-weather-refresh");
+    if (weatherRefresh) weatherRefresh.addEventListener("click", () => fetchForecast(true));
+    // Auto-fetch when date / location / custom-latlon change. Debounced
+    // shortly so a date picker click or a paste-typed latlon doesn't fire
+    // 8 requests, but tight enough that the user sees results without a
+    // manual Refresh.
+    let fetchDebounce = null;
+    const queueFetch = () => {
+      clearTimeout(fetchDebounce);
+      fetchDebounce = setTimeout(() => fetchForecast(false), 250);
+    };
+    // Both `change` (date picker confirm, select choice) and `input`
+    // (every keystroke in lat/lon) cover the typical interaction modes.
+    ["calc-weather-date", "calc-weather-loc", "calc-weather-latlon"].forEach((id) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener("change", queueFetch);
+      el.addEventListener("input", queueFetch);
+    });
+    const weatherLoc = document.getElementById("calc-weather-loc");
+    if (weatherLoc) weatherLoc.addEventListener("change", () => {
+      const isCustom = weatherLoc.value === "custom";
+      document.getElementById("calc-weather-custom-row").classList.toggle("hidden", !isCustom);
+      const mapHost = document.getElementById("calc-weather-map-host");
+      mapHost.classList.toggle("hidden", !isCustom);
+      const routeOpt = weatherLoc.querySelector('option[value="route"]');
+      if (routeOpt) routeOpt.disabled = !routeLocked;
+      if (isCustom) setTimeout(initWeatherMiniMap, 50);
+    });
+    ["calc-weather-autoend", "calc-weather-start"].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener("change", syncEndTime);
+    });
+    if (calcEls.canvas) {
+      calcEls.canvas.addEventListener("mousemove", onCalcChartMove);
+      calcEls.canvas.addEventListener("mouseleave", onCalcChartLeave);
+    }
+    refreshLockUI();
+  }
+  // ---------- Calculator: map + weather sub-views ----------
+  // Mode state: "calc" (normal), "map" (route picker), "weather" (forecast).
+  let calcMode = "calc";
+  let routeLocked = null;   // when locked: { distKm, climbM, profile: [{km, alt}], coords }
+  let weatherLocked = null; // when locked: { ambientC, label }
+  let leafletMap = null;
+  let leafletStart = null, leafletEnd = null;
+  let leafletStartMarker = null, leafletEndMarker = null;
+  let leafletRouteLine = null;
+  let pendingRoute = null; // { distKm, climbM, profile, coords } before Apply
+  let pendingWeather = null; // { ambientC, label } before Apply
+  let lastForecastCells = null; // [{ h, t, inRide }] for the current fetch, lets us re-render without re-fetching
+
+  function setCalcMode(mode) {
+    calcMode = mode;
+    const inputs = document.querySelector("#calc-modal .calc-inputs");
+    const results = document.querySelector("#calc-modal .calc-results");
+    const chart = document.querySelector("#calc-modal .calc-chart");
+    const foot = document.querySelector("#calc-modal .calc-foot");
+    const mapView = document.getElementById("calc-mapview");
+    const weatherView = document.getElementById("calc-weatherview");
+    const normalVisible = mode === "calc";
+    if (inputs)  inputs.classList.toggle("hidden",  !normalVisible);
+    if (results) results.classList.toggle("hidden", !normalVisible);
+    if (chart)   chart.classList.toggle("hidden",   !normalVisible);
+    if (foot)    foot.classList.toggle("hidden",    !normalVisible);
+    if (mapView) mapView.classList.toggle("hidden", mode !== "map");
+    if (weatherView) weatherView.classList.toggle("hidden", mode !== "weather");
+    if (mode === "map") setTimeout(initLeafletMap, 50);
+    if (mode === "weather") initWeatherForm();
+  }
+
+  function refreshLockUI() {
+    document.querySelectorAll('.calc-group').forEach((g) => {
+      const src = g.querySelector('[data-group]')?.dataset?.group || g.dataset.group;
+      const locked = (src === "route" && routeLocked) || (src === "weather" && weatherLocked);
+      g.classList.toggle("is-locked", !!locked);
+      g.querySelectorAll('.calc-row[data-locked-group]').forEach((r) => r.classList.toggle("is-locked", !!locked));
+      g.querySelectorAll('.calc-source-btn').forEach((b) => b.classList.toggle("hidden", !!locked));
+      g.querySelectorAll('.calc-source-reset').forEach((b) => b.classList.toggle("hidden", !locked));
+      // Badge dropped: the Unlock button + green border + lock icon on the
+      // value already communicate the locked state. A redundant "FROM ROUTE"
+      // chip on the right was noisy.
+      g.querySelectorAll('.calc-locked-badge').forEach((b) => b.classList.add("hidden"));
+    });
+  }
+
+  // -- Map / route picker --
+  function initLeafletMap() {
+    if (typeof L === "undefined") return;
+    const el = document.getElementById("calc-map");
+    if (!el) return;
+    if (leafletMap) { leafletMap.invalidateSize(); return; }
+    // Start centered on the user's most-used trip area (centroid of trip
+    // starts) so a click lands somewhere meaningful, with a wide fallback.
+    let center = [48.8566, 2.3522]; // Paris fallback
+    let zoom = 5;
+    const startsLat = [], startsLon = [];
+    for (const m of dated) {
+      if (m.centroid) { startsLat.push(m.centroid[0]); startsLon.push(m.centroid[1]); }
+    }
+    if (startsLat.length) {
+      center = [median(startsLat), median(startsLon)];
+      zoom = 12;
+    }
+    leafletMap = L.map(el, { zoomControl: true }).setView(center, zoom);
+    if (typeof window !== "undefined") window._calcMap = leafletMap;
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: "© OpenStreetMap",
+    }).addTo(leafletMap);
+    leafletMap.on("click", onMapClick);
+    setTimeout(() => leafletMap.invalidateSize(), 100);
+  }
+  function clearMapPicks() {
+    leafletStart = null; leafletEnd = null;
+    if (leafletStartMarker) { leafletMap.removeLayer(leafletStartMarker); leafletStartMarker = null; }
+    if (leafletEndMarker)   { leafletMap.removeLayer(leafletEndMarker);   leafletEndMarker   = null; }
+    if (leafletRouteLine)   { leafletMap.removeLayer(leafletRouteLine);   leafletRouteLine   = null; }
+    pendingRoute = null;
+    document.getElementById("calc-map-apply").disabled = true;
+    document.getElementById("calc-map-status").textContent = "Click the start point on the map.";
+    ["cms-distance", "cms-ascent", "cms-descent", "cms-net"].forEach((id) => { document.getElementById(id).textContent = "—"; });
+    const c = document.getElementById("cms-profile").getContext("2d");
+    c.clearRect(0, 0, 300, 200);
+  }
+  function onMapClick(e) {
+    if (!leafletStart) {
+      leafletStart = e.latlng;
+      // White ring + bold inner colour reads on both dark and light tiles.
+      leafletStartMarker = L.layerGroup([
+        L.circleMarker(e.latlng, { radius: 10, color: "#ffffff", weight: 3, opacity: 0.95, fillColor: "#1b8a5a", fillOpacity: 1 }),
+        L.circleMarker(e.latlng, { radius: 3.5, color: "#ffffff", weight: 0, fillColor: "#ffffff", fillOpacity: 1 }),
+      ]).addTo(leafletMap);
+      document.getElementById("calc-map-status").textContent = "Click the destination point.";
+    } else if (!leafletEnd) {
+      leafletEnd = e.latlng;
+      leafletEndMarker = L.layerGroup([
+        L.circleMarker(e.latlng, { radius: 10, color: "#ffffff", weight: 3, opacity: 0.95, fillColor: "#c14b00", fillOpacity: 1 }),
+        L.circleMarker(e.latlng, { radius: 3.5, color: "#ffffff", weight: 0, fillColor: "#ffffff", fillOpacity: 1 }),
+      ]).addTo(leafletMap);
+      document.getElementById("calc-map-status").textContent = "Fetching route…";
+      fetchRoute(leafletStart, leafletEnd);
+    } else {
+      // Third click resets and starts over.
+      clearMapPicks();
+      onMapClick(e);
+    }
+  }
+  async function fetchRoute(a, b) {
+    try {
+      // OSRM public demo (driving profile is the only one always available;
+      // it's a reasonable approximation of urban roads an EUC can ride).
+      const url = `https://router.project-osrm.org/route/v1/driving/${a.lng},${a.lat};${b.lng},${b.lat}?overview=full&geometries=geojson&steps=false`;
+      const r = await fetch(url);
+      const j = await r.json();
+      if (!j.routes || !j.routes.length) throw new Error("No route");
+      const coords = j.routes[0].geometry.coordinates; // [[lon,lat], ...]
+      const distM = j.routes[0].distance;
+      const distKm = distM / 1000;
+      // Two-layer polyline: dark outer halo for contrast on light tiles,
+      // bright inner line for the main colour.
+      const latLngs = coords.map(([lon, lat]) => [lat, lon]);
+      const inner = L.polyline(latLngs, { color: "#7c4dff", weight: 4, opacity: 1 });
+      leafletRouteLine = L.layerGroup([
+        L.polyline(latLngs, { color: "#0a0a12", weight: 7, opacity: 0.55 }),
+        inner,
+      ]).addTo(leafletMap);
+      leafletMap.fitBounds(inner.getBounds(), { padding: [20, 20] });
+      document.getElementById("calc-map-status").textContent = "Sampling elevation…";
+      // Downsample to ≤ 80 points for elevation lookup (open-meteo elevation
+      // accepts a batch via repeated lat/lon params).
+      const N = Math.min(80, coords.length);
+      const stride = Math.max(1, Math.floor(coords.length / N));
+      const sampled = [];
+      for (let i = 0; i < coords.length; i += stride) sampled.push(coords[i]);
+      if (sampled[sampled.length - 1] !== coords[coords.length - 1]) sampled.push(coords[coords.length - 1]);
+      const lats = sampled.map((c) => c[1]).join(",");
+      const lons = sampled.map((c) => c[0]).join(",");
+      const eUrl = `https://api.open-meteo.com/v1/elevation?latitude=${lats}&longitude=${lons}`;
+      const eR = await fetch(eUrl);
+      const eJ = await eR.json();
+      const elevs = Array.isArray(eJ.elevation) ? eJ.elevation : [];
+      // Compute cumulative km along the sampled polyline + ascent / descent.
+      // Defensive against null/undefined entries — Open-Meteo can return
+      // nulls over water or for invalid points, which would poison the sum
+      // with NaN. We track the last valid altitude and skip gaps.
+      let asc = 0, des = 0;
+      const profile = [];
+      let cumKm = 0;
+      let prevAlt = null;
+      let firstValid = null, lastValid = null;
+      for (let i = 0; i < sampled.length; i++) {
+        if (i > 0) {
+          const [lon1, lat1] = sampled[i - 1];
+          const [lon2, lat2] = sampled[i];
+          cumKm += haversineKm(lat1, lon1, lat2, lon2);
+        }
+        const raw = elevs[i];
+        const alt = (typeof raw === "number" && isFinite(raw)) ? raw : null;
+        if (alt != null) {
+          if (firstValid == null) firstValid = alt;
+          lastValid = alt;
+          if (prevAlt != null) {
+            const d = alt - prevAlt;
+            if (d > 0) asc += d; else des += -d;
+          }
+          prevAlt = alt;
+        }
+        profile.push({ km: cumKm, alt });
+      }
+      const netClimb = (firstValid != null && lastValid != null) ? (lastValid - firstValid) : 0;
+      pendingRoute = { distKm, climbM: netClimb, ascentM: asc, descentM: des, profile, coords };
+      document.getElementById("cms-distance").textContent = `${UNITS.dist(distKm).toFixed(1)} ${UNITS.distUnit}`;
+      document.getElementById("cms-ascent").textContent = `${UNITS.alt(asc).toFixed(0)} ${UNITS.altUnit}`;
+      document.getElementById("cms-descent").textContent = `${UNITS.alt(des).toFixed(0)} ${UNITS.altUnit}`;
+      document.getElementById("cms-net").textContent = `${netClimb >= 0 ? "+" : ""}${UNITS.alt(netClimb).toFixed(0)} ${UNITS.altUnit}`;
+      drawElevationProfile(profile);
+      document.getElementById("calc-map-status").textContent = "Press Apply to lock these values into the calculator.";
+      document.getElementById("calc-map-apply").disabled = false;
+    } catch (err) {
+      console.warn("Route fetch failed:", err);
+      document.getElementById("calc-map-status").textContent = "Couldn't fetch the route. Try two nearby points or check your connection.";
+    }
+  }
+  function haversineKm(lat1, lon1, lat2, lon2) {
+    const R = 6371;
+    const toRad = (d) => d * Math.PI / 180;
+    const dLat = toRad(lat2 - lat1), dLon = toRad(lon2 - lon1);
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(a));
+  }
+  function drawElevationProfile(profile) {
+    const c = document.getElementById("cms-profile");
+    if (!c || profile.length < 2) return;
+    const dpr = window.devicePixelRatio || 1;
+    const cssW = c.clientWidth, cssH = c.clientHeight;
+    c.width = Math.round(cssW * dpr); c.height = Math.round(cssH * dpr);
+    const ctx = c.getContext("2d");
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, cssW, cssH);
+    const padL = 4, padR = 4, padT = 4, padB = 14;
+    const W = cssW - padL - padR, H = cssH - padT - padB;
+    const validPoints = profile.filter((p) => typeof p.alt === "number" && isFinite(p.alt));
+    if (validPoints.length < 2) {
+      ctx.fillStyle = "#888";
+      ctx.font = "10px ui-monospace, SFMono-Regular, Consolas, monospace";
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText("Elevation data unavailable for this route", cssW / 2, cssH / 2);
+      return;
+    }
+    const xMin = profile[0].km, xMax = profile[profile.length - 1].km;
+    const ys = validPoints.map((p) => p.alt);
+    const yMin = Math.min.apply(null, ys), yMax = Math.max.apply(null, ys);
+    const ySpan = Math.max(1, yMax - yMin);
+    const xToPx = (x) => padL + ((x - xMin) / (xMax - xMin || 1)) * W;
+    const yToPx = (y) => padT + (1 - (y - yMin) / ySpan) * H;
+    // Build a segmented path so null gaps don't bridge across the chart.
+    const segments = [];
+    let cur = [];
+    for (const p of profile) {
+      if (p.alt == null) { if (cur.length) { segments.push(cur); cur = []; } continue; }
+      cur.push(p);
+    }
+    if (cur.length) segments.push(cur);
+    // Filled areas (per segment)
+    ctx.fillStyle = "rgba(179, 136, 255, 0.20)";
+    for (const seg of segments) {
+      if (seg.length < 2) continue;
+      ctx.beginPath();
+      ctx.moveTo(xToPx(seg[0].km), padT + H);
+      for (const p of seg) ctx.lineTo(xToPx(p.km), yToPx(p.alt));
+      ctx.lineTo(xToPx(seg[seg.length - 1].km), padT + H);
+      ctx.closePath();
+      ctx.fill();
+    }
+    // Lines
+    ctx.strokeStyle = "#b388ff"; ctx.lineWidth = 1.6;
+    for (const seg of segments) {
+      if (seg.length < 2) continue;
+      ctx.beginPath();
+      seg.forEach((p, i) => { if (i === 0) ctx.moveTo(xToPx(p.km), yToPx(p.alt)); else ctx.lineTo(xToPx(p.km), yToPx(p.alt)); });
+      ctx.stroke();
+    }
+    // Labels
+    ctx.font = "9px ui-monospace, SFMono-Regular, Consolas, monospace";
+    ctx.fillStyle = "#888";
+    ctx.textAlign = "left"; ctx.textBaseline = "top";
+    ctx.fillText(`${UNITS.alt(yMin).toFixed(0)} ${UNITS.altUnit}`, padL, padT + H + 2);
+    ctx.textAlign = "right";
+    ctx.fillText(`${UNITS.alt(yMax).toFixed(0)} ${UNITS.altUnit}`, cssW - padR, padT + H + 2);
+  }
+  function applyRoute() {
+    if (!pendingRoute) return;
+    routeLocked = { ...pendingRoute };
+    // Push values into the sliders (so display matches, even though they
+    // become read-only). Update unit-aware display.
+    const dDisp = Math.round(UNITS.dist(routeLocked.distKm));
+    const cDisp = Math.round(UNITS.alt(routeLocked.climbM));
+    // Ensure slider range can hold the value.
+    calcEls.dist.max = String(Math.max(Number(calcEls.dist.max), dDisp + 5));
+    const cBound = Math.max(Math.abs(cDisp) + 100, Number(calcEls.climb.max));
+    calcEls.climb.min = String(-cBound);
+    calcEls.climb.max = String(cBound);
+    calcEls.dist.value = String(dDisp);
+    calcEls.climb.value = String(cDisp);
+    refreshLockUI();
+    setCalcMode("calc");
+    updateCalculator();
+  }
+  function resetRoute() {
+    routeLocked = null;
+    clearMapPicks();
+    refreshLockUI();
+    updateCalculator();
+  }
+
+  // -- Weather / forecast --
+  function pickRecentCenter() {
+    const lats = [], lons = [];
+    for (const m of dated) {
+      if (m.centroid) { lats.push(m.centroid[0]); lons.push(m.centroid[1]); }
+    }
+    if (!lats.length) return null;
+    return [median(lats), median(lons)];
+  }
+  function initWeatherForm() {
+    const dateEl = document.getElementById("calc-weather-date");
+    if (!dateEl.value) {
+      const d = new Date();
+      d.setDate(d.getDate() + 1);
+      dateEl.value = d.toISOString().slice(0, 10);
+    }
+    // When a route is locked, enable + auto-pick "From picked route" so the
+    // user doesn't have to dig into the dropdown to use it.
+    const locSel = document.getElementById("calc-weather-loc");
+    const routeOpt = locSel?.querySelector('option[value="route"]');
+    if (routeOpt) {
+      routeOpt.disabled = !routeLocked;
+      if (routeLocked && locSel.value !== "route" && !locSel.dataset.userPicked) {
+        locSel.value = "route";
+      }
+    }
+    syncEndTime();
+    if (!lastForecastCells) fetchForecast(false);
+  }
+  let weatherMiniMap = null;
+  let weatherMiniMarker = null;
+  function initWeatherMiniMap() {
+    if (typeof L === "undefined") return;
+    const el = document.getElementById("calc-weather-map");
+    if (!el) return;
+    if (!weatherMiniMap) {
+      let center = pickRecentCenter() || [48.8566, 2.3522];
+      const zoom = pickRecentCenter() ? 9 : 4;
+      weatherMiniMap = L.map(el, { zoomControl: true }).setView(center, zoom);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: "© OpenStreetMap",
+      }).addTo(weatherMiniMap);
+      weatherMiniMap.on("click", (e) => {
+        const lat = e.latlng.lat, lon = e.latlng.lng;
+        document.getElementById("calc-weather-latlon").value = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+        if (weatherMiniMarker) weatherMiniMap.removeLayer(weatherMiniMarker);
+        weatherMiniMarker = L.layerGroup([
+          L.circleMarker(e.latlng, { radius: 10, color: "#ffffff", weight: 3, opacity: 0.95, fillColor: "#7c4dff", fillOpacity: 1 }),
+          L.circleMarker(e.latlng, { radius: 3.5, color: "#ffffff", weight: 0, fillColor: "#ffffff", fillOpacity: 1 }),
+        ]).addTo(weatherMiniMap);
+        // Kick a fetch immediately (Skip the debounced queueFetch so the
+        // marker click feels responsive).
+        fetchForecast(false);
+      });
+    }
+    setTimeout(() => weatherMiniMap.invalidateSize(), 50);
+  }
+  function syncEndTime() {
+    const autoEl = document.getElementById("calc-weather-autoend");
+    const startEl = document.getElementById("calc-weather-start");
+    const endEl = document.getElementById("calc-weather-end");
+    if (!autoEl.checked) { endEl.disabled = false; return; }
+    endEl.disabled = true;
+    const distKm = calcDistKm(Number(calcEls.dist.value));
+    const sKmh = calcSpeedKmh(Number(calcEls.speed.value));
+    const isRound = calcEls.roundtrip.checked;
+    const durH = sKmh > 0 ? (distKm * (isRound ? 2 : 1)) / sKmh : 1;
+    const [h, m] = startEl.value.split(":").map(Number);
+    const total = (h || 0) * 60 + (m || 0) + Math.round(durH * 60);
+    const eh = String(Math.floor(total / 60) % 24).padStart(2, "0");
+    const em = String(total % 60).padStart(2, "0");
+    endEl.value = `${eh}:${em}`;
+  }
+  async function fetchForecast(force) {
+    const dateEl = document.getElementById("calc-weather-date");
+    const startEl = document.getElementById("calc-weather-start");
+    const endEl = document.getElementById("calc-weather-end");
+    const locSel = document.getElementById("calc-weather-loc");
+    const customRow = document.getElementById("calc-weather-custom-row");
+    const status = document.getElementById("calc-weather-status");
+    const resultBox = document.getElementById("calc-weather-result");
+    const refreshBtn = document.getElementById("calc-weather-refresh");
+    if (refreshBtn) refreshBtn.classList.add("is-loading");
+    let lat, lon, locLabel = "";
+    if (locSel.value === "route" && routeLocked) {
+      const mid = routeLocked.coords[Math.floor(routeLocked.coords.length / 2)];
+      lon = mid[0]; lat = mid[1]; locLabel = "route midpoint";
+    } else if (locSel.value === "custom") {
+      const v = document.getElementById("calc-weather-latlon").value.split(/[\s,]+/).map(Number);
+      if (v.length < 2 || !isFinite(v[0]) || !isFinite(v[1])) { status.textContent = "Enter a valid lat, lon."; if (refreshBtn) refreshBtn.classList.remove("is-loading"); return; }
+      lat = v[0]; lon = v[1]; locLabel = `${lat.toFixed(2)}, ${lon.toFixed(2)}`;
+    } else {
+      const c = pickRecentCenter();
+      if (!c) { status.textContent = "No trip location found, pick custom lat/lon."; if (refreshBtn) refreshBtn.classList.remove("is-loading"); return; }
+      lat = c[0]; lon = c[1]; locLabel = "most-used trip area";
+    }
+    status.textContent = "Fetching forecast…";
+    try {
+      const date = dateEl.value;
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}&hourly=temperature_2m&start_date=${date}&end_date=${date}&timezone=auto`;
+      const r = await fetch(url);
+      const j = await r.json();
+      const times = (j.hourly && j.hourly.time) || [];
+      const temps = (j.hourly && j.hourly.temperature_2m) || [];
+      if (!temps.length) throw new Error("No hourly forecast for that date (max +14 days).");
+      const [sh, sm] = startEl.value.split(":").map(Number);
+      const [eh, em] = endEl.value.split(":").map(Number);
+      const sMin = (sh || 0) * 60 + (sm || 0);
+      const eMin = (eh || 0) * 60 + (em || 0);
+      // Each hourly forecast at hour H represents the slot [H:00, H+1:00).
+      // The ride window [sMin, eMin] overlaps with the slot if their ranges
+      // intersect. If the end time is before the start (e.g. 23:30 → 01:15)
+      // the window wraps midnight and we accept either side.
+      const inRide = (h) => {
+        const pS = h * 60, pE = (h + 1) * 60;
+        if (eMin >= sMin) return pE > sMin && pS < eMin;
+        return pE > sMin || pS < eMin;
+      };
+      let sum = 0, n = 0;
+      const cells = [];
+      for (let i = 0; i < temps.length; i++) {
+        const h = Number(times[i].slice(11, 13));
+        const inside = inRide(h);
+        if (inside) { sum += temps[i]; n++; }
+        cells.push({ h, t: temps[i], inRide: inside });
+      }
+      if (!n) { status.textContent = "Ride window outside forecast hours."; return; }
+      const avg = sum / n;
+      pendingWeather = { ambientC: avg, label: `${date} ${startEl.value}–${endEl.value} @ ${locLabel} (avg ${avg.toFixed(1)} °C)` };
+      // Stash the cells so we can re-render highlighting without re-fetching.
+      lastForecastCells = cells;
+      renderForecastCells();
+      status.textContent = "Click an hour to set start time. Press Apply to lock the temperature.";
+      document.getElementById("calc-weather-apply").disabled = false;
+    } catch (err) {
+      console.warn("Forecast fetch failed:", err);
+      status.textContent = "Couldn't fetch the forecast: " + (err.message || err);
+    } finally {
+      if (refreshBtn) refreshBtn.classList.remove("is-loading");
+    }
+  }
+  // Re-render the forecast hour grid using the cached cells. Updates the
+  // in-ride highlighting + the average based on the current start/end time
+  // (which may have moved after a cell click).
+  function renderForecastCells() {
+    if (!lastForecastCells) return;
+    const startEl = document.getElementById("calc-weather-start");
+    const endEl = document.getElementById("calc-weather-end");
+    const resultBox = document.getElementById("calc-weather-result");
+    const [sh, sm] = startEl.value.split(":").map(Number);
+    const [eh, em] = endEl.value.split(":").map(Number);
+    const sMin = (sh || 0) * 60 + (sm || 0);
+    const eMin = (eh || 0) * 60 + (em || 0);
+    const inRide = (h) => {
+      const pS = h * 60, pE = (h + 1) * 60;
+      if (eMin >= sMin) return pE > sMin && pS < eMin;
+      return pE > sMin || pS < eMin;
+    };
+    let sum = 0, n = 0;
+    const cells = lastForecastCells.map((c) => {
+      const inside = inRide(c.h);
+      if (inside) { sum += c.t; n++; }
+      return { ...c, inRide: inside };
+    });
+    lastForecastCells = cells;
+    const avg = n ? sum / n : 0;
+    if (n) {
+      pendingWeather = { ambientC: avg, label: `${startEl.value}-${endEl.value} avg ${avg.toFixed(1)} °C` };
+      document.getElementById("calc-weather-apply").disabled = false;
+    }
+    const cellsHtml = cells.map((c) => {
+      const cls = ["wh-cell"];
+      if (c.inRide) cls.push("in-ride");
+      if (c.h === sh) cls.push("is-start");
+      return `<div class="${cls.join(" ")}" data-hour="${c.h}" title="Set start time to ${String(c.h).padStart(2, "0")}:00"><div>${String(c.h).padStart(2, "0")}h</div><div>${UNITS.temp(c.t).toFixed(0)}${UNITS.tempUnit}</div></div>`;
+    }).join("");
+    resultBox.innerHTML = `<div>Average over ride window: <b style="color:#fff">${UNITS.temp(avg).toFixed(1)} ${UNITS.tempUnit}</b> (${n} ${n === 1 ? "hour" : "hours"})</div><div class="calc-weather-hours">${cellsHtml}</div>`;
+    resultBox.querySelectorAll(".wh-cell").forEach((el) => {
+      el.addEventListener("click", () => {
+        const h = Number(el.dataset.hour);
+        const startEl2 = document.getElementById("calc-weather-start");
+        startEl2.value = `${String(h).padStart(2, "0")}:00`;
+        // Move end time to match the new start if auto-end is on.
+        syncEndTime();
+        renderForecastCells();
+      });
+    });
+  }
+  function applyWeather() {
+    if (!pendingWeather) return;
+    weatherLocked = { ...pendingWeather };
+    const tDisp = Math.round(UNITS.temp(weatherLocked.ambientC));
+    calcEls.temp.min = String(Math.min(Number(calcEls.temp.min), tDisp - 5));
+    calcEls.temp.max = String(Math.max(Number(calcEls.temp.max), tDisp + 5));
+    calcEls.temp.value = String(tDisp);
+    refreshLockUI();
+    setCalcMode("calc");
+    updateCalculator();
+  }
+  function resetWeather() {
+    weatherLocked = null;
+    pendingWeather = null;
+    document.getElementById("calc-weather-apply").disabled = true;
+    document.getElementById("calc-weather-result").innerHTML = '<div class="calc-weather-empty">Forecast preview will appear here.</div>';
+    refreshLockUI();
+    updateCalculator();
+  }
+
+  function refreshCalcButton() {
+    if (!calcEls.btn) return;
+    if (multiFit) {
+      calcEls.btn.classList.remove("hidden");
+      calcEls.btn.removeAttribute("disabled");
+      calcEls.btn.title = `Range calculator. Pessimistic, neutral, optimistic forecast from your own history (n=${multiFit.n}, R²=${multiFit.r2.toFixed(2)}).`;
+      wireCalculator();
+    } else {
+      // Keep the button visible so the user knows the feature exists,
+      // but disable it and explain what's missing. Avoids the silent
+      // disappearance that left users wondering where it went.
+      calcEls.btn.classList.remove("hidden");
+      calcEls.btn.setAttribute("disabled", "");
+      const needed = 20;
+      const have = dated.filter((m) => m.estRangeKm != null
+        && m.avgMovingSpeed != null && m.avgMovingSpeed > 5
+        && m.ambientC != null && m.climbM != null && m.distKm >= 2).length;
+      calcEls.btn.title = `Range calculator unavailable: need ${needed} rides with range + speed + ambient + climb data, you have ${have}. Add weather (top right) so trips can contribute ambient temperature.`;
+      if (calcEls.modal) calcEls.modal.classList.add("hidden");
+    }
   }
 
   // ---------- Render pipeline ----------
@@ -2866,6 +4343,7 @@
     computeSpeedFit();
     computeClimbFit();
     computeMultiFit();
+    refreshCalcButton();
 
     const bins = makeBins(dated, groupSel.value);
     const rolling = rollingCheck.checked;
@@ -2887,6 +4365,8 @@
       }
       const nonEmpty = bins.filter((b) => b.trips.length > 0).length;
       const parts = [];
+      // No link on this one: 241 km in a month is a SUM across many trips,
+      // pointing at a single ride misrepresents what's being said.
       if (peak) parts.push(`Biggest group: <b>${peak.label}</b> with <b>${UNITS.dist(peak.km).toFixed(0)}</b> ${UNITS.distUnit}`);
       if (nonEmpty) parts.push(`Active in <b>${nonEmpty}</b> of ${bins.length} groups (avg <b>${UNITS.dist(totalKm / nonEmpty).toFixed(0)}</b> ${UNITS.distUnit} per active group)`);
       setTakeaway("activity-takeaway", parts);
@@ -2919,10 +4399,11 @@
         }
         meta.textContent = metaTxt;
         // Takeaway: peak / trough range by group.
-        const { peak, trough } = statsPeakTrough(rangeStats, bins);
+        const rangeMetric = (m) => m.estRangeKm == null ? null : UNITS.dist(normalizedRange(m));
+        const { peak, trough } = statsPeakTrough(rangeStats, bins, null, rangeMetric);
         const trendParts = [];
-        if (peak) trendParts.push(`Best range: <b>${peak.v.toFixed(0)} ${UNITS.distUnit}</b> in <b>${peak.label}</b>`);
-        if (trough && peak && trough.label !== peak.label) trendParts.push(`Lowest: <b>${trough.v.toFixed(0)} ${UNITS.distUnit}</b> in <b>${trough.label}</b>`);
+        if (peak) trendParts.push(`Best range: <b>${peak.v.toFixed(0)} ${UNITS.distUnit}</b> in <b>${tripLink(peak.label, peak.tripIdx)}</b>`);
+        if (trough && peak && trough.label !== peak.label) trendParts.push(`Lowest: <b>${trough.v.toFixed(0)} ${UNITS.distUnit}</b> in <b>${tripLink(trough.label, trough.tripIdx)}</b>`);
         if (!normalizeCheck.checked && !tempFit) trendParts.push('Enrich with weather to control for temperature');
         setTakeaway("range-takeaway", trendParts);
         if (weatherLoaded) {
@@ -2996,10 +4477,22 @@
         const med = sorted[Math.floor(sorted.length / 2)];
         const p90 = sorted[Math.floor(sorted.length * 0.9)];
         const max = sorted[sorted.length - 1];
+        // Resolve actual trips for the median / longest values so the takeaway
+        // can link to the specific rides.
+        const dateFmt2 = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" });
+        const closestTo = (target) => dated.filter((m) => m.distKm > 0).reduce((best, m) => {
+          const diff = Math.abs(UNITS.dist(m.distKm) - target);
+          if (!best || diff < best.diff) return { m, diff };
+          return best;
+        }, null);
+        const longestTrip = dated.filter((m) => m.distKm > 0).reduce((best, m) => (!best || m.distKm > best.distKm) ? m : best, null);
+        const medTrip = closestTo(med)?.m;
+        const longestLabel = longestTrip && longestTrip.date ? dateFmt2.format(longestTrip.date) : `${max.toFixed(1)} ${UNITS.distUnit}`;
+        const medSuffix = medTrip && medTrip.date ? ` (e.g. ${tripLink(dateFmt2.format(medTrip.date), medTrip.tripIdx)})` : "";
         setTakeaway("dist-hist-takeaway", [
-          `Median ride: <b>${med.toFixed(1)} ${UNITS.distUnit}</b>`,
+          `Median ride: <b>${med.toFixed(1)} ${UNITS.distUnit}</b>${medSuffix}`,
           `Top 10% beyond: <b>${p90.toFixed(1)} ${UNITS.distUnit}</b>`,
-          `Longest: <b>${max.toFixed(1)} ${UNITS.distUnit}</b>`,
+          `Longest: <b>${max.toFixed(1)} ${UNITS.distUnit}</b>` + (longestTrip ? ` on <b>${tripLink(longestLabel, longestTrip.tripIdx)}</b>` : ""),
         ]);
         document.getElementById("dist-hist-meta").textContent = dists.length + " trips";
       } else {
@@ -3075,9 +4568,12 @@
         const lifeTop = Math.max.apply(null, tops);
         const lifeTopTrip = dated.find((m) => m.topSpeedKmh === lifeTop);
         const medTop = median(tops);
+        const lifeTopLabel = lifeTopTrip && lifeTopTrip.date
+          ? new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(lifeTopTrip.date)
+          : null;
         setTakeaway("topspeed-takeaway", [
           `All-time top: <b>${UNITS.speed(lifeTop).toFixed(1)} ${UNITS.speedUnit}</b>` +
-            (lifeTopTrip && lifeTopTrip.date ? ` on <b>${new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(lifeTopTrip.date)}</b>` : ""),
+            (lifeTopLabel ? ` on <b>${tripLink(lifeTopLabel, lifeTopTrip ? lifeTopTrip.tripIdx : null)}</b>` : ""),
           `Median peak per ride: <b>${UNITS.speed(medTop).toFixed(1)} ${UNITS.speedUnit}</b>`,
         ]);
         // Speed histogram
@@ -3127,20 +4623,24 @@
         drawTrendChart(document.getElementById("chart-accel40"), bins, series, { rolling });
         const dateFmt = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" });
         const parts = [];
+        const findFastest = (field) => {
+          const trip = dated.filter((m) => m[field] != null).sort((a, b) => a[field] - b[field])[0];
+          return trip ? { v: trip[field], idx: trip.tripIdx, date: trip.date } : null;
+        };
         if (usable25) {
           const all = dated.map((m) => m.accel25).filter((v) => v != null).sort((a, b) => a - b);
-          const fastest = all[0], med = all[Math.floor(all.length / 2)];
-          const fastestTrip = dated.find((m) => m.accel25 === fastest);
-          parts.push(`Fastest 0&hairsp;&rarr;&hairsp;25 km/h: <b>${fastest.toFixed(2)} s</b>` + (fastestTrip && fastestTrip.date ? ` on <b>${dateFmt.format(fastestTrip.date)}</b>` : ""));
+          const med = all[Math.floor(all.length / 2)];
+          const f = findFastest("accel25");
+          parts.push(`Fastest 0&hairsp;&rarr;&hairsp;25 km/h: <b>${f.v.toFixed(2)} s</b>` + (f.date ? ` on <b>${tripLink(dateFmt.format(f.date), f.idx)}</b>` : ""));
           parts.push(`Typical: <b>${med.toFixed(2)} s</b>`);
         }
         if (usable40) {
-          const all = dated.map((m) => m.accel40).filter((v) => v != null).sort((a, b) => a - b);
-          parts.push(`Fastest 0&hairsp;&rarr;&hairsp;40 km/h: <b>${all[0].toFixed(2)} s</b>`);
+          const f = findFastest("accel40");
+          parts.push(`Fastest 0&hairsp;&rarr;&hairsp;40 km/h: <b>${f.v.toFixed(2)} s</b>` + (f.date ? ` on <b>${tripLink(dateFmt.format(f.date), f.idx)}</b>` : ""));
         }
         if (usable60) {
-          const all = dated.map((m) => m.accel60).filter((v) => v != null).sort((a, b) => a - b);
-          parts.push(`Fastest 0&hairsp;&rarr;&hairsp;60 km/h: <b>${all[0].toFixed(2)} s</b>`);
+          const f = findFastest("accel60");
+          parts.push(`Fastest 0&hairsp;&rarr;&hairsp;60 km/h: <b>${f.v.toFixed(2)} s</b>` + (f.date ? ` on <b>${tripLink(dateFmt.format(f.date), f.idx)}</b>` : ""));
         }
         setTakeaway("accel40-takeaway", parts);
       }
@@ -3151,7 +4651,7 @@
       const events = [];
       for (const m of dated) {
         for (const ev of m.anomalies || []) {
-          events.push({ ...ev, date: m.date, label: m.label });
+          events.push({ ...ev, date: m.date, label: m.label, tripIdx: m.tripIdx });
         }
       }
       const meta = document.getElementById("anomalies-meta");
@@ -3175,9 +4675,16 @@
       list.innerHTML = top.map((e) => {
         const peak = UNITS.speed(e.peakSpd).toFixed(0);
         const dur = e.durS != null ? e.durS.toFixed(1) : "—";
+        // Link to the inspector with a small offset so the playback starts
+        // a few seconds before the event (so the user sees the lead-in).
+        const startSec = Math.max(0, (e.sec || 0) - 6);
+        const dateLabel = e.date ? fmt.format(e.date) : "?";
+        const dateHtml = e.tripIdx != null
+          ? `<a class="anom-link" href="inspector.html?i=${e.tripIdx}&t=${startSec}" target="_blank" rel="noopener" title="Open this ride in the inspector starting 6 s before the event">${dateLabel}</a>`
+          : dateLabel;
         return `<div class="anomaly-row ${e.kind}">` +
           `<span class="anom-kind">${e.kind.toUpperCase()}</span>` +
-          `<span class="anom-date">${e.date ? fmt.format(e.date) : "?"}</span>` +
+          `<span class="anom-date">${dateHtml}</span>` +
           `<span class="anom-peak">${peak} ${UNITS.speedUnit}</span>` +
           `<span style="color:#888">${dur}s</span>` +
         `</div>`;
@@ -3204,7 +4711,7 @@
         drawTrendChart(document.getElementById("chart-gpsdelta-trend"), bins, [{
           stats: diffStats, color: "#7cc7ff", label: "Typical |wheel − GPS|", unit: "km/h", band: true, dp: 2,
         }], { rolling, zeroBase: true });
-        const { peak: dPeak, trough: dTrough } = statsPeakTrough(diffStats, bins);
+        const { peak: dPeak, trough: dTrough } = statsPeakTrough(diffStats, bins, null, (m) => m.gpsMeanAbsDiff);
         const allDiffs = dated.map((m) => m.gpsMeanAbsDiff).filter((v) => v != null);
         const allBias = dated.map((m) => m.gpsMeanDiff).filter((v) => v != null);
         const sortedDiffs = allDiffs.slice().sort((a, b) => a - b);
@@ -3216,7 +4723,7 @@
           `Wheel reads <b>${Math.abs(medBias).toFixed(2)} km/h ${medBias >= 0 ? "higher" : "lower"}</b> than GPS on average`,
         ];
         if (dPeak && dTrough && dPeak.label !== dTrough.label) {
-          trendParts.push(`Best: <b>${dTrough.v.toFixed(2)}</b> in <b>${dTrough.label}</b> · worst: <b>${dPeak.v.toFixed(2)}</b> in <b>${dPeak.label}</b>`);
+          trendParts.push(`Best: <b>${dTrough.v.toFixed(2)}</b> in <b>${tripLink(dTrough.label, dTrough.tripIdx)}</b> · worst: <b>${dPeak.v.toFixed(2)}</b> in <b>${tripLink(dPeak.label, dPeak.tripIdx)}</b>`);
         }
         setTakeaway("gpsdelta-trend-takeaway", trendParts);
 
@@ -3310,8 +4817,8 @@
         const latTrip = allLat.length ? dated.find((m) => m.gLatPeak === allLat[0]) : null;
         const lngTrip = allLng.length ? dated.find((m) => m.gLongPeak === allLng[0]) : null;
         const trendParts = [];
-        if (allLat.length) trendParts.push(`Hardest cornering G: <b>${allLat[0].toFixed(2)} G</b>` + (latTrip && latTrip.date ? ` on <b>${dateFmt.format(latTrip.date)}</b>` : ""));
-        if (allLng.length) trendParts.push(`Hardest braking / launch G: <b>${allLng[0].toFixed(2)} G</b>` + (lngTrip && lngTrip.date ? ` on <b>${dateFmt.format(lngTrip.date)}</b>` : ""));
+        if (allLat.length) trendParts.push(`Hardest cornering G: <b>${allLat[0].toFixed(2)} G</b>` + (latTrip && latTrip.date ? ` on <b>${tripLink(dateFmt.format(latTrip.date), latTrip.tripIdx)}</b>` : ""));
+        if (allLng.length) trendParts.push(`Hardest braking / launch G: <b>${allLng[0].toFixed(2)} G</b>` + (lngTrip && lngTrip.date ? ` on <b>${tripLink(dateFmt.format(lngTrip.date), lngTrip.tripIdx)}</b>` : ""));
         if (!anyImu) trendParts.push("Source: <b>GPS-estimated</b> centripetal G");
         setTakeaway("gforce-trend-takeaway", trendParts);
         // Histogram of peak corner G across trips
@@ -3398,11 +4905,12 @@
         drawTrendChart(document.getElementById("chart-efficiency"), bins, series, { rolling });
         meta.textContent = "";
         if (whStats) {
-          const { peak, trough } = statsPeakTrough(whStats, bins);
+          const whMetric = (m) => m.whPerKm == null ? null : m.whPerKm / UNITS.dist(1);
+          const { peak, trough } = statsPeakTrough(whStats, bins, null, whMetric);
           const parts = [];
           if (peak && trough && peak.label !== trough.label) {
-            parts.push(`Best: <b>${trough.v.toFixed(1)} Wh/${UNITS.distUnit}</b> in <b>${trough.label}</b>`);
-            parts.push(`Worst: <b>${peak.v.toFixed(1)} Wh/${UNITS.distUnit}</b> in <b>${peak.label}</b>`);
+            parts.push(`Best: <b>${trough.v.toFixed(1)} Wh/${UNITS.distUnit}</b> in <b>${tripLink(trough.label, trough.tripIdx)}</b>`);
+            parts.push(`Worst: <b>${peak.v.toFixed(1)} Wh/${UNITS.distUnit}</b> in <b>${tripLink(peak.label, peak.tripIdx)}</b>`);
           }
           setTakeaway("efficiency-takeaway", parts);
         }
@@ -3427,6 +4935,116 @@
           ]);
         } else {
           setTakeaway("power-hist-takeaway", []);
+        }
+      }
+    }
+
+    // 2b. Regen: trend, descent scatter, share histogram.
+    {
+      const tripsWithRegen = dated.filter((m) => m.driveWh != null && m.driveWh > 0);
+      const meta = document.getElementById("regen-meta");
+      if (tripsWithRegen.length < 5) {
+        setSectionEmpty("regen", "Not enough trips with sample-level power data to split drive vs regen.");
+        if (meta) meta.textContent = "";
+        setTakeaway("regen-trend-takeaway", []);
+        setTakeaway("regen-scatter-takeaway", []);
+        setTakeaway("regen-hist-takeaway", []);
+      } else {
+        setSectionActive("regen");
+        // Lifetime totals so the takeaway can say "9.6% of all energy".
+        let totDrive = 0, totRegen = 0;
+        for (const m of tripsWithRegen) { totDrive += m.driveWh; totRegen += m.regenWh; }
+        const lifetimePct = totDrive > 0 ? (totRegen / totDrive) * 100 : 0;
+        if (meta) meta.textContent = `${tripsWithRegen.length} trips · ${totRegen.toFixed(0)} Wh recovered of ${totDrive.toFixed(0)} Wh drawn`;
+
+        // Trend: median regen % per group.
+        const regenStats = binStats(bins, (m) => (m.driveWh != null && m.driveWh > 0) ? m.regenPct : null, minPerBin);
+        const trendSeries = [{
+          stats: regenStats,
+          color: "rgba(105,240,174,0.95)",
+          label: "regen %",
+          unit: "%",
+          band: true, dp: 1,
+        }];
+        drawTrendChart(document.getElementById("chart-regen-trend"), bins, trendSeries, { rolling });
+        const regenMetric = (m) => (m.driveWh != null && m.driveWh > 0) ? m.regenPct : null;
+        const { peak, trough } = statsPeakTrough(regenStats, bins, null, regenMetric);
+        const trendParts = [];
+        trendParts.push(`Lifetime: <b>${lifetimePct.toFixed(1)}%</b> of drive energy recovered`);
+        if (peak && trough && peak.label !== trough.label) {
+          trendParts.push(`Best month: <b>${peak.v.toFixed(1)}%</b> in <b>${tripLink(peak.label, peak.tripIdx)}</b>`);
+          trendParts.push(`Lowest: <b>${trough.v.toFixed(1)}%</b> in <b>${tripLink(trough.label, trough.tripIdx)}</b>`);
+        }
+        setTakeaway("regen-trend-takeaway", trendParts);
+
+        // Scatter: descent vs regen recovered.
+        const pts = [];
+        for (const m of tripsWithRegen) {
+          const descent = m.descentM || 0;
+          if (descent <= 0 && m.regenWh <= 0) continue;
+          pts.push({
+            x: UNITS.alt(descent),
+            y: m.regenWh,
+            epoch: m.epoch,
+            meta: `<b>${m.label}</b><br>Descent: <b>${fmtVal(UNITS.alt(descent), 0)}</b> ${UNITS.altUnit}` +
+                  `<br>Regen: <b>${fmtVal(m.regenWh, 0)}</b> Wh` +
+                  `<br>Drive: <b>${fmtVal(m.driveWh, 0)}</b> Wh` +
+                  `<br>Share: <b>${fmtVal(m.regenPct, 1)}</b>%`,
+          });
+        }
+        if (pts.length >= 5) {
+          drawScatter(document.getElementById("chart-regen-scatter"), pts, {
+            xLabel: "descent (" + UNITS.altUnit + ")",
+            yLabel: "regen recovered (Wh)",
+          });
+          const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
+          const fit = theilSen(xs, ys);
+          const scatterParts = [];
+          if (fit) {
+            scatterParts.push(`<b>${fit.slope.toFixed(2)} Wh</b> recovered per ${UNITS.altUnit} descended`);
+          }
+          // Find a peak-regen trip to make the chart memorable. The trip name
+          // itself becomes the link so the line still reads like a report
+          // sentence — no "view →" suffix.
+          const sortedByPct = tripsWithRegen.slice().sort((a, b) => b.regenPct - a.regenPct);
+          const topTrip = sortedByPct[0];
+          if (topTrip && topTrip.regenPct >= 10) {
+            scatterParts.push(`Best ride: <b>${topTrip.regenPct.toFixed(0)}%</b> regen on <b>${tripLink(topTrip.label, topTrip.tripIdx)}</b>`);
+          }
+          setTakeaway("regen-scatter-takeaway", scatterParts);
+        } else {
+          setTakeaway("regen-scatter-takeaway", []);
+        }
+
+        // Histogram: distribution of regen %.
+        // A handful of descent-dominant rides reach >100%, which crushes the
+        // bulk of the distribution into one column. Clip the histogram to a
+        // sensible top so the typical band stays legible; mention any
+        // clipped trips in the takeaway so the outliers aren't silently lost.
+        const sharesAll = tripsWithRegen.map((m) => m.regenPct).filter((v) => isFinite(v));
+        const HIST_CAP = 50;
+        const sharesClipped = sharesAll.map((v) => Math.min(v, HIST_CAP));
+        const clippedCount = sharesAll.filter((v) => v > HIST_CAP).length;
+        if (sharesAll.length >= 5) {
+          drawHistogram(document.getElementById("chart-regen-hist"), sharesClipped, {
+            xLabel: "regen % (clipped at " + HIST_CAP + ")",
+            yLabel: "trips",
+            nBins: 16,
+            colorTop: "rgba(105,240,174,0.9)",
+            colorBot: "rgba(105,240,174,0.18)",
+          });
+          const sortedS = sharesAll.slice().sort((a, b) => a - b);
+          const medS = sortedS[Math.floor(sortedS.length / 2)];
+          const flat = sharesAll.filter((v) => v < 2).length;
+          const heavy = sharesAll.filter((v) => v >= 10).length;
+          const histParts = [];
+          histParts.push(`Median trip recovers <b>${medS.toFixed(1)}%</b>`);
+          histParts.push(`<b>${flat}</b> flat rides (&lt;2%)`);
+          histParts.push(`<b>${heavy}</b> descent-heavy (&ge;10%)`);
+          if (clippedCount > 0) histParts.push(`<b>${clippedCount}</b> beyond ${HIST_CAP}%`);
+          setTakeaway("regen-hist-takeaway", histParts);
+        } else {
+          setTakeaway("regen-hist-takeaway", []);
         }
       }
     }
@@ -3471,12 +5089,13 @@
         }];
         drawTrendChart(document.getElementById("chart-motor-trend"), bins, series, { rolling });
         meta.textContent = pts.length + " trips";
-        const { peak, trough } = statsPeakTrough(trendStats, bins);
+        const motorMetric = (m) => (m.avgMovingSpeed != null && m.avgCurrent != null && m.avgMovingSpeed > 5) ? m.avgCurrent / UNITS.speed(m.avgMovingSpeed) : null;
+        const { peak, trough } = statsPeakTrough(trendStats, bins, null, motorMetric);
         const trendParts = [];
         if (peak && trough && peak.label !== trough.label) {
           const pct = ((peak.v - trough.v) / trough.v) * 100;
-          trendParts.push(`Lowest draw: <b>${trough.v.toFixed(3)} A/${UNITS.speedUnit}</b> in <b>${trough.label}</b>`);
-          trendParts.push(`Highest: <b>${peak.v.toFixed(3)}</b> in <b>${peak.label}</b> (+${pct.toFixed(0)}%)`);
+          trendParts.push(`Lowest draw: <b>${trough.v.toFixed(3)} A/${UNITS.speedUnit}</b> in <b>${tripLink(trough.label, trough.tripIdx)}</b>`);
+          trendParts.push(`Highest: <b>${peak.v.toFixed(3)}</b> in <b>${tripLink(peak.label, peak.tripIdx)}</b> (+${pct.toFixed(0)}%)`);
         }
         setTakeaway("motor-trend-takeaway", trendParts);
       }
@@ -3530,11 +5149,15 @@
         }];
         drawTrendChart(document.getElementById("chart-thermal-trend"), bins, series, { rolling });
         meta.textContent = useAmbient ? "vs ambient (weather)" : "vs trip-start temp. Add weather for an ambient baseline.";
-        const { peak, trough } = statsPeakTrough(trendStats, bins);
+        const thermalMetric = (m) => {
+          const r = tempRiseOf(m);
+          return r == null ? null : tempDelta(r);
+        };
+        const { peak, trough } = statsPeakTrough(trendStats, bins, null, thermalMetric);
         const trendParts = [];
         if (peak && trough && peak.label !== trough.label) {
-          trendParts.push(`Coolest: <b>${trough.v.toFixed(1)} ${UNITS.tempUnit}</b> in <b>${trough.label}</b>`);
-          trendParts.push(`Hottest: <b>${peak.v.toFixed(1)} ${UNITS.tempUnit}</b> in <b>${peak.label}</b>`);
+          trendParts.push(`Coolest: <b>${trough.v.toFixed(1)} ${UNITS.tempUnit}</b> in <b>${tripLink(trough.label, trough.tripIdx)}</b>`);
+          trendParts.push(`Hottest: <b>${peak.v.toFixed(1)} ${UNITS.tempUnit}</b> in <b>${tripLink(peak.label, peak.tripIdx)}</b>`);
         }
         setTakeaway("thermal-trend-takeaway", trendParts);
       }
@@ -3559,12 +5182,13 @@
         // forcing the axis to zero compressed the variation into the top sliver.
         drawTrendChart(document.getElementById("chart-health"), bins, series, { rolling });
         meta.textContent = usable + " trips";
-        const { peak, trough } = statsPeakTrough(irStats, bins);
+        const irMetric = (m) => m.ohmIR == null ? null : m.ohmIR * 1000;
+        const { peak, trough } = statsPeakTrough(irStats, bins, null, irMetric);
         const parts = [];
         if (peak && trough && peak.label !== trough.label) {
           const pct = ((peak.v - trough.v) / trough.v) * 100;
-          parts.push(`Lowest IR: <b>${trough.v.toFixed(0)} mΩ</b> in <b>${trough.label}</b>`);
-          parts.push(`Highest: <b>${peak.v.toFixed(0)} mΩ</b> in <b>${peak.label}</b> (+${pct.toFixed(0)}%)`);
+          parts.push(`Lowest IR: <b>${trough.v.toFixed(0)} mΩ</b> in <b>${tripLink(trough.label, trough.tripIdx)}</b>`);
+          parts.push(`Highest: <b>${peak.v.toFixed(0)} mΩ</b> in <b>${tripLink(peak.label, peak.tripIdx)}</b> (+${pct.toFixed(0)}%)`);
         }
         setTakeaway("health-takeaway", parts, peak && trough && ((peak.v - trough.v) / trough.v) > 0.25 ? "warn" : null);
 
@@ -3576,11 +5200,12 @@
             stats: sagStats, color: "#ff7043", label: "Voltage droop", unit: "%", band: true, dp: 1,
           }];
           drawTrendChart(document.getElementById("chart-health-sag"), bins, sagSeries, { rolling });
-          const { peak: sp, trough: st } = statsPeakTrough(sagStats, bins);
+          const sagMetric = (m) => m.voltSagPct;
+          const { peak: sp, trough: st } = statsPeakTrough(sagStats, bins, null, sagMetric);
           const sagParts = [];
           if (sp && st && sp.label !== st.label) {
-            sagParts.push(`Smallest droop: <b>${st.v.toFixed(1)}%</b> in <b>${st.label}</b>`);
-            sagParts.push(`Largest: <b>${sp.v.toFixed(1)}%</b> in <b>${sp.label}</b>`);
+            sagParts.push(`Smallest droop: <b>${st.v.toFixed(1)}%</b> in <b>${tripLink(st.label, st.tripIdx)}</b>`);
+            sagParts.push(`Largest: <b>${sp.v.toFixed(1)}%</b> in <b>${tripLink(sp.label, sp.tripIdx)}</b>`);
           }
           setTakeaway("health-sag-takeaway", sagParts);
         } else {

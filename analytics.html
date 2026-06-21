@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Wheel Forensics &middot; EUC Planet</title>
     <link rel="icon" href="static/favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="static/css/analytics.css?v=23" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="static/css/analytics.css?v=43" />
     <script type="text/javascript">
         (function(c,l,a,r,i,t,y){
             c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
@@ -94,6 +95,16 @@
                             <rect x="2" y="11" width="12" height="3" rx="0.6" fill="none" stroke="currentColor" stroke-width="1.4"/>
                         </svg>
                     </button>
+                    <button type="button" id="calc-btn" class="calc-btn hidden" title="Range calculator. Pick battery, distance, speed, climb, ambient and get a pessimistic, neutral, optimistic forecast based on your own history.">
+                        <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <rect x="2.5" y="1.5" width="11" height="13" rx="0.5"/>
+                            <line x1="2.5" y1="5" x2="13.5" y2="5"/>
+                            <line x1="5" y1="8" x2="5" y2="12"/>
+                            <line x1="8" y1="8" x2="8" y2="12"/>
+                            <line x1="11" y1="8" x2="11" y2="12"/>
+                        </svg>
+                        <span>Range calc</span>
+                    </button>
                     <button type="button" id="print-btn" class="print-btn" title="Open the browser print dialog with a clean light-theme version of the report. Pick &quot;Save as PDF&quot; to export.">
                         <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                             <polyline points="4 5 4 2 12 2 12 5"/>
@@ -150,7 +161,7 @@
                 <div class="stat-card"><span class="sv" id="lf-charges">&hellip;</span><span class="sl">Charges logged</span></div>
                 <div class="stat-card"><span class="sv" id="lf-chargedpct">&hellip;</span><span class="sl">Total charged %</span></div>
                 <div class="stat-card" title="Best 0 to 40 km/h time across every trip, excluding samples flagged as free spin or impossible acceleration."><span class="sv" id="lf-accel40">&hellip;</span><span class="sl">Best 0&hairsp;&rarr;&hairsp;40&hairsp;km/h</span></div>
-                <div class="stat-card" title="Wheel speed samples flagged as free spin (lift / pickup) or fall, where the reported speed disagrees with GPS or accelerates beyond physical limits."><span class="sv" id="lf-anomalies">&hellip;</span><span class="sl">Free spins / falls</span></div>
+                <div class="stat-card" title="Lifts (pickup tests) and falls only. Sensor spikes during riding and logger glitches are classified separately and not counted here."><span class="sv" id="lf-anomalies">&hellip;</span><span class="sl">Free spins / falls</span></div>
                 <div class="stat-card"><span class="sv" id="lf-climb">&hellip;</span><span class="sl">Total climb</span></div>
             </section>
 
@@ -333,7 +344,7 @@
             <section class="chart-section" data-section="anomalies" data-tab="speed">
                 <h2><span class="forensic-tag">ANOMALY</span> Free spins &amp; suspected falls <span class="sec-meta" id="anomalies-meta"></span></h2>
                 <details class="adv-settings" id="anom-settings">
-                    <summary>Detection thresholds <span class="info-icon" title="Tune what counts as a free-spin or fall. Saved per-browser.">i</span></summary>
+                    <summary>Detection thresholds <span class="info-icon" title="Tune what counts as a lift / fall / sensor spike / logger glitch. Saved per-browser.">i</span></summary>
                     <div class="adv-grid">
                         <label><span>Free-spin GPS speed (km/h)</span>
                             <input type="number" id="anom-gps-thresh" min="0" max="20" step="0.5" value="2"
@@ -351,16 +362,30 @@
                             <input type="number" id="anom-poststop" min="2" max="15" step="1" value="5"
                                 title="After the event, GPS must drop below 3 km/h for at least this many consecutive samples for the event to be classified as a fall." />
                         </label>
+                        <label><span>Min event length (samples)</span>
+                            <input type="number" id="anom-min-event-len" min="1" max="10" step="1" value="2"
+                                title="An event must last at least this many samples to be classified as a LIFT. Shorter events stay as SPIKE." />
+                        </label>
+                        <label><span>Motor activity (A)</span>
+                            <input type="number" id="anom-motor-active" min="0.2" max="10" step="0.1" value="1"
+                                title="The motor counts as 'doing work' when the (absolute) current is at least this many amps, OR power is at least this × 100 W. Used by lift / fall / glitch classification." />
+                        </label>
                         <button type="button" id="anom-reset" class="adv-reset">Reset to defaults</button>
                     </div>
                 </details>
                 <div class="chart-takeaway" id="anomalies-takeaway"></div>
                 <div id="anomalies-list" class="anomalies-list"></div>
-                <p class="sec-hint">A free spin is a moment where the wheel reports a speed but GPS shows it
-                   didn't actually move. Most are pickup tests. A <b>fall</b> is a free spin that happens after
-                   you were already riding at speed: the wheel was rolling on the ground, then suddenly its
-                   reported speed disagreed with GPS and the ground speed crashed. Tune the thresholds above
-                   if your wheel triggers too many false positives or misses real events.</p>
+                <p class="sec-hint">Events fall into four kinds:
+                   <br>
+                   <b>Lift</b>: pickup test or hand-spin. GPS shows the wheel didn't move and the motor stayed idle.
+                   <br>
+                   <b>Fall</b>: you were genuinely cruising before, the wheel either freespun fast or peaked above riding speed, then GPS dropped to zero and stayed there. Slow-speed blips don't qualify.
+                   <br>
+                   <b>Spike</b>: brief sensor blip during normal riding. GPS dropout in a tunnel, momentary wheel-side noise. Not a real lift.
+                   <br>
+                   <b>Glitch</b>: cascade of phantom samples while the motor was idle for the whole surrounding window. Logger or firmware artifact, not a rider event.
+                   <br><br>
+                   Tune the thresholds above if your wheel triggers too many false positives or misses real events.</p>
             </section>
 
             <section class="chart-section" data-section="efficiency" data-tab="efficiency">
@@ -380,6 +405,29 @@
                    wheel: most riders sit in a narrow average-power band with a long tail toward steep climbs / sprints.</p>
             </section>
 
+            <section class="chart-section" data-section="regen" data-tab="efficiency">
+                <h2><span class="forensic-tag">EVIDENCE</span> Motor regen <span class="sec-meta" id="regen-meta"></span></h2>
+                <div class="chart-host">
+                    <div class="chart-title">Regen share over time <span class="chart-title-axes">(median %, regen Wh as fraction of drive Wh, per group)</span></div>
+                    <canvas id="chart-regen-trend"></canvas>
+                </div>
+                <div class="chart-takeaway" id="regen-trend-takeaway"></div>
+                <div class="chart-host">
+                    <div class="chart-title">Regen recovered vs descent <span class="chart-title-axes">(one dot per trip, old &rarr; new)</span></div>
+                    <canvas id="chart-regen-scatter"></canvas>
+                </div>
+                <div class="chart-takeaway" id="regen-scatter-takeaway"></div>
+                <div class="chart-host">
+                    <div class="chart-title">Regen-share distribution <span class="chart-title-axes">(trip count by regen %)</span></div>
+                    <canvas id="chart-regen-hist"></canvas>
+                </div>
+                <div class="chart-takeaway" id="regen-hist-takeaway"></div>
+                <p class="sec-hint">When you coast, brake, or descend, the wheel runs the motor as a generator.
+                   Sample-by-sample power: positive = <b>drive</b>, negative = <b>motor regen</b>. Regen share = regen Wh / drive Wh.
+                   <br><br>
+                   <b>Caveat:</b> the POWER column logs motor-side power, not net battery flow. Real EUC regen efficiency is 30 to 60%. The rest is heat in motor windings and FETs. So a "10% regen share" here is roughly <i>3 to 6% actual battery savings</i>. Each trip's regen Wh is capped at its drive Wh, so one ride can't recover more than it used. Some regen shows on every trip because balance pulses constantly toggle motor torque direction.</p>
+            </section>
+
             <section class="chart-section" data-section="motor" data-tab="motor">
                 <h2><span class="forensic-tag">EVIDENCE</span> Motor: speed vs current <span class="sec-meta" id="motor-meta"></span></h2>
                 <div class="chart-host tall">
@@ -387,63 +435,256 @@
                     <canvas id="chart-motor"></canvas>
                 </div>
                 <div class="chart-takeaway" id="motor-takeaway"></div>
+                <p class="chart-explainer">Each dot is one trip. Average moving speed vs average positive current, coloured oldest (blue) to newest (red). If recent dots sit above older ones at the same speed, the drivetrain is drawing more amps than it used to.</p>
                 <div class="chart-host">
                     <div class="chart-title">Current efficiency over time <span class="chart-title-axes">(amps per unit of speed)</span></div>
                     <canvas id="chart-motor-trend"></canvas>
                 </div>
                 <div class="chart-takeaway" id="motor-trend-takeaway"></div>
-                <p class="sec-hint">Top: each dot is one trip, average moving speed against average (positive)
-                   current, coloured from oldest (blue) to newest (red). If recent dots sit above older ones at the
-                   same speed, the drivetrain is drawing more amps than it used to. Bottom: median amps per km/h per
-                   group, a speed-independent view of the same drift.</p>
+                <p class="chart-explainer">Median amps per km/h per group. A speed-independent view of the same drift, easier to read than the raw scatter.</p>
             </section>
 
             <section class="chart-section" data-section="thermal" data-tab="thermal">
                 <h2><span class="forensic-tag">EVIDENCE</span><span class="weather-bit plus">+</span><span class="forensic-tag weather-tag weather-bit">WEATHER</span> Thermal <span class="sec-meta" id="thermal-meta"></span></h2>
+                <p class="sec-hint" id="thermal-hint">Temperature rise is how much hotter the board got versus the air around you. Hot motors mean more electrical losses, more cooling pressure on the pack, and higher risk of thermal cutoff on long climbs.</p>
                 <div class="chart-host tall">
                     <div class="chart-title">How much hotter the wheel got <span class="weather-chip">WEATHER</span> <span class="chart-title-axes">(per ride, vs power output)</span></div>
                     <canvas id="chart-thermal"></canvas>
                 </div>
                 <div class="chart-takeaway" id="thermal-takeaway"></div>
+                <p class="chart-explainer">Each dot is one ride. X is the average power the wheel pulled, Y is the peak temperature rise. Dots drift from blue (oldest) to red (newest). If recent (red) dots sit above older (blue) ones at the same power, the wheel is running hotter for the same work, a sign of degraded cooling or pack aging.</p>
                 <div class="chart-host">
                     <div class="chart-title">Heat-up per ride, tracked over time <span class="chart-title-axes">(median °C above ambient, per group)</span></div>
                     <canvas id="chart-thermal-trend"></canvas>
                 </div>
                 <div class="chart-takeaway" id="thermal-trend-takeaway"></div>
-                <p class="sec-hint" id="thermal-hint">For every ride we compute how much hotter the board got compared to
-                   the air around you — the <i>temperature rise</i>. Hot motors mean more electrical losses, more cooling
-                   pressure on the pack, and a higher risk of thermal cutoff on long climbs.
-                   <br><br>
-                   <b>Top chart</b>: each dot is one ride. X is the average power the wheel pulled, Y is the peak temperature rise.
-                   Dots drift from blue (oldest) to red (newest). If the recent (red) dots sit above the older (blue) ones at the
-                   same power level, the wheel is running hotter for the same work — a sign of degraded cooling or pack aging.
-                   <br><br>
-                   <b>Bottom chart</b>: the median rise per group across time. A flat line means consistent thermal behaviour;
-                   a drifting-up line means it's getting hotter to do the same ride.</p>
+                <p class="chart-explainer">Median rise per group across time. Flat line means consistent thermal behaviour. Drifting up means the wheel is getting hotter to do the same ride.</p>
             </section>
 
             <section class="chart-section" data-section="health" data-tab="health">
                 <h2><span class="forensic-tag">EVIDENCE</span> Battery health: voltage sag <span class="sec-meta" id="health-meta"></span></h2>
+                <p class="sec-hint">Two independent battery-aging proxies, one based on instantaneous load response, the other on full-ride peak vs trough voltage.</p>
                 <div class="chart-host">
                     <div class="chart-title">Effective internal resistance over time <span class="chart-title-axes">(median per group, mΩ)</span></div>
                     <canvas id="chart-health"></canvas>
                 </div>
                 <div class="chart-takeaway" id="health-takeaway"></div>
+                <p class="chart-explainer"><b>Effective IR</b> is the slope of voltage against current using only short-timestep deltas, so SoC drift across the trip cancels out. Rising IR over time means the pack is harder to push current through, a real aging signal.</p>
                 <div class="chart-host">
                     <div class="chart-title">Voltage droop over the trip <span class="chart-title-axes">(% sag from peak, lower is healthier)</span></div>
                     <canvas id="chart-health-sag"></canvas>
                 </div>
                 <div class="chart-takeaway" id="health-sag-takeaway"></div>
-                <p class="sec-hint">Two independent battery-aging proxies. <b>Effective IR</b> is the slope
-                   of voltage against current using only short-timestep deltas (so SoC drift across the trip
-                   cancels out). <b>Voltage droop</b> is the gap between the pack's peak resting voltage and
-                   its lowest loaded voltage during the same ride — naturally widens as the pack ages.</p>
+                <p class="chart-explainer"><b>Voltage droop</b> is the gap between the pack's peak resting voltage and its lowest loaded voltage during the same ride. Naturally widens as the pack ages.</p>
             </section>
         </main>
 
         <div id="error-banner" class="hidden"></div>
     </div>
 
-    <script src="static/js/analytics.js?v=28"></script>
+    <div id="calc-modal" class="hidden" role="dialog" aria-label="Ride planner">
+      <div class="calc-backdrop" data-calc-close></div>
+      <div class="calc-panel">
+        <header class="calc-header">
+          <span class="calc-tag">PLAN</span>
+          <h3>Range calculator</h3>
+          <button type="button" class="calc-close" data-calc-close aria-label="Close">&times;</button>
+        </header>
+        <div class="calc-body">
+          <div class="calc-inputs">
+            <label class="calc-row">
+              <span class="calc-name">Remaining battery</span>
+              <input type="range" id="calc-batt" min="5" max="100" step="1" value="100" />
+              <output id="calc-batt-out" class="calc-out">100%</output>
+            </label>
+            <label class="calc-row">
+              <span class="calc-name">Avg speed</span>
+              <input type="range" id="calc-speed" min="10" max="55" step="1" value="25" />
+              <output id="calc-speed-out" class="calc-out">25 km/h</output>
+            </label>
+            <div class="calc-group" data-group="route">
+              <div class="calc-group-head">
+                <span class="calc-group-title">Route</span>
+                <button type="button" class="calc-source-btn" data-source="route" data-source-on="false">
+                  <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M3 14 V6 L8 3 L13 6 V14 L8 11 Z"/>
+                    <line x1="8" y1="3" x2="8" y2="11"/>
+                  </svg>
+                  <span>Pick from map</span>
+                </button>
+                <button type="button" class="calc-source-reset hidden" data-source="route">Reset</button>
+                <span class="calc-locked-badge hidden" data-source="route" title="Distance and climb are locked from a picked route">&#x1F512; from route</span>
+              </div>
+              <label class="calc-row" data-locked-group="route">
+                <span class="calc-name">Distance</span>
+                <input type="range" id="calc-dist" min="1" max="120" step="1" value="15" />
+                <output id="calc-dist-out" class="calc-out">15 km</output>
+              </label>
+              <label class="calc-row" data-locked-group="route">
+                <span class="calc-name">Net climb</span>
+                <input type="range" id="calc-climb" min="-500" max="500" step="10" value="0" />
+                <output id="calc-climb-out" class="calc-out">+0 m</output>
+              </label>
+            </div>
+            <div class="calc-group" data-group="weather">
+              <div class="calc-group-head">
+                <span class="calc-group-title">Conditions</span>
+                <button type="button" class="calc-source-btn" data-source="weather" data-source-on="false">
+                  <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="8" cy="8" r="3"/>
+                    <line x1="8" y1="1.5" x2="8" y2="3"/>
+                    <line x1="8" y1="13" x2="8" y2="14.5"/>
+                    <line x1="1.5" y1="8" x2="3" y2="8"/>
+                    <line x1="13" y1="8" x2="14.5" y2="8"/>
+                    <line x1="3.5" y1="3.5" x2="4.5" y2="4.5"/>
+                    <line x1="11.5" y1="11.5" x2="12.5" y2="12.5"/>
+                    <line x1="3.5" y1="12.5" x2="4.5" y2="11.5"/>
+                    <line x1="11.5" y1="4.5" x2="12.5" y2="3.5"/>
+                  </svg>
+                  <span>Use forecast</span>
+                </button>
+                <button type="button" class="calc-source-reset hidden" data-source="weather">Reset</button>
+                <span class="calc-locked-badge hidden" data-source="weather" title="Ambient is locked from forecast data">&#x1F512; from forecast</span>
+              </div>
+              <label class="calc-row" data-locked-group="weather">
+                <span class="calc-name">Ambient</span>
+                <input type="range" id="calc-temp" min="-15" max="40" step="1" value="20" />
+                <output id="calc-temp-out" class="calc-out">20 &deg;C</output>
+              </label>
+            </div>
+            <label class="calc-check">
+              <input type="checkbox" id="calc-roundtrip" />
+              <span>Round trip <small>(same distance back, climb reversed)</small></span>
+            </label>
+          </div>
+          <div class="calc-results">
+            <div class="calc-leg" id="calc-leg-out">
+              <div class="calc-leg-title">One way</div>
+              <div class="calc-grid">
+                <div class="calc-metric">
+                  <span class="cm-label">Ride time</span>
+                  <span class="cm-band cm-mono" id="calc-time">&mdash;</span>
+                </div>
+                <div class="calc-metric">
+                  <span class="cm-label">Battery used</span>
+                  <span class="cm-band" id="calc-batt-use">&mdash;</span>
+                </div>
+                <div class="calc-metric">
+                  <span class="cm-label">Battery at arrival</span>
+                  <span class="cm-band" id="calc-batt-arr">&mdash;</span>
+                </div>
+              </div>
+            </div>
+            <div class="calc-leg hidden" id="calc-leg-back">
+              <div class="calc-leg-title">Return leg <small>(same distance, climb reversed)</small></div>
+              <div class="calc-grid">
+                <div class="calc-metric">
+                  <span class="cm-label">Round-trip time</span>
+                  <span class="cm-band cm-mono" id="calc-time-total">&mdash;</span>
+                </div>
+                <div class="calc-metric">
+                  <span class="cm-label">Round-trip battery used</span>
+                  <span class="cm-band" id="calc-batt-use-total">&mdash;</span>
+                </div>
+                <div class="calc-metric">
+                  <span class="cm-label">Battery at home</span>
+                  <span class="cm-band" id="calc-batt-arr-total">&mdash;</span>
+                </div>
+              </div>
+            </div>
+            <div class="calc-verdict" id="calc-verdict">&mdash;</div>
+          </div>
+          <div class="calc-chart">
+            <div class="calc-chart-title">Battery depletion <span class="calc-chart-axes">(% over distance, hover for details)</span></div>
+            <canvas id="calc-canvas" width="700" height="220"></canvas>
+            <div id="calc-canvas-tooltip" class="calc-canvas-tooltip hidden"></div>
+          </div>
+          <p class="calc-foot">
+            Bands are <b class="calc-pess">pessimistic</b> &middot; <b class="calc-neut">neutral</b> &middot; <b class="calc-opt">optimistic</b>,
+            derived from your own history using the multivariate range model (intercept + speed + temp + climb).
+            Pessimistic / optimistic come from the model&rsquo;s residual standard error.
+          </p>
+        </div>
+        <div class="calc-subview hidden" id="calc-mapview">
+          <div class="calc-subview-head">
+            <span class="calc-tag">MAP</span>
+            <h4>Pick a route</h4>
+            <div class="calc-mapview-status" id="calc-map-status">Click the start point on the map.</div>
+            <button type="button" class="calc-source-reset" data-cancel="route">Cancel</button>
+            <button type="button" class="calc-source-apply" id="calc-map-apply" disabled>Apply</button>
+          </div>
+          <div class="calc-mapview-body">
+            <div id="calc-map" class="calc-map"></div>
+            <div class="calc-mapview-stats" id="calc-map-stats">
+              <div class="cms-row"><span class="cms-label">Distance</span><span class="cms-value" id="cms-distance">&mdash;</span></div>
+              <div class="cms-row"><span class="cms-label">Ascent</span><span class="cms-value" id="cms-ascent">&mdash;</span></div>
+              <div class="cms-row"><span class="cms-label">Descent</span><span class="cms-value" id="cms-descent">&mdash;</span></div>
+              <div class="cms-row"><span class="cms-label">Net climb</span><span class="cms-value" id="cms-net">&mdash;</span></div>
+              <div class="cms-row cms-profile">
+                <span class="cms-label">Elevation profile</span>
+                <canvas id="cms-profile" width="280" height="80"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="calc-subview hidden" id="calc-weatherview">
+          <div class="calc-subview-head">
+            <span class="calc-tag">FORECAST</span>
+            <h4>Use weather forecast</h4>
+            <div class="calc-mapview-status" id="calc-weather-status">Pick a date and time. Forecast loads automatically.</div>
+            <button type="button" class="calc-icon-btn" id="calc-weather-refresh" title="Refresh forecast">
+              <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M13.5 6 A 6 6 0 1 0 14 11"/>
+                <polyline points="14 2.5 13.5 6 10 5.5"/>
+              </svg>
+            </button>
+            <button type="button" class="calc-source-reset" data-cancel="weather">Cancel</button>
+            <button type="button" class="calc-source-apply" id="calc-weather-apply" disabled>Apply</button>
+          </div>
+          <div class="calc-weather-body">
+            <div class="calc-weather-form">
+              <label>
+                <span>Date</span>
+                <input type="date" id="calc-weather-date" />
+              </label>
+              <label>
+                <span>Start time</span>
+                <input type="time" id="calc-weather-start" value="12:00" />
+              </label>
+              <label class="calc-check inline">
+                <input type="checkbox" id="calc-weather-autoend" checked />
+                <span>Auto end time from speed &amp; distance</span>
+              </label>
+              <label>
+                <span>End time</span>
+                <input type="time" id="calc-weather-end" value="13:00" />
+              </label>
+              <label>
+                <span>Location</span>
+                <select id="calc-weather-loc">
+                  <option value="route" disabled>From picked route</option>
+                  <option value="recent" selected>Most-used trip area</option>
+                  <option value="custom">Pick on map</option>
+                </select>
+              </label>
+              <label class="calc-weather-custom hidden" id="calc-weather-custom-row">
+                <span>Lat / Lon</span>
+                <input type="text" id="calc-weather-latlon" placeholder="48.86, 2.34" />
+              </label>
+              <div class="calc-weather-mini-map hidden" id="calc-weather-map-host">
+                <div id="calc-weather-map" class="calc-weather-mini-map-canvas"></div>
+                <div class="calc-weather-mini-map-hint">Click the map to place your location.</div>
+              </div>
+            </div>
+            <div class="calc-weather-result" id="calc-weather-result">
+              <div class="calc-weather-empty">Forecast preview will appear here.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="static/js/analytics.js?v=59"></script>
 </body>
 </html>

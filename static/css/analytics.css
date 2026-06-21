@@ -3,10 +3,7 @@
 html, body {
     height: 100%;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    background:
-        radial-gradient(ellipse at top, rgba(179, 136, 255, 0.06), transparent 60%),
-        radial-gradient(ellipse at bottom right, rgba(0, 229, 255, 0.04), transparent 60%),
-        #07070d;
+    background: #07070d;
     color: #e0e0e0;
 }
 /* Faint scanline overlay so the page feels like a live diagnostic readout */
@@ -41,12 +38,12 @@ body::before {
     gap: 14px;
     flex-wrap: wrap;
     padding: 10px 16px;
-    background: linear-gradient(180deg, rgba(179, 136, 255, 0.05), rgba(10, 10, 15, 0.95));
-    border-bottom: 1px solid rgba(179, 136, 255, 0.18);
+    background: #0a0a12;
+    border-bottom: 1px solid rgba(179, 136, 255, 0.22);
     position: sticky;
     top: 0;
     z-index: 10;
-    backdrop-filter: blur(8px);
+    box-shadow: 0 1px 0 rgba(0,0,0,0.6);
 }
 
 .back-link {
@@ -54,7 +51,7 @@ body::before {
     text-decoration: none;
     font-size: 1.5rem;
     padding: 4px 10px;
-    border-radius: 6px;
+    border-radius: 2px;
     transition: background 0.15s;
 }
 .back-link:hover { background: rgba(0, 229, 255, 0.1); }
@@ -128,7 +125,7 @@ body::before {
     background: rgba(255, 255, 255, 0.06);
     color: #e0e0e0;
     border: 1px solid rgba(255, 255, 255, 0.14);
-    border-radius: 5px;
+    border-radius: 2px;
     padding: 4px 6px;
     font-size: 0.78rem;
     outline: none;
@@ -161,7 +158,7 @@ body::before {
     background: rgba(255, 160, 0, 0.1);
     color: #ffa000;
     border: 1px solid rgba(255, 160, 0, 0.35);
-    border-radius: 5px;
+    border-radius: 2px;
     padding: 6px 12px;
     font-size: 0.78rem;
     cursor: pointer;
@@ -236,7 +233,7 @@ body.weather-loaded.weather-has-pending #weather-refresh-btn {
     background: rgba(179, 136, 255, 0.10);
     color: #b388ff;
     border: 1px solid rgba(179, 136, 255, 0.28);
-    border-radius: 5px;
+    border-radius: 2px;
     padding: 5px 8px;
     cursor: pointer;
     display: inline-flex;
@@ -259,7 +256,7 @@ body[data-layout="single"] .layout-toggle-btn .layout-icon-tabs { display: block
     background: rgba(255, 255, 255, 0.04);
     color: #b388ff;
     border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 5px;
+    border-radius: 2px;
     padding: 6px 12px;
     font-size: 0.78rem;
     cursor: pointer;
@@ -334,8 +331,8 @@ body[data-layout="single"] .layout-toggle-btn .layout-icon-tabs { display: block
 .dr-fill {
     position: absolute;
     height: 100%;
-    background: linear-gradient(90deg, rgba(179, 136, 255, 0.55), rgba(0, 229, 255, 0.55));
-    border-radius: 2px;
+    background: rgba(179, 136, 255, 0.55);
+    border-radius: 0;
 }
 .dr-track input[type="range"] {
     position: absolute;
@@ -395,31 +392,31 @@ body[data-layout="single"] .layout-toggle-btn .layout-icon-tabs { display: block
     backdrop-filter: blur(8px);
 }
 .tab-btn {
-    background: rgba(255, 255, 255, 0.03);
+    background: transparent;
     color: #8a8aa0;
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.08);
     padding: 7px 16px;
-    font-size: 0.82rem;
+    font-size: 0.78rem;
     font-weight: 500;
-    letter-spacing: 0.02em;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
     cursor: pointer;
-    border-radius: 999px;
-    transition: color 0.15s, background 0.15s, border-color 0.15s, box-shadow 0.15s;
+    border-radius: 2px;
+    transition: color 0.12s, background 0.12s, border-color 0.12s;
     white-space: nowrap;
     position: relative;
+    font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Consolas, monospace;
 }
 .tab-btn:hover {
     color: #fff;
-    background: rgba(179, 136, 255, 0.08);
-    border-color: rgba(179, 136, 255, 0.2);
+    background: rgba(179, 136, 255, 0.06);
+    border-color: rgba(179, 136, 255, 0.28);
 }
 .tab-btn.active {
     color: #fff;
-    background: linear-gradient(180deg, rgba(179, 136, 255, 0.28), rgba(179, 136, 255, 0.14));
-    border-color: rgba(179, 136, 255, 0.55);
-    box-shadow:
-        0 0 0 1px rgba(179, 136, 255, 0.2),
-        0 0 12px rgba(179, 136, 255, 0.25);
+    background: rgba(179, 136, 255, 0.14);
+    border-color: rgba(179, 136, 255, 0.65);
+    box-shadow: inset 0 -2px 0 #b388ff;
 }
 
 body[data-layout="single"] #tab-bar { display: none; }
@@ -456,9 +453,10 @@ body[data-layout="tabs"] [data-tab]:not(.tab-btn):not(.tab-active) { display: no
     margin-bottom: 22px;
 }
 .stat-card {
-    background: linear-gradient(180deg, rgba(179, 136, 255, 0.07), rgba(255, 255, 255, 0.02));
+    background: rgba(255, 255, 255, 0.025);
     border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 10px;
+    border-left: 2px solid rgba(179, 136, 255, 0.5);
+    border-radius: 2px;
     padding: 12px 14px;
     display: flex;
     flex-direction: column;
@@ -491,9 +489,9 @@ body[data-layout="tabs"] [data-tab]:not(.tab-btn):not(.tab-active) { display: no
 #insights {
     margin-bottom: 28px;
     padding: 14px 16px;
-    background: rgba(179, 136, 255, 0.04);
-    border: 1px solid rgba(179, 136, 255, 0.18);
-    border-radius: 10px;
+    background: rgba(179, 136, 255, 0.035);
+    border: 1px solid rgba(179, 136, 255, 0.2);
+    border-radius: 2px;
 }
 #insights h2 {
     font-size: 0.85rem;
@@ -533,7 +531,7 @@ body[data-layout="tabs"] [data-tab]:not(.tab-btn):not(.tab-active) { display: no
 .insight.info .ico { background: #7cc7ff; box-shadow: 0 0 0 3px rgba(124, 199, 255, 0.12); }
 .insight b { color: #fff; }
 
-.chart-section { margin-bottom: 34px; }
+.chart-section { margin-bottom: 48px; }
 .chart-section h2,
 #insights h2 {
     font-size: 0.92rem;
@@ -580,9 +578,9 @@ body[data-layout="tabs"] [data-tab]:not(.tab-btn):not(.tab-active) { display: no
 .chart-host {
     position: relative;
     height: 220px;
-    background: rgba(255, 255, 255, 0.025);
-    border: 1px solid rgba(255, 255, 255, 0.07);
-    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 2px;
     overflow: hidden;
 }
 .chart-host.tall { height: 300px; }
@@ -596,7 +594,8 @@ body[data-layout="tabs"] [data-tab]:not(.tab-btn):not(.tab-active) { display: no
     .chart-host { height: 320px; }
     .chart-host.tall { height: 440px; }
 }
-.chart-host + .chart-host { margin-top: 10px; }
+.chart-host + .chart-host { margin-top: 32px; }
+.chart-takeaway + .chart-host { margin-top: 32px; }
 .chart-host canvas { width: 100%; height: 100%; display: block; }
 
 /* Vertical crosshair synced across every trend chart on hover. */
@@ -622,25 +621,33 @@ body[data-layout="tabs"] [data-tab]:not(.tab-btn):not(.tab-active) { display: no
 }
 
 /* Floating title in the top-right of each chart so secondary charts are
-   self-explanatory without overlapping the canvas-drawn legend on the left. */
+   self-explanatory without overlapping the canvas-drawn legend on the left.
+   Title sits on its own row; the axes hint drops to a subtitle row below it,
+   so a glance separates "what am I looking at" from "what are the units". */
 .chart-title {
     position: absolute;
     top: 8px;
     right: 12px;
-    font-size: 0.78rem;
-    font-weight: 600;
-    color: #ddd;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #fff;
     z-index: 2;
     pointer-events: none;
-    text-shadow: 0 1px 4px rgba(0,0,0,0.85);
+    text-shadow: 0 1px 5px rgba(0,0,0,0.95), 0 0 10px rgba(0,0,0,0.7);
     text-align: right;
-    max-width: 60%;
+    max-width: 65%;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 1px;
+    line-height: 1.2;
 }
 .chart-title-axes {
     font-weight: 400;
-    color: #888;
-    margin-left: 4px;
-    font-size: 0.72rem;
+    color: #aaa;
+    font-size: 0.74rem;
+    font-style: italic;
+    letter-spacing: 0.1px;
 }
 
 /* Small yellow "weather" marker that appears on charts whose data is
@@ -725,16 +732,27 @@ body.weather-loaded .forensic-tag.weather-tag {
 }
 .info-icon:hover { color: #fff; border-color: rgba(179, 136, 255, 0.7); background: rgba(179, 136, 255, 0.12); }
 
-/* One-line takeaway below the chart - the actionable number/comparison. */
+/* One-line takeaway below the chart - the actionable number/comparison.
+   Tight margin-top so it visually attaches to the chart it summarises;
+   "↳" arrow prefix marks it as a conclusion drawn from the chart above
+   (not setup for the next chart). */
 .chart-takeaway {
-    margin: 6px 4px 0;
-    padding: 6px 10px;
+    margin: 4px 4px 0;
+    padding: 7px 10px 7px 12px;
     font-size: 0.78rem;
     color: #cfd8dc;
-    background: rgba(105, 240, 174, 0.04);
-    border-left: 2px solid rgba(105, 240, 174, 0.45);
+    background: rgba(105, 240, 174, 0.05);
+    border-left: 3px solid rgba(105, 240, 174, 0.55);
     border-radius: 0 4px 4px 0;
     line-height: 1.45;
+    position: relative;
+}
+.chart-takeaway::before {
+    content: "↳";
+    color: rgba(105, 240, 174, 0.85);
+    font-weight: 700;
+    margin-right: 7px;
+    font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Consolas, monospace;
 }
 .chart-takeaway:empty { display: none; }
 .chart-takeaway b {
@@ -743,7 +761,53 @@ body.weather-loaded .forensic-tag.weather-tag {
     font-variant-numeric: tabular-nums;
 }
 .chart-takeaway .ta-sep { color: #555; margin: 0 8px; }
-.chart-takeaway.warn { background: rgba(255, 160, 0, 0.04); border-left-color: rgba(255, 160, 0, 0.55); }
+.chart-takeaway .ta-link {
+    color: #7cc7ff;
+    text-decoration: none;
+    border-bottom: 1px dashed rgba(124, 199, 255, 0.5);
+    margin-left: 4px;
+    font-size: 0.74rem;
+}
+.chart-takeaway .ta-link:hover { color: #fff; border-bottom-color: #fff; }
+/* Inline link that lives inside the takeaway sentence (e.g. wrapping a
+   date label "Jan 25"). Keeps the same font, just adds a subtle dotted
+   underline so the reader recognises it as clickable without breaking
+   the report's prose feel. */
+.chart-takeaway .ta-link-inline,
+.chart-takeaway b .ta-link-inline {
+    color: inherit;
+    text-decoration: none;
+    border-bottom: 1px dotted rgba(124, 199, 255, 0.55);
+    cursor: pointer;
+    transition: color 0.12s, border-color 0.12s;
+}
+.chart-takeaway .ta-link-inline:hover,
+.chart-takeaway b .ta-link-inline:hover {
+    color: #7cc7ff;
+    border-bottom-color: #7cc7ff;
+    border-bottom-style: solid;
+}
+.chart-takeaway.warn { background: rgba(255, 160, 0, 0.05); border-left-color: rgba(255, 160, 0, 0.6); }
+.chart-takeaway.warn::before { color: rgba(255, 160, 0, 0.85); }
+
+/* Small, dimmed monospace tag for model fit quality (n=N · R²=0.YY).
+   Used inside takeaways and the Findings panel so the reader can gauge
+   how much to trust a prediction at a glance. */
+.model-quality {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 0.68rem;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    color: rgba(255, 255, 255, 0.55);
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    white-space: nowrap;
+}
 
 /* Forensic-style anomaly list (free spins / falls). */
 .anomalies-list {
@@ -762,7 +826,7 @@ body.weather-loaded .forensic-tag.weather-tag {
     padding: 8px 10px;
     background: rgba(255, 255, 255, 0.03);
     border: 1px solid rgba(255, 255, 255, 0.06);
-    border-radius: 6px;
+    border-radius: 2px;
     font-size: 0.78rem;
     color: #cfd8dc;
     font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Consolas, monospace;
@@ -781,14 +845,20 @@ body.weather-loaded .forensic-tag.weather-tag {
 .anomaly-row.glitch .anom-kind { color: #888; }
 .anomaly-row.glitch { opacity: 0.7; }
 .anomaly-row .anom-date { color: #888; }
+.anomaly-row .anom-link {
+    color: #7cc7ff;
+    text-decoration: none;
+    border-bottom: 1px dotted rgba(124, 199, 255, 0.45);
+}
+.anomaly-row .anom-link:hover { color: #fff; border-bottom-color: #fff; }
 .anomaly-row .anom-peak { color: #fff; }
 
 /* Advanced detection-thresholds panel (collapsible). */
 .adv-settings {
     margin: 8px 0 12px;
     background: rgba(255, 255, 255, 0.025);
-    border: 1px solid rgba(255, 255, 255, 0.07);
-    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 2px;
 }
 .adv-settings summary {
     cursor: pointer;
@@ -828,6 +898,105 @@ body.weather-loaded .forensic-tag.weather-tag {
 }
 .adv-reset:hover { color: #fff; border-color: #b388ff; }
 
+/* What-if range calculator: live prediction from the multivariate fit.
+   Shown in the Range tab below the trend takeaway, three sliders feed
+   speed / temp / climb into the OLS model and the big number on the right
+   updates on every drag. */
+.range-whatif {
+    margin: 14px 4px 18px;
+    padding: 14px 16px;
+    background: rgba(179, 136, 255, 0.04);
+    border: 1px solid rgba(179, 136, 255, 0.25);
+    border-left: 3px solid #b388ff;
+    border-radius: 2px;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 12px 18px;
+    align-items: stretch;
+}
+.range-whatif .rw-title {
+    grid-column: 1 / -1;
+    font-size: 0.74rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #b388ff;
+}
+.range-whatif .rw-row {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.range-whatif .rw-row label {
+    display: grid;
+    grid-template-columns: 90px 1fr 72px;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.74rem;
+    color: #bbb;
+}
+.range-whatif .rw-row label > span:first-child {
+    color: #ddd;
+    font-weight: 500;
+}
+.range-whatif .rw-row input[type="range"] {
+    width: 100%;
+    accent-color: #b388ff;
+}
+.range-whatif .rw-row output {
+    font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 0.78rem;
+    color: #e0e0e0;
+    text-align: right;
+}
+.range-whatif .rw-output {
+    align-self: center;
+    justify-self: end;
+    text-align: right;
+    padding: 6px 14px 6px 18px;
+    border-left: 1px solid rgba(179, 136, 255, 0.25);
+    min-width: 130px;
+}
+.range-whatif .rw-label {
+    display: block;
+    font-size: 0.68rem;
+    color: #888;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    margin-bottom: 2px;
+}
+.range-whatif .rw-value {
+    font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: #fff;
+}
+.range-whatif .rw-value small {
+    font-size: 0.7rem;
+    font-weight: 500;
+    color: #aaa;
+    margin-left: 4px;
+}
+@media (max-width: 720px) {
+    .range-whatif {
+        grid-template-columns: 1fr;
+    }
+    .range-whatif .rw-output {
+        border-left: none;
+        border-top: 1px solid rgba(179, 136, 255, 0.25);
+        justify-self: stretch;
+        text-align: left;
+        padding: 10px 0 0;
+        min-width: 0;
+    }
+    .range-whatif .rw-row label {
+        grid-template-columns: 80px 1fr 62px;
+        font-size: 0.7rem;
+    }
+}
+
 .sec-hint {
     font-size: 0.74rem;
     color: #777;
@@ -837,13 +1006,29 @@ body.weather-loaded .forensic-tag.weather-tag {
 }
 .sec-hint i { color: #999; }
 
+/* Per-chart explainer that lives right under a chart-takeaway, instead of
+   one big "top chart / bottom chart" paragraph at the end of the section.
+   Tight margin so it reads as belonging to the chart above, not the next. */
+.chart-explainer {
+    font-size: 0.72rem;
+    color: #777;
+    line-height: 1.5;
+    margin: 6px 4px 4px;
+    padding: 0 4px;
+    max-width: 760px;
+}
+.chart-explainer b { color: #cfd8dc; font-weight: 600; }
+.chart-explainer i { color: #999; }
+/* Same big breathing room before the next chart that follows a takeaway. */
+.chart-explainer + .chart-host { margin-top: 32px; }
+
 .no-data-msg {
     font-size: 0.8rem;
     color: #666;
     padding: 14px;
     background: rgba(255, 255, 255, 0.02);
     border: 1px dashed rgba(255, 255, 255, 0.1);
-    border-radius: 10px;
+    border-radius: 2px;
 }
 
 /* Hover tooltip shared by all charts */
@@ -853,7 +1038,7 @@ body.weather-loaded .forensic-tag.weather-tag {
     pointer-events: none;
     background: rgba(12, 14, 20, 0.95);
     border: 1px solid rgba(179, 136, 255, 0.3);
-    border-radius: 6px;
+    border-radius: 2px;
     padding: 6px 9px;
     font-size: 0.72rem;
     color: #ddd;
@@ -871,7 +1056,7 @@ body.weather-loaded .forensic-tag.weather-tag {
     transform: translate(-50%, -50%);
     background: rgba(20, 22, 30, 0.97);
     border: 1px solid rgba(255, 82, 82, 0.4);
-    border-radius: 10px;
+    border-radius: 2px;
     color: #eee;
     padding: 22px 28px;
     font-size: 0.9rem;
@@ -884,7 +1069,7 @@ body.weather-loaded .forensic-tag.weather-tag {
     background: rgba(255, 255, 255, 0.04);
     color: #ddd;
     border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 5px;
+    border-radius: 2px;
     padding: 6px 12px;
     font-size: 0.78rem;
     cursor: pointer;
@@ -896,6 +1081,649 @@ body.weather-loaded .forensic-tag.weather-tag {
     transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
 .print-btn:hover { color: #fff; background: rgba(0, 229, 255, 0.18); border-color: rgba(0, 229, 255, 0.6); }
+
+/* === Ride planner ("Plan" button + modal calculator) === */
+.calc-btn {
+    background: rgba(105, 240, 174, 0.08);
+    color: #69f0ae;
+    border: 1px solid rgba(105, 240, 174, 0.4);
+    border-radius: 2px;
+    padding: 6px 12px;
+    font-size: 0.78rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.calc-btn:hover { color: #fff; background: rgba(105, 240, 174, 0.18); border-color: rgba(105, 240, 174, 0.7); }
+.calc-btn[disabled] { opacity: 0.4; cursor: not-allowed; }
+
+#calc-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+}
+.calc-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(5, 6, 12, 0.78);
+    backdrop-filter: blur(2px);
+}
+.calc-panel {
+    position: relative;
+    width: min(780px, 100%);
+    max-height: calc(100vh - 32px);
+    overflow-y: auto;
+    background: #0c0d15;
+    border: 1px solid rgba(105, 240, 174, 0.35);
+    border-left: 3px solid #69f0ae;
+    border-radius: 2px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+}
+.calc-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(105, 240, 174, 0.04);
+}
+.calc-tag {
+    font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Consolas, monospace;
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    padding: 2px 7px;
+    border-radius: 2px;
+    color: #69f0ae;
+    background: rgba(105, 240, 174, 0.12);
+    border: 1px solid rgba(105, 240, 174, 0.45);
+}
+.calc-header h3 {
+    color: #fff;
+    font-size: 0.95rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin: 0;
+}
+.calc-close {
+    margin-left: auto;
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: #aaa;
+    width: 26px;
+    height: 26px;
+    border-radius: 2px;
+    cursor: pointer;
+    font-size: 1.2rem;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.calc-close:hover { color: #fff; border-color: #69f0ae; }
+
+.calc-body {
+    padding: 16px;
+    display: grid;
+    grid-template-columns: 1.05fr 1fr;
+    gap: 18px;
+    align-items: start;
+}
+.calc-inputs { display: flex; flex-direction: column; gap: 10px; }
+.calc-row {
+    display: grid;
+    grid-template-columns: 130px 1fr 78px;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.78rem;
+}
+.calc-row .calc-name {
+    color: #ddd;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+}
+.calc-row input[type="range"] {
+    width: 100%;
+    accent-color: #69f0ae;
+}
+.calc-out {
+    font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 0.78rem;
+    color: #e8e8e8;
+    text-align: right;
+}
+.calc-check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.78rem;
+    color: #ddd;
+    cursor: pointer;
+    margin-top: 4px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+.calc-check input { accent-color: #69f0ae; }
+.calc-check small { color: #888; font-size: 0.72rem; margin-left: 6px; }
+.calc-check.inline { padding-top: 0; border-top: none; }
+
+/* Sub-grouping inside the calculator (Route, Conditions). Each group can
+   be sourced externally (map / forecast) and locked. */
+.calc-group {
+    border-left: 2px solid rgba(255, 255, 255, 0.06);
+    padding: 4px 0 4px 10px;
+    margin: 6px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    transition: border-color 0.18s;
+}
+.calc-group.is-locked { border-left-color: #69f0ae; }
+.calc-group-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.72rem;
+    color: #888;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+.calc-group-title {
+    font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Consolas, monospace;
+    font-weight: 700;
+    color: #aaa;
+    flex: 0 0 auto;
+}
+/* Right-align the action button so the row reads cleanly:
+   TITLE .................. [PICK FROM MAP]   (unlocked)
+   TITLE .................. [🔒 RESET]        (locked) */
+.calc-group-head .calc-source-btn,
+.calc-group-head .calc-source-reset { margin-left: auto; }
+.calc-group-head .calc-locked-badge { margin-left: auto; }
+.calc-source-btn,
+.calc-source-reset,
+.calc-source-apply {
+    background: transparent;
+    color: #b388ff;
+    border: 1px solid rgba(179, 136, 255, 0.4);
+    border-radius: 2px;
+    padding: 3px 9px;
+    font-size: 0.66rem;
+    cursor: pointer;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+/* Source buttons in the Route + Conditions group heads stay the same size
+   so the two rows line up cleanly when both are visible. Reset keeps its
+   natural narrower size, just right-aligned. */
+.calc-group-head .calc-source-btn { min-width: 150px; }
+
+/* Small icon button used by the forecast refresh control. */
+.calc-icon-btn {
+    background: transparent;
+    color: #b388ff;
+    border: 1px solid rgba(179, 136, 255, 0.4);
+    border-radius: 2px;
+    padding: 3px 6px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.calc-icon-btn:hover { color: #fff; background: rgba(179, 136, 255, 0.15); border-color: #b388ff; }
+.calc-icon-btn.is-loading svg { animation: calc-spin 0.9s linear infinite; }
+@keyframes calc-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+.calc-source-btn:hover,
+.calc-source-reset:hover { color: #fff; background: rgba(179, 136, 255, 0.15); border-color: #b388ff; }
+.calc-source-apply {
+    color: #69f0ae;
+    border-color: rgba(105, 240, 174, 0.5);
+    margin-left: auto;
+}
+.calc-source-apply:hover:not([disabled]) {
+    color: #fff;
+    background: rgba(105, 240, 174, 0.18);
+    border-color: #69f0ae;
+}
+.calc-source-apply[disabled] { opacity: 0.4; cursor: not-allowed; }
+/* Reset (locked) button mirrors the source-btn in colour + size so the
+   row never visually shifts when locking. The padlock icon stays grey to
+   read as a "currently locked" cue without competing with the label. */
+.calc-source-reset {
+    color: #b388ff;
+    border-color: rgba(179, 136, 255, 0.4);
+}
+.calc-source-reset:hover {
+    color: #fff;
+    background: rgba(179, 136, 255, 0.15);
+    border-color: #b388ff;
+}
+.calc-locked-badge {
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: 0.62rem;
+    color: #69f0ae;
+    letter-spacing: 0.06em;
+    margin-left: auto;
+}
+/* Locked sliders: pointer-events stay so the user could see the position,
+   but value changes are blocked from the input listener and the styling
+   reads as read-only. */
+.calc-row[data-locked-group].is-locked input[type="range"] {
+    opacity: 0.55;
+    pointer-events: none;
+}
+.calc-row[data-locked-group].is-locked .calc-out::before {
+    content: "🔒 ";
+    margin-right: 4px;
+    color: #888;
+    filter: grayscale(1) brightness(0.8);
+}
+
+/* Sub-views (map picker, weather picker) take over the calc body. */
+.calc-subview {
+    grid-column: 1 / -1;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(179, 136, 255, 0.25);
+    border-left: 3px solid #b388ff;
+    border-radius: 2px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-height: 360px;
+}
+.calc-subview-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.78rem;
+}
+.calc-subview-head h4 {
+    color: #fff;
+    font-size: 0.86rem;
+    font-weight: 600;
+    margin: 0;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+.calc-mapview-status {
+    color: #aaa;
+    font-size: 0.72rem;
+    flex: 1;
+    text-align: right;
+    padding-right: 6px;
+}
+.calc-mapview-body {
+    display: grid;
+    grid-template-columns: 1fr 240px;
+    gap: 12px;
+    height: 360px;
+}
+.calc-map {
+    background: #06070d;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 2px;
+    overflow: hidden;
+}
+.calc-mapview-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 0.74rem;
+    color: #ccc;
+}
+.cms-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 4px 8px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 2px;
+}
+.cms-label { color: #888; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em; }
+.cms-value {
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    color: #fff;
+    font-variant-numeric: tabular-nums;
+}
+.cms-row.cms-profile {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+}
+.cms-profile canvas { display: block; width: 100%; height: 80px; }
+
+.calc-weather-body {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    align-items: start;
+}
+.calc-weather-form {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.calc-weather-form label {
+    display: grid;
+    grid-template-columns: 110px 1fr;
+    gap: 10px;
+    align-items: center;
+    font-size: 0.74rem;
+    color: #aaa;
+}
+.calc-weather-form label > span:first-child { color: #ccc; }
+/* Checkbox row escapes the form's two-column grid so the box sits flush
+   against the label text instead of being right-aligned in column 1. */
+.calc-weather-form label.calc-check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    grid-template-columns: none;
+}
+.calc-weather-form label.calc-check span { color: #ddd; }
+.calc-weather-form label.calc-check input { margin: 0; }
+.calc-weather-form input[type="date"],
+.calc-weather-form input[type="time"],
+.calc-weather-form input[type="text"],
+.calc-weather-form select {
+    background: rgba(0, 0, 0, 0.45);
+    color: #e0e0e0;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 2px;
+    padding: 4px 6px;
+    font-size: 0.78rem;
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+.calc-weather-form #calc-weather-fetch {
+    margin-left: 0;
+    align-self: flex-start;
+    margin-top: 4px;
+}
+.calc-weather-mini-map {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 4px;
+}
+.calc-weather-mini-map-canvas {
+    height: 180px;
+    background: #06070d;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+    overflow: hidden;
+}
+.calc-weather-mini-map-hint {
+    font-size: 0.66rem;
+    color: #888;
+    font-style: italic;
+}
+
+.calc-weather-result {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 2px;
+    padding: 10px;
+    font-size: 0.76rem;
+    color: #ccc;
+    min-height: 120px;
+}
+.calc-weather-empty { color: #777; font-style: italic; }
+.calc-weather-hours {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(50px, 1fr));
+    gap: 4px;
+    margin-top: 8px;
+}
+.calc-weather-hours .wh-cell {
+    text-align: center;
+    padding: 4px 2px;
+    background: rgba(255, 215, 64, 0.08);
+    border: 1px solid rgba(255, 215, 64, 0.18);
+    border-radius: 2px;
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: 0.68rem;
+    color: #ffd740;
+    cursor: pointer;
+    transition: background 0.1s, border-color 0.1s, color 0.1s, transform 0.1s;
+}
+.calc-weather-hours .wh-cell:hover {
+    background: rgba(255, 215, 64, 0.22);
+    border-color: rgba(255, 215, 64, 0.5);
+    color: #fff;
+}
+.calc-weather-hours .wh-cell.in-ride {
+    background: rgba(105, 240, 174, 0.15);
+    border-color: rgba(105, 240, 174, 0.45);
+    color: #fff;
+}
+.calc-weather-hours .wh-cell.in-ride:hover {
+    background: rgba(105, 240, 174, 0.28);
+    border-color: rgba(105, 240, 174, 0.7);
+}
+.calc-weather-hours .wh-cell.is-start {
+    box-shadow: inset 0 0 0 2px #69f0ae;
+}
+
+/* Disabled inputs (locked sliders, locked time field, custom row hidden, etc.)
+   read with a darker font + lower opacity, so the "disabled" state is more
+   evident than the default browser styling. */
+.calc-weather-form input[disabled],
+.calc-weather-form select[disabled] {
+    color: #555;
+    background: rgba(0, 0, 0, 0.55);
+    border-color: rgba(255, 255, 255, 0.06);
+    cursor: not-allowed;
+}
+.calc-row[data-locked-group].is-locked .calc-out {
+    color: #999;
+}
+.calc-row[data-locked-group].is-locked .calc-name {
+    color: #888;
+}
+.calc-row[data-locked-group].is-locked input[type="range"] {
+    opacity: 0.4;
+}
+@media (max-width: 760px) {
+    .calc-mapview-body { grid-template-columns: 1fr; height: auto; }
+    .calc-map { height: 240px; }
+    .calc-weather-body { grid-template-columns: 1fr; }
+    .calc-weather-form label { grid-template-columns: 1fr; }
+}
+
+.calc-results {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 2px;
+    padding: 12px 14px;
+}
+.calc-leg-title {
+    font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Consolas, monospace;
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: #69f0ae;
+    margin-bottom: 6px;
+}
+.calc-leg + .calc-leg {
+    margin-top: 4px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+.calc-leg .calc-leg-title { color: #7cc7ff; }
+.calc-leg .calc-leg-title small {
+    color: #777;
+    font-weight: 400;
+    letter-spacing: 0.04em;
+    text-transform: none;
+    font-size: 0.66rem;
+    margin-left: 6px;
+}
+.calc-leg:first-child .calc-leg-title { color: #69f0ae; }
+.calc-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.calc-metric {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 0.78rem;
+}
+.cm-label { color: #aaa; }
+.cm-band {
+    font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    color: #fff;
+    font-size: 0.82rem;
+}
+.cm-band .calc-pess { color: #ffa000; }
+.cm-band .calc-neut { color: #fff; font-weight: 600; }
+.cm-band .calc-opt { color: #69f0ae; }
+.cm-band .calc-sep { color: #555; margin: 0 4px; }
+.calc-verdict {
+    margin-top: 4px;
+    padding: 8px 10px;
+    border-radius: 2px;
+    font-size: 0.82rem;
+    line-height: 1.4;
+    background: rgba(105, 240, 174, 0.06);
+    border-left: 3px solid #69f0ae;
+    color: #cfeedd;
+}
+.calc-verdict.warn {
+    background: rgba(255, 160, 0, 0.07);
+    border-left-color: #ffa000;
+    color: #ffe0b0;
+}
+.calc-verdict.bad {
+    background: rgba(255, 82, 82, 0.08);
+    border-left-color: #ff5252;
+    color: #ffc8c8;
+}
+.calc-verdict b { color: #fff; font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Consolas, monospace; }
+.calc-chart {
+    grid-column: 1 / -1;
+    position: relative;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 2px;
+    padding: 14px 12px 10px;
+    margin-top: 6px;
+}
+.calc-chart-title {
+    position: absolute;
+    top: 8px;
+    right: 12px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: #fff;
+    text-align: right;
+    z-index: 2;
+    pointer-events: none;
+    line-height: 1.2;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 1px;
+}
+.calc-chart-axes {
+    font-weight: 400;
+    color: #aaa;
+    font-size: 0.7rem;
+    font-style: italic;
+}
+.calc-chart {
+    cursor: crosshair;
+}
+.calc-chart canvas {
+    display: block;
+    width: 100%;
+    height: 180px;
+}
+.calc-canvas-tooltip {
+    position: absolute;
+    background: rgba(8, 9, 16, 0.95);
+    border: 1px solid rgba(179, 136, 255, 0.5);
+    border-radius: 2px;
+    padding: 6px 8px;
+    font-size: 0.72rem;
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    color: #ddd;
+    pointer-events: none;
+    line-height: 1.45;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6);
+    z-index: 5;
+    white-space: nowrap;
+}
+.calc-canvas-tooltip .ctt-head {
+    color: #fff;
+    font-weight: 700;
+    margin-bottom: 4px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    padding-bottom: 2px;
+}
+.calc-canvas-tooltip .ctt-row { display: flex; justify-content: space-between; gap: 12px; }
+.calc-canvas-tooltip .ctt-row .ctt-key { color: #888; }
+.calc-canvas-tooltip .ctt-row .ctt-pess { color: #ffa000; }
+.calc-canvas-tooltip .ctt-row .ctt-neut { color: #fff; font-weight: 600; }
+.calc-canvas-tooltip .ctt-row .ctt-opt  { color: #69f0ae; }
+
+.calc-foot {
+    grid-column: 1 / -1;
+    font-size: 0.72rem;
+    color: #888;
+    line-height: 1.5;
+    padding-top: 4px;
+    border-top: 1px dashed rgba(255, 255, 255, 0.07);
+}
+.calc-foot .calc-pess { color: #ffa000; }
+.calc-foot .calc-neut { color: #fff; }
+.calc-foot .calc-opt { color: #69f0ae; }
+
+@media (max-width: 760px) {
+    .calc-body {
+        grid-template-columns: 1fr;
+    }
+    .calc-row {
+        grid-template-columns: 110px 1fr 68px;
+        font-size: 0.74rem;
+    }
+    .calc-row .calc-name { font-size: 0.72rem; }
+    .calc-panel { max-height: calc(100vh - 16px); }
+}
+@media (max-width: 1100px) {
+    /* On medium widths the Plan button stays text-visible — only the
+       Print button label hides via .print-btn span (existing rules). */
+}
+@media (max-width: 640px) {
+    /* Compact: hide the "Plan" label, keep just the icon. */
+    .calc-btn span { display: none; }
+}
 
 /* === Print / PDF export ===
    A proper light-theme report: white background, dark text, clean
@@ -985,9 +1813,16 @@ body.print-mode .chart-takeaway {
     color: #1a1a1a !important;
     border-left-color: #2e8a55 !important;
 }
+body.print-mode .chart-takeaway::before { color: #2e8a55 !important; }
 body.print-mode .chart-takeaway.warn {
     background: #fff5e6 !important;
     border-left-color: #c47800 !important;
+}
+body.print-mode .chart-takeaway.warn::before { color: #c47800 !important; }
+body.print-mode .model-quality {
+    color: #555 !important;
+    background: #f3f3f5 !important;
+    border-color: rgba(0, 0, 0, 0.15) !important;
 }
 body.print-mode .sec-hint { color: #555 !important; }
 body.print-mode .sec-meta { color: #777 !important; }
@@ -1057,8 +1892,8 @@ body.print-mode .anomaly-row .anom-peak { color: #000 !important; }
     .controls label { flex-direction: row; align-items: center; gap: 6px; }
     .controls label.check-label { font-size: 0.76rem; }
     #weather-status { font-size: 0.68rem; }
-    .chart-title { font-size: 0.7rem; max-width: 75%; }
-    .chart-title-axes { display: none; }
+    .chart-title { font-size: 0.82rem; max-width: 75%; }
+    .chart-title-axes { display: block; font-size: 0.66rem; }
     .stat-card { padding: 10px 12px; min-height: 56px; }
     .stat-card .sv { font-size: 1rem; }
     .insight { font-size: 0.78rem; }
