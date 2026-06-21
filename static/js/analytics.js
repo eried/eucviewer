@@ -3804,13 +3804,10 @@
     });
     const weatherLoc = document.getElementById("calc-weather-loc");
     if (weatherLoc) weatherLoc.addEventListener("change", () => {
-      const isCustom = weatherLoc.value === "custom";
-      document.getElementById("calc-weather-custom-row").classList.toggle("hidden", !isCustom);
-      const mapHost = document.getElementById("calc-weather-map-host");
-      mapHost.classList.toggle("hidden", !isCustom);
-      const routeOpt = weatherLoc.querySelector('option[value="route"]');
-      if (routeOpt) routeOpt.disabled = !routeLocked;
-      if (isCustom) setTimeout(initWeatherMiniMap, 50);
+      // Once the user picks a location explicitly, don't auto-snap back
+      // to "From picked route" on the next open.
+      weatherLoc.dataset.userPicked = "1";
+      syncWeatherLocUI();
     });
     ["calc-weather-autoend", "calc-weather-start"].forEach((id) => {
       const el = document.getElementById(id);
@@ -4109,6 +4106,21 @@
     if (!lats.length) return null;
     return [median(lats), median(lons)];
   }
+  // Make every location-dependent UI piece reflect the current dropdown
+  // value (custom row visibility, mini-map host visibility, route option
+  // enabled state). Called both on explicit user change and on reopen so
+  // the modal never lands in a half-stale state.
+  function syncWeatherLocUI() {
+    const locSel = document.getElementById("calc-weather-loc");
+    if (!locSel) return;
+    const isCustom = locSel.value === "custom";
+    document.getElementById("calc-weather-custom-row").classList.toggle("hidden", !isCustom);
+    const mapHost = document.getElementById("calc-weather-map-host");
+    if (mapHost) mapHost.classList.toggle("hidden", !isCustom);
+    const routeOpt = locSel.querySelector('option[value="route"]');
+    if (routeOpt) routeOpt.disabled = !routeLocked;
+    if (isCustom) setTimeout(initWeatherMiniMap, 50);
+  }
   function initWeatherForm() {
     const dateEl = document.getElementById("calc-weather-date");
     if (!dateEl.value) {
@@ -4116,16 +4128,18 @@
       d.setDate(d.getDate() + 1);
       dateEl.value = d.toISOString().slice(0, 10);
     }
-    // When a route is locked, enable + auto-pick "From picked route" so the
-    // user doesn't have to dig into the dropdown to use it.
     const locSel = document.getElementById("calc-weather-loc");
     const routeOpt = locSel?.querySelector('option[value="route"]');
     if (routeOpt) {
       routeOpt.disabled = !routeLocked;
+      // First open with a locked route and no prior user pick: auto-select
+      // "From picked route" so the user doesn't have to choose it manually.
       if (routeLocked && locSel.value !== "route" && !locSel.dataset.userPicked) {
         locSel.value = "route";
       }
     }
+    // Make the dependent UI match whatever's now selected.
+    syncWeatherLocUI();
     syncEndTime();
     if (!lastForecastCells) fetchForecast(false);
   }
