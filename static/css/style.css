@@ -639,7 +639,11 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
     width: 0%;
     background: linear-gradient(90deg, #00e5ff, #00ffc8);
     border-radius: 3px;
-    transition: width 0.15s ease;
+    /* Long, soft ease so the bar visibly slides between fetch (0–50%) and
+       parse (50–100%) instead of snapping at the handoff. The cubic curve
+       is heavy on the trailing edge so it still feels responsive at the
+       start of each chunk. */
+    transition: width 0.55s cubic-bezier(0.22, 1, 0.36, 1);
 }
 /* Indeterminate "almost ready" state: shimmering stripes scroll right */
 #progress-fill.marquee {
