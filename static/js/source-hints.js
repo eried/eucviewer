@@ -211,10 +211,10 @@
         <div class="dbx-loading">Listing trips…</div>
       </div>
       <div class="src-action src-action-row">
+        <button type="button" id="dbx-signout" class="src-secondary-btn">Sign out</button>
         <button type="button" id="dbx-load" class="src-primary-btn" disabled>
           <span id="dbx-load-label">Load trips</span>
         </button>
-        <button type="button" id="dbx-signout" class="src-link-btn">Sign out</button>
       </div>
       <div id="dbx-status" class="src-hint dbx-status"></div>
     `);
@@ -237,8 +237,8 @@
     dbx.listTripFiles().then((entries) => {
       files = entries;
       if (!entries.length) {
-        listing.innerHTML = `<div class="dbx-empty">No trips found in <code>Apps/EUC Planet/trips/</code> yet. Once the phone app writes its first CSV, come back here and refresh.</div>`;
-        loadLabel.textContent = "Nothing to load";
+        listing.innerHTML = `<div class="dbx-empty">No trips found yet.</div>`;
+        loadBtn.classList.add("hidden");
         return;
       }
       const totalBytes = entries.reduce((s, e) => s + (e.size || 0), 0);
@@ -334,7 +334,7 @@
     try {
       const files = await dbx.listTripFiles();
       if (!files.length) {
-        bail("No trips in Apps/EUC Planet/trips/ yet.");
+        bail("No trips found in your Dropbox.");
         return;
       }
       const blob = await downloadAndBundle(files, (i, total) => {

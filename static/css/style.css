@@ -277,6 +277,7 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
 #source-instructions .src-action-row {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 1rem;
 }
 #source-instructions .src-primary-btn {
@@ -307,6 +308,28 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
     filter: grayscale(0.4) brightness(0.85);
     box-shadow: none;
     transform: none;
+}
+#source-instructions .src-secondary-btn {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.55rem 1rem;
+    background: rgba(255, 255, 255, 0.06);
+    color: rgba(224, 232, 240, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 8px;
+    font: inherit;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+#source-instructions .src-secondary-btn:hover {
+    background: rgba(255, 80, 80, 0.1);
+    border-color: rgba(255, 120, 120, 0.4);
+    color: #ffb0b0;
+}
+#source-instructions .src-secondary-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
 }
 #source-instructions .src-link-btn {
     background: none;
