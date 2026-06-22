@@ -203,15 +203,28 @@
     const acc = dbx.accountName();
     root.innerHTML = wrap(`
       <header class="src-head">
-        <h3>Dropbox connected</h3>
+        <h3>Dropbox</h3>
         <button type="button" class="src-close" aria-label="Close">&times;</button>
       </header>
-      <p class="src-sub">${acc ? escapeHtml(acc) : "Signed in"} &middot; Apps/EUC Planet/trips/</p>
       <div id="dbx-listing" class="dbx-listing">
         <div class="dbx-loading">Listing trips…</div>
       </div>
-      <div class="src-action src-action-row">
-        <button type="button" id="dbx-signout" class="src-secondary-btn">Sign out</button>
+      <details class="dbx-conn">
+        <summary>
+          <svg viewBox="0 0 16 16" width="11" height="11" class="dbx-conn-caret" aria-hidden="true"><path fill="currentColor" d="M5 3l5 5-5 5z"/></svg>
+          <span class="dbx-conn-label">Connection</span>
+          <span class="dbx-conn-account">${acc ? escapeHtml(acc) : "Signed in"}</span>
+        </summary>
+        <div class="dbx-conn-body">
+          <div class="dbx-conn-row"><span class="dbx-conn-key">Folder</span><code>Apps/EUC Planet/trips/</code></div>
+          <div class="dbx-conn-row" id="dbx-cache-row"><span class="dbx-conn-key">Cache</span><span id="dbx-cache-info">—</span></div>
+          <div class="dbx-conn-actions">
+            <button type="button" id="dbx-clear-cache" class="src-link-btn">Clear cache</button>
+            <button type="button" id="dbx-signout" class="src-link-btn dbx-signout">Sign out of Dropbox</button>
+          </div>
+        </div>
+      </details>
+      <div class="src-action src-action-row dbx-bottom-row">
         <button type="button" id="dbx-load" class="src-primary-btn" disabled>
           <span id="dbx-load-label">Load trips</span>
         </button>
@@ -223,6 +236,8 @@
     const loadBtn = root.querySelector("#dbx-load");
     const loadLabel = root.querySelector("#dbx-load-label");
     const signoutBtn = root.querySelector("#dbx-signout");
+    const clearBtn = root.querySelector("#dbx-clear-cache");
+    const cacheInfo = root.querySelector("#dbx-cache-info");
     const status = root.querySelector("#dbx-status");
     const listing = root.querySelector("#dbx-listing");
 
@@ -231,6 +246,7 @@
       dbx.signOut();
       renderDropbox(root);
     });
+    clearBtn.addEventListener("click", clearCache);
 
     let files = [];
     let cachedSet = new Set();
@@ -246,6 +262,7 @@
     }
 
     function renderList() {
+      updateCacheInfo();
       if (!files.length) {
         listing.innerHTML = `<div class="dbx-empty">No trips found yet.</div>`;
         loadLabel.textContent = "Load trips";
@@ -253,7 +270,6 @@
         return;
       }
       const totalBytes = files.reduce((s, e) => s + (e.size || 0), 0);
-      const cachedCount = cachedSet.size;
       const iconCached = `<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 8.5l4 4 8-9"/></svg>`;
       const iconRemote = `<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 11.5h6a3 3 0 0 0 .3-5.97A4.5 4.5 0 0 0 2.5 7.7a2.7 2.7 0 0 0 2 3.8z"/><path d="M8 8v4"/><path d="M6 10l2 2 2-2"/></svg>`;
       const rows = files.map((f) => {
@@ -264,7 +280,7 @@
             <span class="dbx-row-name" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</span>
             <span class="dbx-row-meta">${escapeHtml(date)} &middot; ${formatBytes(f.size || 0)}</span>
             <span class="dbx-row-tag" title="${cached ? "Already cached locally" : "Will be fetched from Dropbox"}">${cached ? iconCached : iconRemote}</span>
-            <button type="button" class="dbx-row-open" data-path="${escapeHtml(f.path)}" title="Load just this trip">Open</button>
+            <button type="button" class="dbx-row-open" data-path="${escapeHtml(f.path)}" title="Load just this trip">Load</button>
           </li>
         `;
       }).join("");
@@ -273,27 +289,31 @@
           <strong>${files.length}</strong> ${files.length === 1 ? "trip" : "trips"}
           <span class="dbx-summary-sep">&middot;</span>
           ${formatBytes(totalBytes)}
-          ${dbx.cache ? `
-            <span class="dbx-summary-sep">&middot;</span>
-            <span class="dbx-cached-count">${cachedCount} cached</span>
-            ${cachedCount ? `<button type="button" id="dbx-clear-cache" class="src-link-btn dbx-clear">Clear cache</button>` : ""}
-          ` : ""}
         </div>
         <ul class="dbx-rows">${rows}</ul>
       `;
-      // Latest is first (list is sorted desc by modified), make sure the
-      // top is visible after re-render.
       listing.scrollTop = 0;
 
-      // Wire row Open buttons to load that single trip.
       listing.querySelectorAll(".dbx-row-open").forEach((btn) => {
         btn.addEventListener("click", () => loadOne(btn.dataset.path));
       });
-      const clearBtn = listing.querySelector("#dbx-clear-cache");
-      if (clearBtn) clearBtn.addEventListener("click", clearCache);
 
-      loadLabel.textContent = `Load ${files.length} ${files.length === 1 ? "trip" : "trips"}`;
+      loadLabel.textContent = files.length === 1
+        ? "Load this trip"
+        : `Load all ${files.length} trips`;
       loadBtn.disabled = false;
+    }
+
+    function updateCacheInfo() {
+      if (!cacheInfo) return;
+      const cachedCount = cachedSet.size;
+      const total = files.length;
+      if (!total) {
+        cacheInfo.textContent = `${cachedCount} files cached`;
+      } else {
+        cacheInfo.textContent = `${cachedCount} of ${total} cached`;
+      }
+      if (clearBtn) clearBtn.style.display = cachedCount ? "" : "none";
     }
 
     async function clearCache() {
@@ -400,6 +420,8 @@
 
     clearInlineStatus();
     if (uploadActions) uploadActions.classList.add("hidden");
+    const hint = document.getElementById("upload-hint");
+    if (hint) hint.classList.add("hidden");
     if (progressArea) progressArea.classList.remove("hidden");
     if (progressText) {
       progressText.textContent = "Listing Dropbox trips…";
@@ -412,6 +434,8 @@
       if (progressFill) progressFill.style.width = "0%";
       if (progressText) progressText.textContent = "";
       if (uploadActions) uploadActions.classList.remove("hidden");
+      const h = document.getElementById("upload-hint");
+      if (h) h.classList.remove("hidden");
       showInlineStatus(msg, true);
     };
 

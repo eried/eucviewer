@@ -383,6 +383,75 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
     margin: 0 1.4rem 1.1rem;
     min-height: 1.1rem;
 }
+#source-instructions .dbx-conn {
+    margin: 0.6rem 1.3rem 0;
+    padding: 0.45rem 0.7rem;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 8px;
+    font-size: 0.8rem;
+}
+#source-instructions .dbx-conn > summary {
+    list-style: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: rgba(224, 232, 240, 0.7);
+}
+#source-instructions .dbx-conn > summary::-webkit-details-marker { display: none; }
+#source-instructions .dbx-conn-caret {
+    transition: transform 0.15s;
+    color: rgba(255, 255, 255, 0.45);
+    flex-shrink: 0;
+}
+#source-instructions .dbx-conn[open] .dbx-conn-caret { transform: rotate(90deg); }
+#source-instructions .dbx-conn-label { font-weight: 600; color: #fff; }
+#source-instructions .dbx-conn-account {
+    margin-left: auto;
+    font-size: 0.78rem;
+    color: rgba(224, 232, 240, 0.55);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 60%;
+}
+#source-instructions .dbx-conn-body {
+    margin-top: 0.55rem;
+    padding-top: 0.55rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+#source-instructions .dbx-conn-row {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+}
+#source-instructions .dbx-conn-key {
+    min-width: 56px;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: rgba(224, 232, 240, 0.45);
+}
+#source-instructions .dbx-conn-row code {
+    background: rgba(0, 0, 0, 0.3);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 0.78rem;
+}
+#source-instructions .dbx-conn-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.3rem;
+}
+#source-instructions .dbx-signout:hover {
+    background: rgba(255, 80, 80, 0.15);
+    color: #ffb0b0;
+}
+#source-instructions .dbx-bottom-row { justify-content: flex-end; }
 #source-instructions .dbx-cached-count {
     color: rgba(128, 230, 180, 0.9);
     font-weight: 600;

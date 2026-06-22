@@ -725,6 +725,8 @@ document.addEventListener("DOMContentLoaded", function () {
     if (!append) {
       if (uploadActions) uploadActions.classList.add("hidden");
       uploadLabel.classList.add("hidden");
+      const hint = document.getElementById("upload-hint");
+      if (hint) hint.classList.add("hidden");
       if (recentUi && recentUi.section) recentUi.section.classList.add("hidden");
       progressArea.classList.remove("hidden");
       progressFill.style.width = "0%";
@@ -745,6 +747,8 @@ document.addEventListener("DOMContentLoaded", function () {
         if (!append) {
           if (uploadActions) uploadActions.classList.remove("hidden");
           uploadLabel.classList.remove("hidden");
+          const hint = document.getElementById("upload-hint");
+          if (hint) hint.classList.remove("hidden");
           if (recentUi && recentUi.section && recentUi.list.children.length) {
             recentUi.section.classList.remove("hidden");
           }
@@ -786,6 +790,8 @@ document.addEventListener("DOMContentLoaded", function () {
       if (!append) {
         if (uploadActions) uploadActions.classList.remove("hidden");
         uploadLabel.classList.remove("hidden");
+        const hint = document.getElementById("upload-hint");
+        if (hint) hint.classList.remove("hidden");
         if (recentUi && recentUi.section && recentUi.list.children.length) {
           recentUi.section.classList.remove("hidden");
         }
@@ -1188,6 +1194,8 @@ document.addEventListener("DOMContentLoaded", function () {
   function resetUploadUI() {
     if (uploadActions) uploadActions.classList.remove("hidden");
     uploadLabel.classList.remove("hidden");
+    const hint = document.getElementById("upload-hint");
+    if (hint) hint.classList.remove("hidden");
     progressArea.classList.add("hidden");
     progressText.classList.remove("error");
     fileInput.value = "";
