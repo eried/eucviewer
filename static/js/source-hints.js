@@ -459,12 +459,19 @@
             ? `Restoring ${i} of ${total} from cache`
             : `Fetching ${i} of ${total}`;
         }
-        if (progressFill) progressFill.style.width = Math.round((i / total) * 90) + "%";
+        // Fetch occupies 0–50% so the parser can continue 50–100%
+        // without the bar resetting when control hands off.
+        if (progressFill) progressFill.style.width = Math.round((i / total) * 50) + "%";
       });
-      if (progressFill) progressFill.style.width = "100%";
+      // Leave the bar at 50% — handleFile picks up there and runs to 100.
+      if (progressFill) progressFill.style.width = "50%";
       const file = new File([blob], `all_trips.dbb`, { type: "application/zip" });
       if (typeof window.eucViewerLoadFile === "function") {
-        window.eucViewerLoadFile(file, { dropboxMap: blob.__dropboxMap, source: "dropbox" });
+        window.eucViewerLoadFile(file, {
+          dropboxMap: blob.__dropboxMap,
+          source: "dropbox",
+          progressStart: 50,
+        });
       } else {
         throw new Error("Viewer not ready");
       }

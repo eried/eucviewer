@@ -2651,7 +2651,10 @@ document.addEventListener("DOMContentLoaded", function () {
   window.eucViewerLoadFile = function (file, opts) {
     if (opts && opts.dropboxMap) pendingDropboxMap = opts.dropboxMap;
     if (opts && opts.source) pendingSource = opts.source;
-    return handleFile(file, !!(opts && opts.append));
+    return handleFile(file, {
+      append: !!(opts && opts.append),
+      progressStart: opts && typeof opts.progressStart === "number" ? opts.progressStart : 0,
+    });
   };
 
   // Boot path: ?file=<encoded url> downloads + loads + drops the param so
