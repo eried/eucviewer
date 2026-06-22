@@ -1030,13 +1030,15 @@ document.addEventListener("DOMContentLoaded", function () {
       recentUi.clearBtn.classList.remove("hidden");
 
       const dropboxGlyph = `<svg class="recent-file-source" viewBox="0 0 24 24" width="11" height="11" aria-hidden="true" title="From Dropbox"><path fill="currentColor" d="M6 2 0 6l6 4 6-4-6-4zm12 0-6 4 6 4 6-4-6-4zM0 14l6 4 6-4-6-4-6 4zm18-4-6 4 6 4 6-4-6-4zM6 19l6 4 6-4-6-4-6 4z"/></svg>`;
+      const stripExt = (n) => (n || "").replace(/\.(dbb|csv|gpx|xlsx)$/i, "");
       items.forEach((item) => {
         const row = document.createElement("div");
         row.className = "recent-file-item";
         const sourceGlyph = item.source === "dropbox" ? dropboxGlyph : "";
+        const displayName = stripExt(item.fileName);
         row.innerHTML = `
           <button type="button" class="recent-file-load">
-            <span class="recent-file-name">${sourceGlyph}${escapeHtml(item.fileName)}</span>
+            <span class="recent-file-name">${sourceGlyph}${escapeHtml(displayName)}</span>
             <span class="recent-file-meta">${item.tripCount} trips &middot; ${item.totalKm.toFixed(1)} km &middot; ${escapeHtml(formatRecentTime(item.loadedAt))}</span>
           </button>
           <button type="button" class="recent-file-remove" title="Remove from recent">&times;</button>
@@ -1127,10 +1129,10 @@ document.addEventListener("DOMContentLoaded", function () {
     applyRoute();
   }
 
-  // Fetch a trip file from a URL (e.g. a Dropbox shared link with ?dl=1
-  // appended) and load it through the standard parser pipeline. Used by
-  // the `#trip=<url>` deep link that the EUC Planet mobile app fires for
-  // its "Inspect online" action.
+  // Fetch a trip file from a URL (e.g. a Dropbox dl.dropboxusercontent.com
+  // link with `dl=1`) and load it through the standard parser pipeline.
+  // Used by the `?file=<url>` query and the legacy `#trip=<url>` hash that
+  // EUC Planet's "Inspect online" / Copy link actions fire.
   async function loadTripFromUrl(rawUrl) {
     overlay.classList.remove("hidden");
     panel.classList.add("hidden");
