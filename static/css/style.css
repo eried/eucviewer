@@ -416,14 +416,15 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
     0%, 100% { opacity: 0.55; }
     50% { opacity: 1; }
 }
-#source-instructions .dbx-conn-sep { color: rgba(255, 255, 255, 0.25); margin: 0 0.05rem; }
+#source-instructions .dbx-conn-sep { display: none; }
 #source-instructions .dbx-conn-account {
-    color: rgba(224, 232, 240, 0.55);
+    margin-left: auto;
+    color: rgba(224, 232, 240, 0.5);
+    font-style: italic;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    flex: 1 1 auto;
-    min-width: 0;
+    max-width: 55%;
 }
 #source-instructions .dbx-conn-body {
     margin-top: 0.55rem;
