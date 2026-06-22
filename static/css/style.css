@@ -406,18 +406,8 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
     flex-shrink: 0;
 }
 #source-instructions .dbx-conn[open] .dbx-conn-caret { transform: rotate(90deg); }
-#source-instructions .dbx-conn-label { font-weight: 600; color: #fff; }
-#source-instructions .dbx-subline {
-    margin: 0.1rem 1.3rem 0.5rem;
-    font-size: 0.82rem;
-    color: rgba(224, 232, 240, 0.7);
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    flex-wrap: wrap;
-}
-#source-instructions .dbx-subline-trips { color: #fff; font-weight: 600; }
-#source-instructions .dbx-subline-trips.is-loading {
+#source-instructions .dbx-conn-trips { font-weight: 600; color: #fff; }
+#source-instructions .dbx-conn-trips.is-loading {
     color: rgba(224, 232, 240, 0.55);
     font-weight: 500;
     animation: dbxConnPulse 1.4s ease-in-out infinite;
@@ -426,12 +416,14 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
     0%, 100% { opacity: 0.55; }
     50% { opacity: 1; }
 }
-#source-instructions .dbx-subline-sep { color: rgba(255, 255, 255, 0.25); }
-#source-instructions .dbx-subline-account {
+#source-instructions .dbx-conn-sep { color: rgba(255, 255, 255, 0.25); margin: 0 0.05rem; }
+#source-instructions .dbx-conn-account {
     color: rgba(224, 232, 240, 0.55);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    flex: 1 1 auto;
+    min-width: 0;
 }
 #source-instructions .dbx-conn-body {
     margin-top: 0.55rem;
@@ -486,11 +478,10 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
 }
 #source-instructions .dbx-rows {
     list-style: none;
-    margin: 0.55rem 0 0;
+    margin: 0;
     padding: 0;
     max-height: 260px;
     overflow-y: auto;
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
     scrollbar-width: thin;
     scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
 }

@@ -206,17 +206,11 @@
         <h3>Dropbox</h3>
         <button type="button" class="src-close" aria-label="Close">&times;</button>
       </header>
-      <p class="dbx-subline">
-        <span class="dbx-subline-trips is-loading" id="dbx-conn-trips">Connecting…</span>
-        ${acc ? `<span class="dbx-subline-sep">&middot;</span><span class="dbx-subline-account">Connected as ${escapeHtml(acc)}</span>` : ""}
-      </p>
-      <div id="dbx-listing" class="dbx-listing">
-        <div class="dbx-loading">Loading…</div>
-      </div>
       <details class="dbx-conn">
         <summary>
           <svg viewBox="0 0 16 16" width="10" height="10" class="dbx-conn-caret" aria-hidden="true"><path fill="currentColor" d="M5 3l5 5-5 5z"/></svg>
-          <span class="dbx-conn-label">Connection</span>
+          <span class="dbx-conn-trips is-loading" id="dbx-conn-trips">Connecting…</span>
+          ${acc ? `<span class="dbx-conn-sep">&middot;</span><span class="dbx-conn-account">Connected as ${escapeHtml(acc)}</span>` : ""}
         </summary>
         <div class="dbx-conn-body">
           <div class="dbx-conn-row"><span class="dbx-conn-key">Folder</span><code>Apps/EUC Planet/trips/</code></div>
@@ -227,6 +221,9 @@
           </div>
         </div>
       </details>
+      <div id="dbx-listing" class="dbx-listing">
+        <div class="dbx-loading">Loading…</div>
+      </div>
       <div class="src-action src-action-row dbx-bottom-row">
         <button type="button" id="dbx-load" class="src-primary-btn" disabled>
           <span id="dbx-load-label">Load trips</span>
