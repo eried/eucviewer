@@ -418,6 +418,8 @@
     if (uploadActions) uploadActions.classList.add("hidden");
     const hint = document.getElementById("upload-hint");
     if (hint) hint.classList.add("hidden");
+    const recents = document.getElementById("recent-files");
+    if (recents) recents.classList.add("hidden");
     if (progressArea) progressArea.classList.remove("hidden");
     if (progressText) {
       progressText.textContent = "Listing Dropbox trips…";
@@ -432,6 +434,8 @@
       if (uploadActions) uploadActions.classList.remove("hidden");
       const h = document.getElementById("upload-hint");
       if (h) h.classList.remove("hidden");
+      const r = document.getElementById("recent-files");
+      if (r && r.querySelector(".recent-files-list:not(.hidden)")) r.classList.remove("hidden");
       showInlineStatus(msg, true);
     };
 
