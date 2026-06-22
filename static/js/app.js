@@ -964,10 +964,18 @@ document.addEventListener("DOMContentLoaded", function () {
     const store = tx.objectStore(RECENT_STORE_NAME);
     store.put(entry);
 
-    const duplicates = existing.filter((item) => item.fileName === fileName);
+    // Dropbox bulk loads collapse to a single row even if previous saves
+    // used the legacy "Dropbox N trips YYYY-MM-DD.dbb" name. Match by
+    // source + multi-trip shape so repeated Dropbox button presses
+    // overwrite the same entry instead of piling up "all_trips" rows.
+    const isDropboxMulti = source === "dropbox" && tracks.length > 1;
+    const isDupe = (item) => isDropboxMulti
+      ? (item.source === "dropbox" && (item.tripCount || 0) > 1)
+      : (item.fileName === fileName);
+    const duplicates = existing.filter(isDupe);
     duplicates.forEach((item) => store.delete(item.id));
 
-    const nextItems = [entry].concat(existing.filter((item) => item.fileName !== fileName));
+    const nextItems = [entry].concat(existing.filter((item) => !isDupe(item)));
     nextItems.sort((a, b) => new Date(b.loadedAt).getTime() - new Date(a.loadedAt).getTime());
     nextItems.slice(MAX_RECENT_FILES).forEach((item) => store.delete(item.id));
 
