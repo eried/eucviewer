@@ -1096,15 +1096,10 @@ document.addEventListener("DOMContentLoaded", function () {
             <span class="recent-file-name">${escapeHtml(displayName)}${sourceGlyph}</span>
             <span class="recent-file-meta">${item.tripCount} trips &middot; ${item.totalKm.toFixed(1)} km &middot; ${escapeHtml(formatRecentTime(item.loadedAt))}</span>
           </button>
-          <button type="button" class="recent-file-remove" title="Remove from recent">&times;</button>
         `;
 
         row.querySelector(".recent-file-load").addEventListener("click", () => {
           loadRecentFile(item.id);
-        });
-        row.querySelector(".recent-file-remove").addEventListener("click", (event) => {
-          event.stopPropagation();
-          removeRecentFile(item.id);
         });
         recentUi.list.appendChild(row);
       });
