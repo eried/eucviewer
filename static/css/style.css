@@ -410,6 +410,15 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
     font-weight: 600;
     color: #fff;
 }
+#source-instructions .dbx-conn-trips.is-loading {
+    color: rgba(224, 232, 240, 0.55);
+    font-weight: 500;
+    animation: dbxConnPulse 1.4s ease-in-out infinite;
+}
+@keyframes dbxConnPulse {
+    0%, 100% { opacity: 0.55; }
+    50% { opacity: 1; }
+}
 #source-instructions .dbx-conn-account {
     margin-left: auto;
     font-size: 0.74rem;

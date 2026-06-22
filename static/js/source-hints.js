@@ -212,8 +212,8 @@
       <details class="dbx-conn">
         <summary>
           <svg viewBox="0 0 16 16" width="10" height="10" class="dbx-conn-caret" aria-hidden="true"><path fill="currentColor" d="M5 3l5 5-5 5z"/></svg>
-          <span class="dbx-conn-trips" id="dbx-conn-trips">—</span>
-          <span class="dbx-conn-account">${acc ? escapeHtml(acc) : "Signed in"}</span>
+          <span class="dbx-conn-trips is-loading" id="dbx-conn-trips">Listing trips…</span>
+          <span class="dbx-conn-account">${acc ? "Connected as " + escapeHtml(acc) : "Connected"}</span>
         </summary>
         <div class="dbx-conn-body">
           <div class="dbx-conn-row"><span class="dbx-conn-key">Folder</span><code>Apps/EUC Planet/trips/</code></div>
@@ -267,6 +267,11 @@
         listing.innerHTML = `<div class="dbx-empty">No trips found yet.</div>`;
         loadLabel.textContent = "Load trips";
         loadBtn.disabled = true;
+        const tripsEl = root.querySelector("#dbx-conn-trips");
+        if (tripsEl) {
+          tripsEl.classList.remove("is-loading");
+          tripsEl.textContent = "0 trips";
+        }
         return;
       }
       const totalBytes = files.reduce((s, e) => s + (e.size || 0), 0);
@@ -287,6 +292,7 @@
       listing.innerHTML = `<ul class="dbx-rows">${rows}</ul>`;
       const tripsEl = root.querySelector("#dbx-conn-trips");
       if (tripsEl) {
+        tripsEl.classList.remove("is-loading");
         tripsEl.textContent = `${files.length} ${files.length === 1 ? "trip" : "trips"} · ${formatBytes(totalBytes)}`;
       }
       listing.scrollTop = 0;
