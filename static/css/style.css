@@ -670,6 +670,14 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
     font-size: 0.88rem;
     font-weight: 600;
     color: #f3fbfd;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+.recent-file-source {
+    flex-shrink: 0;
+    color: #0061ff;
+    opacity: 0.55;
 }
 
 .recent-file-meta {

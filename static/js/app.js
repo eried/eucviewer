@@ -689,6 +689,9 @@ document.addEventListener("DOMContentLoaded", function () {
   // each track once the parser hands them back. Cleared as soon as it's
   // been consumed so a regular drag-and-drop afterwards doesn't inherit it.
   let pendingDropboxMap = null;
+  // Same idea for the source tag — "dropbox" so the Recents row can show
+  // the little badge instead of the literal filename giving it away.
+  let pendingSource = null;
 
   // --- Upload with client-side parsing ---
   async function handleFile(file, append) {
@@ -770,7 +773,9 @@ document.addEventListener("DOMContentLoaded", function () {
       setProgressMarquee("Almost ready, finishing up…");
       loadTracks(append ? [...allTracks, ...parsedTracks] : parsedTracks);
       saveTracks(allTracks);
-      saveRecentFile(file.name, parsedTracks)
+      const recentSource = pendingSource;
+      pendingSource = null;
+      saveRecentFile(file.name, parsedTracks, recentSource)
         .then(() => clearProgressMarquee())
         .catch((err) => {
           console.warn("Failed to save recent file:", err);
@@ -926,7 +931,7 @@ document.addEventListener("DOMContentLoaded", function () {
     return item || null;
   }
 
-  async function saveRecentFile(fileName, tracks) {
+  async function saveRecentFile(fileName, tracks, source) {
     if (!tracks || !tracks.length) return;
     const db = await openRecentDb();
     if (!db) return;
@@ -940,6 +945,7 @@ document.addEventListener("DOMContentLoaded", function () {
       tripCount: tracks.length,
       totalKm: Number(totalKm.toFixed(1)),
       tracks,
+      source: source || null,
     };
 
     const tx = db.transaction(RECENT_STORE_NAME, "readwrite");
@@ -1011,12 +1017,14 @@ document.addEventListener("DOMContentLoaded", function () {
       recentUi.list.classList.remove("hidden");
       recentUi.clearBtn.classList.remove("hidden");
 
+      const dropboxGlyph = `<svg class="recent-file-source" viewBox="0 0 24 24" width="11" height="11" aria-hidden="true" title="From Dropbox"><path fill="currentColor" d="M6 2 0 6l6 4 6-4-6-4zm12 0-6 4 6 4 6-4-6-4zM0 14l6 4 6-4-6-4-6 4zm18-4-6 4 6 4 6-4-6-4zM6 19l6 4 6-4-6-4-6 4z"/></svg>`;
       items.forEach((item) => {
         const row = document.createElement("div");
         row.className = "recent-file-item";
+        const sourceGlyph = item.source === "dropbox" ? dropboxGlyph : "";
         row.innerHTML = `
           <button type="button" class="recent-file-load">
-            <span class="recent-file-name">${escapeHtml(item.fileName)}</span>
+            <span class="recent-file-name">${sourceGlyph}${escapeHtml(item.fileName)}</span>
             <span class="recent-file-meta">${item.tripCount} trips &middot; ${item.totalKm.toFixed(1)} km &middot; ${escapeHtml(formatRecentTime(item.loadedAt))}</span>
           </button>
           <button type="button" class="recent-file-remove" title="Remove from recent">&times;</button>
@@ -2559,6 +2567,7 @@ document.addEventListener("DOMContentLoaded", function () {
   // generate share links pointing back at the original file.
   window.eucViewerLoadFile = function (file, opts) {
     if (opts && opts.dropboxMap) pendingDropboxMap = opts.dropboxMap;
+    if (opts && opts.source) pendingSource = opts.source;
     return handleFile(file, !!(opts && opts.append));
   };
 

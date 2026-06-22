@@ -312,11 +312,17 @@
       signoutBtn.disabled = true;
       status.textContent = `Fetching ${f.name}…`;
       try {
-        const blob = await downloadAndBundle([f], () => {});
-        const file = new File([blob], `dropbox_${f.name.replace(/\.[^.]+$/, "")}.dbb`, { type: "application/zip" });
+        // Single-file path skips the JSZip bundle — handleFile parses the
+        // .csv/.gpx/.xlsx blob directly and the Recents row shows the
+        // original Dropbox filename instead of a synthetic .dbb stub.
+        const blob = await downloadSingle(f);
+        const file = new File([blob], f.name, { type: blob.type || "application/octet-stream" });
         closeModal(root);
         if (typeof window.eucViewerLoadFile === "function") {
-          window.eucViewerLoadFile(file, { dropboxMap: blob.__dropboxMap });
+          window.eucViewerLoadFile(file, {
+            dropboxMap: { [f.name]: f.path },
+            source: "dropbox",
+          });
         }
       } catch (e) {
         status.textContent = "Failed: " + (e.message || e);
@@ -353,10 +359,10 @@
           ? `Handing off to the parser (${fromCache} of ${files.length} from cache)…`
           : "Handing off to the parser…";
         const stamp = new Date().toISOString().slice(0, 10);
-        const file = new File([blob], `dropbox_${stamp}.dbb`, { type: "application/zip" });
+        const file = new File([blob], `Dropbox ${files.length} trips ${stamp}.dbb`, { type: "application/zip" });
         closeModal(root);
         if (typeof window.eucViewerLoadFile === "function") {
-          window.eucViewerLoadFile(file, { dropboxMap: blob.__dropboxMap });
+          window.eucViewerLoadFile(file, { dropboxMap: blob.__dropboxMap, source: "dropbox" });
         } else {
           alert("Viewer not ready — try refreshing the page.");
         }
@@ -421,15 +427,31 @@
       });
       if (progressFill) progressFill.style.width = "100%";
       const stamp = new Date().toISOString().slice(0, 10);
-      const file = new File([blob], `dropbox_${stamp}.dbb`, { type: "application/zip" });
+      const file = new File([blob], `Dropbox ${files.length} trips ${stamp}.dbb`, { type: "application/zip" });
       if (typeof window.eucViewerLoadFile === "function") {
-        window.eucViewerLoadFile(file, { dropboxMap: blob.__dropboxMap });
+        window.eucViewerLoadFile(file, { dropboxMap: blob.__dropboxMap, source: "dropbox" });
       } else {
         throw new Error("Viewer not ready");
       }
     } catch (e) {
       bail("Dropbox load failed: " + (e.message || e));
     }
+  }
+
+  async function downloadSingle(f) {
+    const cache = window.DropboxSource && window.DropboxSource.cache;
+    if (cache && f.contentHash) {
+      const cached = await cache.get(f.path);
+      if (cached && cached.contentHash === f.contentHash && cached.blob) return cached.blob;
+    }
+    const blob = await window.DropboxSource.downloadBlob(f.path);
+    if (cache && f.contentHash) {
+      await cache.put(f.path, {
+        blob, contentHash: f.contentHash, size: f.size,
+        name: f.name, modified: f.modified, cachedAt: Date.now(),
+      });
+    }
+    return blob;
   }
 
   async function downloadAndBundle(files, onProgress) {
