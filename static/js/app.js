@@ -815,6 +815,12 @@ document.addEventListener("DOMContentLoaded", function () {
     clearBtn.addEventListener("click", async () => {
       await clearRecentFiles();
       await renderRecentFiles();
+      // Belt-and-braces: if a previous load left the actions row hidden,
+      // make sure Upload trips + Dropbox come back. Recents going away
+      // shouldn't strand the user without entry points.
+      const actions = document.getElementById("upload-actions");
+      if (actions) actions.classList.remove("hidden");
+      uploadLabel.classList.remove("hidden");
     });
 
     return {
@@ -1180,10 +1186,13 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function resetUploadUI() {
+    if (uploadActions) uploadActions.classList.remove("hidden");
     uploadLabel.classList.remove("hidden");
     progressArea.classList.add("hidden");
     progressText.classList.remove("error");
     fileInput.value = "";
+    const inlineStatus = document.getElementById("dropbox-inline-status");
+    if (inlineStatus) inlineStatus.remove();
   }
 
   window.addEventListener("popstate", applyRoute);
