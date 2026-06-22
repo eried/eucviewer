@@ -207,12 +207,12 @@
         <button type="button" class="src-close" aria-label="Close">&times;</button>
       </header>
       <div id="dbx-listing" class="dbx-listing">
-        <div class="dbx-loading">Listing trips…</div>
+        <div class="dbx-loading">Loading…</div>
       </div>
       <details class="dbx-conn">
         <summary>
           <svg viewBox="0 0 16 16" width="10" height="10" class="dbx-conn-caret" aria-hidden="true"><path fill="currentColor" d="M5 3l5 5-5 5z"/></svg>
-          <span class="dbx-conn-trips is-loading" id="dbx-conn-trips">Listing trips…</span>
+          <span class="dbx-conn-trips is-loading" id="dbx-conn-trips">Connecting…</span>
           <span class="dbx-conn-account">${acc ? "Connected as " + escapeHtml(acc) : "Connected"}</span>
         </summary>
         <div class="dbx-conn-body">
@@ -321,7 +321,7 @@
 
     async function clearCache() {
       if (!dbx.cache) return;
-      status.textContent = "Clearing cache…";
+      status.textContent = "Clearing local cache…";
       await dbx.cache.clear();
       await refreshCachedSet();
       status.textContent = "";
@@ -348,7 +348,7 @@
           });
         }
       } catch (e) {
-        status.textContent = "Failed: " + (e.message || e);
+        status.textContent = "Couldn't fetch: " + (e.message || e);
         loadBtn.disabled = false;
         signoutBtn.disabled = false;
       }
@@ -359,7 +359,7 @@
       await refreshCachedSet();
       renderList();
     }).catch((e) => {
-      listing.innerHTML = `<div class="dbx-error">Couldn't list folder: ${escapeHtml(e.message || String(e))}</div>`;
+      listing.innerHTML = `<div class="dbx-error">Couldn't list trips: ${escapeHtml(e.message || String(e))}</div>`;
       loadLabel.textContent = "Retry";
       loadBtn.disabled = false;
       loadBtn.dataset.mode = "retry";
@@ -375,12 +375,14 @@
       signoutBtn.disabled = true;
       try {
         const blob = await downloadAndBundle(files, (i, total, name, hit) => {
-          status.textContent = `${hit ? "From cache" : "Fetching"} ${i} of ${total}: ${name}`;
+          status.textContent = hit
+            ? `Restoring ${i} of ${total} from cache: ${name}`
+            : `Fetching ${i} of ${total}: ${name}`;
         });
         const fromCache = blob.__fromCache || 0;
         status.textContent = fromCache
-          ? `Handing off to the parser (${fromCache} of ${files.length} from cache)…`
-          : "Handing off to the parser…";
+          ? `Preparing trips (${fromCache} from cache)…`
+          : "Preparing trips…";
         const file = new File([blob], `all_trips.dbb`, { type: "application/zip" });
         closeModal(root);
         if (typeof window.eucViewerLoadFile === "function") {
@@ -389,7 +391,7 @@
           alert("Viewer not ready — try refreshing the page.");
         }
       } catch (e) {
-        status.textContent = "Failed: " + (e.message || e);
+        status.textContent = "Couldn't fetch: " + (e.message || e);
         loadBtn.disabled = false;
         signoutBtn.disabled = false;
       }
@@ -428,7 +430,7 @@
     if (recents) recents.classList.add("hidden");
     if (progressArea) progressArea.classList.remove("hidden");
     if (progressText) {
-      progressText.textContent = "Listing Dropbox trips…";
+      progressText.textContent = "Connecting…";
       progressText.classList.remove("error");
     }
     if (progressFill) progressFill.style.width = "10%";
@@ -448,11 +450,15 @@
     try {
       const files = await dbx.listTripFiles();
       if (!files.length) {
-        bail("No trips found in your Dropbox.");
+        bail("No trips found.");
         return;
       }
-      const blob = await downloadAndBundle(files, (i, total) => {
-        if (progressText) progressText.textContent = `Fetching ${i} of ${total}`;
+      const blob = await downloadAndBundle(files, (i, total, _name, hit) => {
+        if (progressText) {
+          progressText.textContent = hit
+            ? `Restoring ${i} of ${total} from cache`
+            : `Fetching ${i} of ${total}`;
+        }
         if (progressFill) progressFill.style.width = Math.round((i / total) * 90) + "%";
       });
       if (progressFill) progressFill.style.width = "100%";
@@ -463,7 +469,7 @@
         throw new Error("Viewer not ready");
       }
     } catch (e) {
-      bail("Dropbox load failed: " + (e.message || e));
+      bail("Couldn't reach Dropbox: " + (e.message || e));
     }
   }
 
