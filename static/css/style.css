@@ -110,7 +110,7 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 14px;
     width: 100%;
-    max-width: 460px;
+    max-width: 560px;
     max-height: calc(100vh - 3rem);
     overflow: auto;
     color: rgba(224, 232, 240, 0.88);
@@ -402,10 +402,19 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
     list-style: none;
     margin: 0.55rem 0 0;
     padding: 0;
-    max-height: 220px;
+    max-height: 260px;
     overflow-y: auto;
     border-top: 1px solid rgba(255, 255, 255, 0.06);
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
 }
+#source-instructions .dbx-rows::-webkit-scrollbar { width: 8px; }
+#source-instructions .dbx-rows::-webkit-scrollbar-track { background: transparent; }
+#source-instructions .dbx-rows::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.14);
+    border-radius: 4px;
+}
+#source-instructions .dbx-rows::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.25); }
 #source-instructions .dbx-row {
     display: grid;
     grid-template-columns: 1fr auto auto auto;
@@ -430,16 +439,17 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
     white-space: nowrap;
 }
 #source-instructions .dbx-row-tag {
-    font-size: 0.66rem;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    padding: 2px 7px;
-    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
     background: rgba(255, 255, 255, 0.05);
-    color: rgba(255, 255, 255, 0.5);
+    color: rgba(255, 255, 255, 0.45);
 }
 #source-instructions .dbx-row.is-cached .dbx-row-tag {
-    background: rgba(0, 200, 130, 0.16);
+    background: rgba(0, 200, 130, 0.18);
     color: #80e6b4;
 }
 #source-instructions .dbx-row-open {

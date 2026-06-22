@@ -1525,7 +1525,13 @@ document.addEventListener("DOMContentLoaded", function () {
             await navigator.clipboard.writeText(viewerUrl);
             flashShareStatus(shareBtn, "Link copied", false);
           } catch (err) {
-            flashShareStatus(shareBtn, "Share failed", true);
+            const msg = String(err && err.message || err);
+            const friendly = /sharing\.write/i.test(msg)
+              ? "Enable sharing.write in Dropbox App Console"
+              : /sharing\.read/i.test(msg)
+                ? "Enable sharing.read in Dropbox App Console"
+                : "Share failed";
+            flashShareStatus(shareBtn, friendly, true);
             console.warn("Share link error:", err);
           } finally {
             shareBtn.classList.remove("is-busy");

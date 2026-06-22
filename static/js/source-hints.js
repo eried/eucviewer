@@ -254,6 +254,8 @@
       }
       const totalBytes = files.reduce((s, e) => s + (e.size || 0), 0);
       const cachedCount = cachedSet.size;
+      const iconCached = `<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 8.5l4 4 8-9"/></svg>`;
+      const iconRemote = `<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 11.5h6a3 3 0 0 0 .3-5.97A4.5 4.5 0 0 0 2.5 7.7a2.7 2.7 0 0 0 2 3.8z"/><path d="M8 8v4"/><path d="M6 10l2 2 2-2"/></svg>`;
       const rows = files.map((f) => {
         const cached = cachedSet.has(f.path);
         const date = f.modified ? f.modified.slice(0, 10) : "";
@@ -261,7 +263,7 @@
           <li class="dbx-row${cached ? " is-cached" : ""}" data-path="${escapeHtml(f.path)}">
             <span class="dbx-row-name" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</span>
             <span class="dbx-row-meta">${escapeHtml(date)} &middot; ${formatBytes(f.size || 0)}</span>
-            <span class="dbx-row-tag">${cached ? "cached" : "remote"}</span>
+            <span class="dbx-row-tag" title="${cached ? "Already cached locally" : "Will be fetched from Dropbox"}">${cached ? iconCached : iconRemote}</span>
             <button type="button" class="dbx-row-open" data-path="${escapeHtml(f.path)}" title="Load just this trip">Open</button>
           </li>
         `;
