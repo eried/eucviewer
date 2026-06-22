@@ -1643,21 +1643,33 @@
         ? tooRecent + " trip" + (tooRecent === 1 ? "" : "s") + " from the last few days isn't in the archive yet. Open-Meteo's historical data lags about 5 days. Click to try again."
         : "";
     }
+    function setWeatherStatus(mainText, extras) {
+      weatherStatus.textContent = "";
+      if (mainText) weatherStatus.appendChild(document.createTextNode(mainText));
+      if (extras && extras.length) {
+        const icon = document.createElement("span");
+        icon.className = "info-icon";
+        icon.title = extras.join("\n");
+        icon.textContent = "i";
+        if (mainText) weatherStatus.appendChild(document.createTextNode(" "));
+        weatherStatus.appendChild(icon);
+      }
+    }
     if (missing > 0) {
       weatherBtn.textContent = "Add weather for " + missing + " more";
       weatherBtn.disabled = false;
       const extras = [];
-      if (tooRecent) extras.push(tooRecent + " from the last few days, archive lags ~5 days");
-      if (noGps) extras.push(noGps + " no GPS");
-      if (failedClusters) extras.push(failedClusters + " location" + (failedClusters > 1 ? "s" : "") + " failed");
-      weatherStatus.textContent = covered + " of " + dated.length + " trips ready" + (extras.length ? " (" + extras.join(", ") + ")" : "");
+      if (tooRecent) extras.push(tooRecent + " from the last few days — Open-Meteo archive lags ~5 days");
+      if (noGps) extras.push(noGps + " without GPS");
+      if (failedClusters) extras.push(failedClusters + " location" + (failedClusters > 1 ? "s" : "") + " failed to fetch");
+      setWeatherStatus(covered + " of " + dated.length + " trips ready", extras);
     } else {
       weatherBtn.textContent = "Weather added · " + covered + " of " + dated.length + " trips";
       weatherBtn.disabled = true;
       const extras = [];
-      if (tooRecent) extras.push(tooRecent + " from the last few days, archive lags ~5 days");
-      if (noGps) extras.push(noGps + " no GPS");
-      weatherStatus.textContent = extras.length ? "(" + extras.join(", ") + ")" : "";
+      if (tooRecent) extras.push(tooRecent + " from the last few days — Open-Meteo archive lags ~5 days");
+      if (noGps) extras.push(noGps + " without GPS");
+      setWeatherStatus("", extras);
     }
   }
   weatherBtn.addEventListener("click", fetchWeather);
