@@ -314,7 +314,7 @@
         const file = new File([blob], `dropbox_${f.name.replace(/\.[^.]+$/, "")}.dbb`, { type: "application/zip" });
         closeModal(root);
         if (typeof window.eucViewerLoadFile === "function") {
-          window.eucViewerLoadFile(file);
+          window.eucViewerLoadFile(file, { dropboxMap: blob.__dropboxMap });
         }
       } catch (e) {
         status.textContent = "Failed: " + (e.message || e);
@@ -354,7 +354,7 @@
         const file = new File([blob], `dropbox_${stamp}.dbb`, { type: "application/zip" });
         closeModal(root);
         if (typeof window.eucViewerLoadFile === "function") {
-          window.eucViewerLoadFile(file);
+          window.eucViewerLoadFile(file, { dropboxMap: blob.__dropboxMap });
         } else {
           alert("Viewer not ready — try refreshing the page.");
         }
@@ -421,7 +421,7 @@
       const stamp = new Date().toISOString().slice(0, 10);
       const file = new File([blob], `dropbox_${stamp}.dbb`, { type: "application/zip" });
       if (typeof window.eucViewerLoadFile === "function") {
-        window.eucViewerLoadFile(file);
+        window.eucViewerLoadFile(file, { dropboxMap: blob.__dropboxMap });
       } else {
         throw new Error("Viewer not ready");
       }
@@ -435,6 +435,7 @@
     const zip = new window.JSZip();
     const used = new Set();
     const cache = window.DropboxSource && window.DropboxSource.cache;
+    const dropboxMap = {};
     let fromCache = 0;
     for (let i = 0; i < files.length; i += 1) {
       const f = files[i];
@@ -464,9 +465,11 @@
       }
       const name = uniqueName(f.name, used);
       zip.file(name, blob);
+      dropboxMap[name] = f.path;
     }
     const out = await zip.generateAsync({ type: "blob", compression: "STORE" });
     out.__fromCache = fromCache;
+    out.__dropboxMap = dropboxMap;
     return out;
   }
 

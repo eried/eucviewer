@@ -198,6 +198,42 @@
     Object.values(STORE).forEach((k) => localStorage.removeItem(k));
   }
 
+  // Return a public direct-download URL for a file in the app folder.
+  // Reuses an existing shared link if Dropbox already minted one for the
+  // path; otherwise creates one with public visibility. Final URL is
+  // rewritten to dl.dropboxusercontent.com so a browser can fetch it
+  // without CORS pain.
+  async function getOrCreateShareLink(path) {
+    let url = "";
+    try {
+      const resp = await rpc("/2/sharing/create_shared_link_with_settings", {
+        path,
+        settings: { requested_visibility: { ".tag": "public" } },
+      });
+      url = resp && resp.url ? resp.url : "";
+    } catch (e) {
+      const msg = String(e.message || e);
+      if (!/shared_link_already_exists/i.test(msg)) throw e;
+      const list = await rpc("/2/sharing/list_shared_links", {
+        path, direct_only: true,
+      });
+      if (list && list.links && list.links.length) url = list.links[0].url;
+    }
+    if (!url) throw new Error("Dropbox did not return a share URL");
+    return toDirectLink(url);
+  }
+
+  function toDirectLink(url) {
+    try {
+      const u = new URL(url);
+      if (u.hostname === "www.dropbox.com" || u.hostname === "dropbox.com") {
+        u.hostname = "dl.dropboxusercontent.com";
+      }
+      u.searchParams.set("dl", "1");
+      return u.toString();
+    } catch (_) { return url; }
+  }
+
   // --- Per-file blob cache --------------------------------------------
   // Trips are immutable once written. Stash each downloaded file by
   // Dropbox path; check content_hash on each list to detect rewrites.
@@ -304,6 +340,7 @@
     signOut,
     maybeHandleCallback,
     consumeJustConnected,
+    getOrCreateShareLink,
     cache,
   };
 

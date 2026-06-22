@@ -683,6 +683,12 @@ document.addEventListener("DOMContentLoaded", function () {
   let recentDbPromise = null;
   const recentUi = createRecentFilesUi();
 
+  // Stash a filename → dropbox path map. Set by the Dropbox source right
+  // before it calls handleFile so we can re-attach a sharable origin to
+  // each track once the parser hands them back. Cleared as soon as it's
+  // been consumed so a regular drag-and-drop afterwards doesn't inherit it.
+  let pendingDropboxMap = null;
+
   // --- Upload with client-side parsing ---
   async function handleFile(file, append) {
     const lname = file.name.toLowerCase();
@@ -732,6 +738,21 @@ document.addEventListener("DOMContentLoaded", function () {
         setProgress("No trip data found in file", true);
         if (!append) uploadLabel.classList.remove("hidden");
         return;
+      }
+
+      // If the loader handed us a Dropbox path map, attach each track's
+      // origin path so the trip list can offer a Share button later.
+      if (pendingDropboxMap) {
+        const m = pendingDropboxMap;
+        pendingDropboxMap = null;
+        for (const t of parsedTracks) {
+          const direct = m[t.name];
+          const fromCsv = m[t.name + ".csv"];
+          const fromXlsx = m[t.name + ".xlsx"];
+          const fromGpx = m[t.name + ".gpx"];
+          const path = direct || fromCsv || fromXlsx || fromGpx;
+          if (path) t.dropboxPath = path;
+        }
       }
 
       // Show the trip list immediately so the post-parse IDB write doesn't
@@ -1443,6 +1464,10 @@ document.addEventListener("DOMContentLoaded", function () {
             <div class="trip-date">${formatTripLabel(t)}</div>
             <div class="trip-meta">${meta}</div>
           </div>
+          ${t.dropboxPath ? `
+          <button type="button" class="share-btn" data-idx="${i}" title="Copy a shareable viewer link">
+            <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="3.5" r="2"/><circle cx="4" cy="8" r="2"/><circle cx="12" cy="12.5" r="2"/><line x1="5.7" y1="7" x2="10.3" y2="4.5"/><line x1="5.7" y1="9" x2="10.3" y2="11.5"/></svg>
+          </button>` : ""}
           <a class="inspect-btn" href="inspector.html?i=${i}" target="_blank" rel="noopener" title="Open trip inspector in a new tab">
             <svg viewBox="0 0 16 16" width="14" height="14"><circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="10.5" y1="10.5" x2="14" y2="14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
           </a>
@@ -1483,14 +1508,52 @@ document.addEventListener("DOMContentLoaded", function () {
         });
       });
 
+      const shareBtn = li.querySelector(".share-btn");
+      if (shareBtn) {
+        shareBtn.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          if (!window.DropboxSource || !window.DropboxSource.isAuthenticated()) {
+            flashShareStatus(shareBtn, "Sign in to Dropbox first", true);
+            return;
+          }
+          const original = shareBtn.innerHTML;
+          shareBtn.classList.add("is-busy");
+          shareBtn.innerHTML = "…";
+          try {
+            const direct = await window.DropboxSource.getOrCreateShareLink(t.dropboxPath);
+            const viewerUrl = location.origin + location.pathname + "?file=" + encodeURIComponent(direct);
+            await navigator.clipboard.writeText(viewerUrl);
+            flashShareStatus(shareBtn, "Link copied", false);
+          } catch (err) {
+            flashShareStatus(shareBtn, "Share failed", true);
+            console.warn("Share link error:", err);
+          } finally {
+            shareBtn.classList.remove("is-busy");
+            shareBtn.innerHTML = original;
+          }
+        });
+      }
+
       li.addEventListener("click", (e) => {
         if (e.target.closest(".trip-check")) return;
         if (e.target.closest(".inspect-btn")) { e.stopPropagation(); return; }
+        if (e.target.closest(".share-btn")) { e.stopPropagation(); return; }
         if (e.target.closest(".chart-wrap")) return;
         if (e.target.closest('.detail-row[data-toggle="1"]')) return;
         selectTrip(i);
       });
       return li;
+    }
+
+    function flashShareStatus(btn, msg, isError) {
+      const old = btn.title;
+      btn.title = msg;
+      btn.classList.toggle("share-error", !!isError);
+      btn.classList.add("share-flash");
+      setTimeout(() => {
+        btn.classList.remove("share-flash", "share-error");
+        btn.title = old;
+      }, 1800);
     }
 
     function updateGroupCheckbox(groupEl) {
@@ -2471,12 +2534,52 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // Exposed so the Dropbox source can hand a Blob (built from N downloaded
   // CSVs zipped into a synthetic .dbb) into the normal parse + recents flow.
+  // opts.dropboxMap maps inner filename → dropbox path so tracks can later
+  // generate share links pointing back at the original file.
   window.eucViewerLoadFile = function (file, opts) {
+    if (opts && opts.dropboxMap) pendingDropboxMap = opts.dropboxMap;
     return handleFile(file, !!(opts && opts.append));
   };
 
+  // Boot path: ?file=<encoded url> downloads + loads + drops the param so
+  // a refresh doesn't re-fetch. Used by Dropbox share links.
+  async function loadFromUrl(rawUrl) {
+    uploadLabel.classList.add("hidden");
+    progressArea.classList.remove("hidden");
+    progressFill.style.width = "20%";
+    progressText.textContent = "Fetching shared trip…";
+    try {
+      const res = await fetch(rawUrl, { credentials: "omit" });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const blob = await res.blob();
+      // Try to recover the original filename from the URL path.
+      let name = "shared.csv";
+      try {
+        const u = new URL(rawUrl);
+        const last = u.pathname.split("/").filter(Boolean).pop();
+        if (last && /\.(csv|gpx|xlsx|dbb)$/i.test(last)) name = decodeURIComponent(last);
+      } catch (_) {}
+      const file = new File([blob], name, { type: blob.type || "application/octet-stream" });
+      try {
+        const clean = location.origin + location.pathname + location.hash;
+        history.replaceState(null, "", clean);
+      } catch (_) {}
+      progressFill.style.width = "60%";
+      await handleFile(file);
+    } catch (e) {
+      progressText.textContent = "Couldn't load shared trip: " + (e.message || e);
+      progressText.classList.add("error");
+      uploadLabel.classList.remove("hidden");
+    }
+  }
+
   // --- Init ---
-  const isEmbedded = new URLSearchParams(location.search).has("embedded");
+  const initParams = new URLSearchParams(location.search);
+  const sharedFileUrl = initParams.get("file");
+  const isEmbedded = initParams.has("embedded");
+  if (sharedFileUrl) {
+    loadFromUrl(sharedFileUrl);
+  }
   if (isEmbedded) {
     // Android WebView's GPU compositor silently drops backdrop-filter
     // (verified via an in-app diagnostic: Chrome browser blurs, WebView
