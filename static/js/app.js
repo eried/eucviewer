@@ -694,7 +694,15 @@ document.addEventListener("DOMContentLoaded", function () {
   let pendingSource = null;
 
   // --- Upload with client-side parsing ---
-  async function handleFile(file, append) {
+  async function handleFile(file, appendOrOpts) {
+    // Back-compat: callers used to pass a plain boolean for append. Now they
+    // can pass an options object {append, progressStart} so a wrapping
+    // loader (URL fetch) can map parse to a sub-range like 50–100 % and
+    // keep one continuous progress bar.
+    const opts = (typeof appendOrOpts === "object" && appendOrOpts) ? appendOrOpts : {};
+    const append = typeof appendOrOpts === "boolean" ? appendOrOpts : !!opts.append;
+    const progressStart = Math.max(0, Math.min(99, Number(opts.progressStart) || 0));
+    const progressScale = (100 - progressStart) / 100;
     const lname = file.name.toLowerCase();
     if (!lname.endsWith(".dbb") && !lname.endsWith(".csv") && !lname.endsWith(".gpx") && !lname.endsWith(".xlsx")) return;
 
@@ -729,7 +737,9 @@ document.addEventListener("DOMContentLoaded", function () {
       if (hint) hint.classList.add("hidden");
       if (recentUi && recentUi.section) recentUi.section.classList.add("hidden");
       progressArea.classList.remove("hidden");
-      progressFill.style.width = "0%";
+      // Only zero the bar when there's no upstream pre-fetch already
+      // showing partial progress; otherwise resume from progressStart.
+      progressFill.style.width = progressStart + "%";
     }
     setProgress("Loading...");
 
@@ -737,7 +747,8 @@ document.addEventListener("DOMContentLoaded", function () {
       const parsedTracks = await parseFileLocally(parserWorker, file, (msg) => {
         if (msg.type === "progress") {
           const pct = Math.round((msg.current / msg.total) * 100);
-          if (!append) progressFill.style.width = pct + "%";
+          const display = Math.round(progressStart + pct * progressScale);
+          if (!append) progressFill.style.width = display + "%";
           setProgress(`Parsing trip ${msg.current} of ${msg.total}`);
         }
       });
@@ -2646,15 +2657,41 @@ document.addEventListener("DOMContentLoaded", function () {
   // Boot path: ?file=<encoded url> downloads + loads + drops the param so
   // a refresh doesn't re-fetch. Used by Dropbox share links.
   async function loadFromUrl(rawUrl) {
+    if (uploadActions) uploadActions.classList.add("hidden");
     uploadLabel.classList.add("hidden");
+    const hint = document.getElementById("upload-hint");
+    if (hint) hint.classList.add("hidden");
+    if (recentUi && recentUi.section) recentUi.section.classList.add("hidden");
     progressArea.classList.remove("hidden");
-    progressFill.style.width = "20%";
-    progressText.textContent = "Fetching shared trip…";
+    progressText.classList.remove("error");
+    progressText.textContent = "Fetching trip…";
+    progressFill.style.width = "5%";
     try {
       const res = await fetch(rawUrl, { credentials: "omit" });
       if (!res.ok) throw new Error("HTTP " + res.status);
-      const blob = await res.blob();
-      // Try to recover the original filename from the URL path.
+      // Stream the response so the progress bar tracks real bytes, not
+      // a jump from 5% to 50%. Falls back to res.blob() when the server
+      // doesn't return a content-length (Dropbox CDN usually does).
+      const total = Number(res.headers.get("content-length")) || 0;
+      let blob;
+      if (total && res.body && typeof res.body.getReader === "function") {
+        const reader = res.body.getReader();
+        const chunks = [];
+        let received = 0;
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          chunks.push(value);
+          received += value.length;
+          const pct = 5 + Math.round((received / total) * 45);
+          progressFill.style.width = pct + "%";
+          progressText.textContent = "Fetching trip… " + Math.round((received / total) * 100) + "%";
+        }
+        blob = new Blob(chunks);
+      } else {
+        blob = await res.blob();
+        progressFill.style.width = "50%";
+      }
       let name = "shared.csv";
       try {
         const u = new URL(rawUrl);
@@ -2666,12 +2703,18 @@ document.addEventListener("DOMContentLoaded", function () {
         const clean = location.origin + location.pathname + location.hash;
         history.replaceState(null, "", clean);
       } catch (_) {}
-      progressFill.style.width = "60%";
-      await handleFile(file);
+      // Hand off to handleFile but keep the progress bar continuous: parse
+      // maps to 50-100% instead of resetting to 0.
+      await handleFile(file, { progressStart: 50 });
     } catch (e) {
-      progressText.textContent = "Couldn't load shared trip: " + (e.message || e);
+      progressText.textContent = "Couldn't load trip: " + (e.message || e);
       progressText.classList.add("error");
+      if (uploadActions) uploadActions.classList.remove("hidden");
       uploadLabel.classList.remove("hidden");
+      if (hint) hint.classList.remove("hidden");
+      if (recentUi && recentUi.section && recentUi.list.children.length) {
+        recentUi.section.classList.remove("hidden");
+      }
     }
   }
 
