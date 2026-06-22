@@ -1071,8 +1071,43 @@ document.addEventListener("DOMContentLoaded", function () {
     applyRoute();
   }
 
+  // Fetch a trip file from a URL (e.g. a Dropbox shared link with ?dl=1
+  // appended) and load it through the standard parser pipeline. Used by
+  // the `#trip=<url>` deep link that the EUC Planet mobile app fires for
+  // its "Inspect online" action.
+  async function loadTripFromUrl(rawUrl) {
+    overlay.classList.remove("hidden");
+    panel.classList.add("hidden");
+    progressArea.classList.remove("hidden");
+    progressText.textContent = "Downloading trip…";
+    progressText.classList.remove("error");
+    try {
+      const resp = await fetch(rawUrl, { redirect: "follow" });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const blob = await resp.blob();
+      // The URL may end in .csv?dl=1; strip the query string when
+      // deriving the filename so the extension check in handleFile
+      // recognises it.
+      const fname = (rawUrl.split("/").pop() || "trip.csv").split("?")[0];
+      const file = new File([blob], fname, { type: blob.type || "text/csv" });
+      await handleFile(file, false);
+    } catch (e) {
+      progressText.textContent = "Couldn’t fetch the shared trip: " + (e.message || e);
+      progressText.classList.add("error");
+    }
+  }
+
   function applyRoute() {
     const hash = location.hash;
+    // `#trip=<encoded-url>` is the deep link used by the EUC Planet
+    // mobile app's "Inspect online" action: a public Dropbox link with
+    // `?dl=1` so the CSV downloads directly. We fetch it, run it through
+    // the normal handleFile pipeline, then navigate to #view.
+    if (hash.startsWith("#trip=")) {
+      const url = decodeURIComponent(hash.substring("#trip=".length));
+      loadTripFromUrl(url);
+      return;
+    }
     if (hash === "#view" && allTracks.length) {
       overlay.classList.add("hidden");
       panel.classList.remove("hidden");
