@@ -1071,7 +1071,7 @@ document.addEventListener("DOMContentLoaded", function () {
         // saved before the rename ("Dropbox 244 trips 2026-06-22.dbb")
         // don't repeat info already shown by the glyph and meta line.
         const isMultiDropbox = item.source === "dropbox" && (item.tripCount || 0) > 1;
-        const displayName = isMultiDropbox ? "All trips" : stripExt(item.fileName);
+        const displayName = isMultiDropbox ? "all_trips" : stripExt(item.fileName);
         row.innerHTML = `
           <button type="button" class="recent-file-load">
             <span class="recent-file-name">${sourceGlyph}${escapeHtml(displayName)}</span>

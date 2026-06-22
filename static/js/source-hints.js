@@ -381,7 +381,7 @@
         status.textContent = fromCache
           ? `Handing off to the parser (${fromCache} of ${files.length} from cache)…`
           : "Handing off to the parser…";
-        const file = new File([blob], `All trips.dbb`, { type: "application/zip" });
+        const file = new File([blob], `all_trips.dbb`, { type: "application/zip" });
         closeModal(root);
         if (typeof window.eucViewerLoadFile === "function") {
           window.eucViewerLoadFile(file, { dropboxMap: blob.__dropboxMap, source: "dropbox" });
@@ -456,7 +456,7 @@
         if (progressFill) progressFill.style.width = Math.round((i / total) * 90) + "%";
       });
       if (progressFill) progressFill.style.width = "100%";
-      const file = new File([blob], `All trips.dbb`, { type: "application/zip" });
+      const file = new File([blob], `all_trips.dbb`, { type: "application/zip" });
       if (typeof window.eucViewerLoadFile === "function") {
         window.eucViewerLoadFile(file, { dropboxMap: blob.__dropboxMap, source: "dropbox" });
       } else {
