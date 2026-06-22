@@ -129,7 +129,7 @@
       <ol class="src-steps">
         <li>Open <a href="https://euc.world/account/tours" target="_blank" rel="noopener">euc.world</a>, sign in.</li>
         <li>Open a tour from the list.</li>
-        <li>Use the tour's <strong>Menu</strong> &rarr; <strong>Export to XLSX</strong> or <strong>Export to GPX</strong>.
+        <li>Use the tour's <strong>Menu</strong> &rarr; <strong>Export to XLSX</strong> or <strong>GPX</strong>.
           <div class="src-hint">XLSX has full telemetry. GPX is GPS only.</div></li>
         <li>Drop the file here.</li>
       </ol>
