@@ -993,10 +993,42 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   async function loadRecentFile(id) {
-    const entry = await getRecentFile(id);
-    if (!entry || !entry.tracks || !entry.tracks.length) return;
-    saveTracks(entry.tracks);
-    loadTracks(entry.tracks);
+    // Same UI choreography as a fresh upload so 200-trip libraries don't
+    // look frozen: hide the entry surfaces, show the indeterminate
+    // progress bar with a "Loading recent…" caption, then yield twice so
+    // the paint actually lands before the synchronous loadTracks() that
+    // builds hundreds of DOM nodes blocks the main thread.
+    if (uploadActions) uploadActions.classList.add("hidden");
+    uploadLabel.classList.add("hidden");
+    const hint = document.getElementById("upload-hint");
+    if (hint) hint.classList.add("hidden");
+    if (recentUi && recentUi.section) recentUi.section.classList.add("hidden");
+    progressArea.classList.remove("hidden");
+    progressText.classList.remove("error");
+    progressText.textContent = "Loading…";
+    progressFill.classList.add("marquee");
+    progressFill.style.width = "100%";
+    try {
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const entry = await getRecentFile(id);
+      if (!entry || !entry.tracks || !entry.tracks.length) {
+        progressText.textContent = "Recent entry was empty";
+        progressText.classList.add("error");
+        progressFill.classList.remove("marquee");
+        if (uploadActions) uploadActions.classList.remove("hidden");
+        uploadLabel.classList.remove("hidden");
+        if (hint) hint.classList.remove("hidden");
+        if (recentUi && recentUi.section && recentUi.list.children.length) {
+          recentUi.section.classList.remove("hidden");
+        }
+        return;
+      }
+      saveTracks(entry.tracks);
+      loadTracks(entry.tracks);
+    } finally {
+      progressFill.classList.remove("marquee");
+      progressArea.classList.add("hidden");
+    }
   }
 
   function formatRecentTime(isoString) {
