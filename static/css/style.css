@@ -110,7 +110,7 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 14px;
     width: 100%;
-    max-width: 560px;
+    max-width: 460px;
     max-height: calc(100vh - 3rem);
     overflow: auto;
     color: rgba(224, 232, 240, 0.88);
@@ -122,6 +122,7 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
         0 8px 24px rgba(0, 0, 0, 0.4);
     animation: srcCardIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 }
+#source-instructions .src-card.is-dropbox { max-width: 560px; }
 #source-instructions .src-head {
     display: flex;
     align-items: center;
@@ -554,13 +555,24 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
     margin-top: 0.5rem;
     flex-wrap: wrap;
 }
+/* Shared sizing so the cyan Upload trips pill and the dark Dropbox split
+   look like a matched pair — same height, same minimum width. */
+#upload-label,
+.dropbox-split {
+    height: 46px;
+    min-width: 145px;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    box-sizing: border-box;
+}
 #upload-label {
-    display: inline-block;
-    padding: 0.75rem 2rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 1.6rem;
     background: #00e5ff;
     color: #000;
-    font-weight: 600;
-    border-radius: 8px;
     cursor: pointer;
     transition: background 0.2s;
 }
@@ -571,7 +583,6 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
     align-items: stretch;
     background: rgba(255, 255, 255, 0.06);
     border: 1px solid rgba(255, 255, 255, 0.14);
-    border-radius: 8px;
     overflow: hidden;
     transition: border-color 0.18s, background 0.18s;
 }
@@ -582,8 +593,9 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
 .dropbox-main {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 0.5rem;
-    padding: 0.75rem 1.1rem;
+    padding: 0 1.1rem;
     background: transparent;
     color: #fff;
     border: none;
@@ -591,6 +603,7 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
     font: inherit;
     font-weight: 600;
     font-size: 1rem;
+    flex: 1 1 auto;
 }
 .dropbox-split:hover .dropbox-main { color: #cfe2ff; }
 .dropbox-main svg { color: #0061ff; flex: 0 0 auto; }

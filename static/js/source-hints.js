@@ -63,8 +63,9 @@
     document.body.classList.remove("src-modal-open");
   }
 
-  function wrap(bodyHtml) {
-    return `<div class="src-card" role="dialog" aria-modal="true">${bodyHtml}</div>`;
+  function wrap(bodyHtml, extraClass) {
+    const cls = "src-card" + (extraClass ? " " + extraClass : "");
+    return `<div class="${cls}" role="dialog" aria-modal="true">${bodyHtml}</div>`;
   }
 
   // Bookmarklet source — kept short. The real exporter is fetched at runtime
@@ -230,7 +231,7 @@
         </button>
       </div>
       <div id="dbx-status" class="src-hint dbx-status"></div>
-    `);
+    `, "is-dropbox");
 
     const closeBtn = root.querySelector(".src-close");
     const loadBtn = root.querySelector("#dbx-load");
