@@ -305,9 +305,14 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
 }
 #source-instructions .src-primary-btn:disabled {
     cursor: not-allowed;
-    filter: grayscale(0.4) brightness(0.85);
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.35);
     box-shadow: none;
     transform: none;
+}
+#source-instructions .src-primary-btn:disabled:hover {
+    transform: none;
+    box-shadow: none;
 }
 #source-instructions .src-secondary-btn {
     display: inline-flex;

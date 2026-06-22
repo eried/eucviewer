@@ -238,7 +238,8 @@
       files = entries;
       if (!entries.length) {
         listing.innerHTML = `<div class="dbx-empty">No trips found yet.</div>`;
-        loadBtn.classList.add("hidden");
+        loadLabel.textContent = "Load trips";
+        loadBtn.disabled = true;
         return;
       }
       const totalBytes = entries.reduce((s, e) => s + (e.size || 0), 0);
