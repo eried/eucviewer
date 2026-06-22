@@ -384,12 +384,12 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
     min-height: 1.1rem;
 }
 #source-instructions .dbx-conn {
-    margin: 0.6rem 1.3rem 0;
-    padding: 0.45rem 0.7rem;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    border-radius: 8px;
-    font-size: 0.8rem;
+    margin: 0.4rem 1.3rem 0;
+    padding: 0.35rem 0.6rem;
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 7px;
+    font-size: 0.78rem;
 }
 #source-instructions .dbx-conn > summary {
     list-style: none;
@@ -397,24 +397,27 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    color: rgba(224, 232, 240, 0.7);
+    color: rgba(224, 232, 240, 0.72);
 }
 #source-instructions .dbx-conn > summary::-webkit-details-marker { display: none; }
 #source-instructions .dbx-conn-caret {
     transition: transform 0.15s;
-    color: rgba(255, 255, 255, 0.45);
+    color: rgba(255, 255, 255, 0.4);
     flex-shrink: 0;
 }
 #source-instructions .dbx-conn[open] .dbx-conn-caret { transform: rotate(90deg); }
-#source-instructions .dbx-conn-label { font-weight: 600; color: #fff; }
+#source-instructions .dbx-conn-trips {
+    font-weight: 600;
+    color: #fff;
+}
 #source-instructions .dbx-conn-account {
     margin-left: auto;
-    font-size: 0.78rem;
-    color: rgba(224, 232, 240, 0.55);
+    font-size: 0.74rem;
+    color: rgba(224, 232, 240, 0.5);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    max-width: 60%;
+    max-width: 55%;
 }
 #source-instructions .dbx-conn-body {
     margin-top: 0.55rem;

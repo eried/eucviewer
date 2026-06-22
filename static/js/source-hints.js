@@ -211,13 +211,13 @@
       </div>
       <details class="dbx-conn">
         <summary>
-          <svg viewBox="0 0 16 16" width="11" height="11" class="dbx-conn-caret" aria-hidden="true"><path fill="currentColor" d="M5 3l5 5-5 5z"/></svg>
-          <span class="dbx-conn-label">Connection</span>
+          <svg viewBox="0 0 16 16" width="10" height="10" class="dbx-conn-caret" aria-hidden="true"><path fill="currentColor" d="M5 3l5 5-5 5z"/></svg>
+          <span class="dbx-conn-trips" id="dbx-conn-trips">—</span>
           <span class="dbx-conn-account">${acc ? escapeHtml(acc) : "Signed in"}</span>
         </summary>
         <div class="dbx-conn-body">
           <div class="dbx-conn-row"><span class="dbx-conn-key">Folder</span><code>Apps/EUC Planet/trips/</code></div>
-          <div class="dbx-conn-row" id="dbx-cache-row"><span class="dbx-conn-key">Cache</span><span id="dbx-cache-info">—</span></div>
+          <div class="dbx-conn-row"><span class="dbx-conn-key">Cache</span><span id="dbx-cache-info">—</span></div>
           <div class="dbx-conn-actions">
             <button type="button" id="dbx-clear-cache" class="src-link-btn">Clear cache</button>
             <button type="button" id="dbx-signout" class="src-link-btn dbx-signout">Sign out of Dropbox</button>
@@ -284,14 +284,11 @@
           </li>
         `;
       }).join("");
-      listing.innerHTML = `
-        <div class="dbx-summary">
-          <strong>${files.length}</strong> ${files.length === 1 ? "trip" : "trips"}
-          <span class="dbx-summary-sep">&middot;</span>
-          ${formatBytes(totalBytes)}
-        </div>
-        <ul class="dbx-rows">${rows}</ul>
-      `;
+      listing.innerHTML = `<ul class="dbx-rows">${rows}</ul>`;
+      const tripsEl = root.querySelector("#dbx-conn-trips");
+      if (tripsEl) {
+        tripsEl.textContent = `${files.length} ${files.length === 1 ? "trip" : "trips"} · ${formatBytes(totalBytes)}`;
+      }
       listing.scrollTop = 0;
 
       listing.querySelectorAll(".dbx-row-open").forEach((btn) => {
