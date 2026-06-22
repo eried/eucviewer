@@ -6,7 +6,7 @@
     <title>EUC Planet Trip Viewer</title>
     <link rel="icon" href="static/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="static/css/style.css?v=41" />
+    <link rel="stylesheet" href="static/css/style.css?v=42" />
     <script type="text/javascript">
         (function(c,l,a,r,i,t,y){
             c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
@@ -78,12 +78,17 @@
                     Upload trips
                     <input type="file" id="file-input" accept=".dbb,.csv,.gpx,.xlsx" />
                 </label>
-                <button type="button" id="dropbox-btn" class="hint-source" data-source="dropbox" title="Load trips from Dropbox">
-                    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-                        <path fill="currentColor" d="M6 2 0 6l6 4 6-4-6-4zm12 0-6 4 6 4 6-4-6-4zM0 14l6 4 6-4-6-4-6 4zm18-4-6 4 6 4 6-4-6-4zM6 19l6 4 6-4-6-4-6 4z"/>
-                    </svg>
-                    <span>Dropbox</span>
-                </button>
+                <div id="dropbox-split" class="dropbox-split">
+                    <button type="button" id="dropbox-btn" class="hint-source dropbox-main" data-source="dropbox" title="Load trips from Dropbox">
+                        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                            <path fill="currentColor" d="M6 2 0 6l6 4 6-4-6-4zm12 0-6 4 6 4 6-4-6-4zM0 14l6 4 6-4-6-4-6 4zm18-4-6 4 6 4 6-4-6-4zM6 19l6 4 6-4-6-4-6 4z"/>
+                        </svg>
+                        <span>Dropbox</span>
+                    </button>
+                    <button type="button" id="dropbox-menu-btn" class="hint-source dropbox-menu" data-source="dropbox" data-dropbox-modal="1" title="Open Dropbox dialog" aria-label="Open Dropbox dialog">
+                        <svg viewBox="0 0 16 16" width="10" height="10" aria-hidden="true"><path fill="currentColor" d="M3 5l5 6 5-6z"/></svg>
+                    </button>
+                </div>
             </div>
             <div id="source-instructions" class="hidden"></div>
             <div id="progress-area" class="hidden">
@@ -124,7 +129,7 @@
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-    <script src="static/js/app.js?v=60"></script>
+    <script src="static/js/app.js?v=61"></script>
     <script src="static/js/dropbox-source.js?v=4"></script>
     <script src="static/js/source-hints.js?v=20"></script>
 </body>

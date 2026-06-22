@@ -665,6 +665,7 @@ document.addEventListener("DOMContentLoaded", function () {
   const uploadBox = document.getElementById("upload-box");
   const fileInput = document.getElementById("file-input");
   const uploadLabel = document.getElementById("upload-label");
+  const uploadActions = document.getElementById("upload-actions");
   const progressArea = document.getElementById("progress-area");
   const progressFill = document.getElementById("progress-fill");
   const progressText = document.getElementById("progress-text");
@@ -719,7 +720,9 @@ document.addEventListener("DOMContentLoaded", function () {
     };
 
     if (!append) {
+      if (uploadActions) uploadActions.classList.add("hidden");
       uploadLabel.classList.add("hidden");
+      if (recentUi && recentUi.section) recentUi.section.classList.add("hidden");
       progressArea.classList.remove("hidden");
       progressFill.style.width = "0%";
     }
@@ -736,7 +739,13 @@ document.addEventListener("DOMContentLoaded", function () {
 
       if (!parsedTracks.length) {
         setProgress("No trip data found in file", true);
-        if (!append) uploadLabel.classList.remove("hidden");
+        if (!append) {
+          if (uploadActions) uploadActions.classList.remove("hidden");
+          uploadLabel.classList.remove("hidden");
+          if (recentUi && recentUi.section && recentUi.list.children.length) {
+            recentUi.section.classList.remove("hidden");
+          }
+        }
         return;
       }
 
@@ -769,7 +778,13 @@ document.addEventListener("DOMContentLoaded", function () {
         });
     } catch (e) {
       setProgress("Error: " + e.message, true);
-      if (!append) uploadLabel.classList.remove("hidden");
+      if (!append) {
+        if (uploadActions) uploadActions.classList.remove("hidden");
+        uploadLabel.classList.remove("hidden");
+        if (recentUi && recentUi.section && recentUi.list.children.length) {
+          recentUi.section.classList.remove("hidden");
+        }
+      }
     }
   }
 
