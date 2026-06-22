@@ -162,6 +162,7 @@
               name: ent.name,
               size: ent.size || 0,
               modified: ent.client_modified || ent.server_modified || "",
+              contentHash: ent.content_hash || "",
             });
           }
         }
@@ -196,6 +197,75 @@
   function signOut() {
     Object.values(STORE).forEach((k) => localStorage.removeItem(k));
   }
+
+  // --- Per-file blob cache --------------------------------------------
+  // Trips are immutable once written. Stash each downloaded file by
+  // Dropbox path; check content_hash on each list to detect rewrites.
+  // Lives in its own DB so it doesn't fight the viewer's v3 schema.
+  const CACHE_DB = "eucplanet-dropbox-cache";
+  const CACHE_VER = 1;
+  const CACHE_STORE = "files";
+
+  function openCacheDb() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(CACHE_DB, CACHE_VER);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(CACHE_STORE)) db.createObjectStore(CACHE_STORE);
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  function tx(db, mode) { return db.transaction(CACHE_STORE, mode).objectStore(CACHE_STORE); }
+  function pr(req) {
+    return new Promise((resolve, reject) => {
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  const cache = {
+    async get(path) {
+      try {
+        const db = await openCacheDb();
+        return await pr(tx(db, "readonly").get(path));
+      } catch (_) { return null; }
+    },
+    async put(path, value) {
+      try {
+        const db = await openCacheDb();
+        await pr(tx(db, "readwrite").put(value, path));
+      } catch (_) { /* quota or storage error: caching is best-effort */ }
+    },
+    async clear() {
+      try {
+        const db = await openCacheDb();
+        await pr(tx(db, "readwrite").clear());
+      } catch (_) {}
+    },
+    async stats() {
+      try {
+        const db = await openCacheDb();
+        const t = tx(db, "readonly");
+        const count = await pr(t.count());
+        let bytes = 0;
+        await new Promise((resolve) => {
+          const req = t.openCursor();
+          req.onsuccess = () => {
+            const cur = req.result;
+            if (!cur) return resolve();
+            const v = cur.value;
+            if (v && v.blob && typeof v.blob.size === "number") bytes += v.blob.size;
+            cur.continue();
+          };
+          req.onerror = () => resolve();
+        });
+        return { count, bytes };
+      } catch (_) { return { count: 0, bytes: 0 }; }
+    },
+  };
 
   let callbackPromise = null;
   function maybeHandleCallback() {
@@ -234,6 +304,7 @@
     signOut,
     maybeHandleCallback,
     consumeJustConnected,
+    cache,
   };
 
   maybeHandleCallback();

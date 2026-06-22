@@ -233,28 +233,100 @@
     });
 
     let files = [];
+    let cachedSet = new Set();
 
-    dbx.listTripFiles().then((entries) => {
-      files = entries;
-      if (!entries.length) {
+    async function refreshCachedSet() {
+      cachedSet = new Set();
+      if (!dbx.cache) return;
+      for (const f of files) {
+        if (!f.contentHash) continue;
+        const entry = await dbx.cache.get(f.path);
+        if (entry && entry.contentHash === f.contentHash) cachedSet.add(f.path);
+      }
+    }
+
+    function renderList() {
+      if (!files.length) {
         listing.innerHTML = `<div class="dbx-empty">No trips found yet.</div>`;
         loadLabel.textContent = "Load trips";
         loadBtn.disabled = true;
         return;
       }
-      const totalBytes = entries.reduce((s, e) => s + (e.size || 0), 0);
+      const totalBytes = files.reduce((s, e) => s + (e.size || 0), 0);
+      const cachedCount = cachedSet.size;
+      const rows = files.map((f) => {
+        const cached = cachedSet.has(f.path);
+        const date = f.modified ? f.modified.slice(0, 10) : "";
+        return `
+          <li class="dbx-row${cached ? " is-cached" : ""}" data-path="${escapeHtml(f.path)}">
+            <span class="dbx-row-name" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</span>
+            <span class="dbx-row-meta">${escapeHtml(date)} &middot; ${formatBytes(f.size || 0)}</span>
+            <span class="dbx-row-tag">${cached ? "cached" : "remote"}</span>
+            <button type="button" class="dbx-row-open" data-path="${escapeHtml(f.path)}" title="Load just this trip">Open</button>
+          </li>
+        `;
+      }).join("");
       listing.innerHTML = `
         <div class="dbx-summary">
-          <strong>${entries.length}</strong> trip ${entries.length === 1 ? "file" : "files"}
+          <strong>${files.length}</strong> ${files.length === 1 ? "trip" : "trips"}
           <span class="dbx-summary-sep">&middot;</span>
           ${formatBytes(totalBytes)}
+          ${dbx.cache ? `
+            <span class="dbx-summary-sep">&middot;</span>
+            <span class="dbx-cached-count">${cachedCount} cached</span>
+            ${cachedCount ? `<button type="button" id="dbx-clear-cache" class="src-link-btn dbx-clear">Clear cache</button>` : ""}
+          ` : ""}
         </div>
-        <div class="dbx-recent">
-          Newest: <code>${escapeHtml(entries[0].name)}</code>
-        </div>
+        <ul class="dbx-rows">${rows}</ul>
       `;
-      loadLabel.textContent = `Load ${entries.length} ${entries.length === 1 ? "trip" : "trips"}`;
+      // Latest is first (list is sorted desc by modified), make sure the
+      // top is visible after re-render.
+      listing.scrollTop = 0;
+
+      // Wire row Open buttons to load that single trip.
+      listing.querySelectorAll(".dbx-row-open").forEach((btn) => {
+        btn.addEventListener("click", () => loadOne(btn.dataset.path));
+      });
+      const clearBtn = listing.querySelector("#dbx-clear-cache");
+      if (clearBtn) clearBtn.addEventListener("click", clearCache);
+
+      loadLabel.textContent = `Load ${files.length} ${files.length === 1 ? "trip" : "trips"}`;
       loadBtn.disabled = false;
+    }
+
+    async function clearCache() {
+      if (!dbx.cache) return;
+      status.textContent = "Clearing cache…";
+      await dbx.cache.clear();
+      await refreshCachedSet();
+      status.textContent = "";
+      renderList();
+    }
+
+    async function loadOne(path) {
+      const f = files.find((x) => x.path === path);
+      if (!f) return;
+      loadBtn.disabled = true;
+      signoutBtn.disabled = true;
+      status.textContent = `Fetching ${f.name}…`;
+      try {
+        const blob = await downloadAndBundle([f], () => {});
+        const file = new File([blob], `dropbox_${f.name.replace(/\.[^.]+$/, "")}.dbb`, { type: "application/zip" });
+        closeModal(root);
+        if (typeof window.eucViewerLoadFile === "function") {
+          window.eucViewerLoadFile(file);
+        }
+      } catch (e) {
+        status.textContent = "Failed: " + (e.message || e);
+        loadBtn.disabled = false;
+        signoutBtn.disabled = false;
+      }
+    }
+
+    dbx.listTripFiles().then(async (entries) => {
+      files = entries;
+      await refreshCachedSet();
+      renderList();
     }).catch((e) => {
       listing.innerHTML = `<div class="dbx-error">Couldn't list folder: ${escapeHtml(e.message || String(e))}</div>`;
       loadLabel.textContent = "Retry";
@@ -271,10 +343,13 @@
       loadBtn.disabled = true;
       signoutBtn.disabled = true;
       try {
-        const blob = await downloadAndBundle(files, (i, total, name) => {
-          status.textContent = `Downloading ${i} of ${total}: ${name}`;
+        const blob = await downloadAndBundle(files, (i, total, name, hit) => {
+          status.textContent = `${hit ? "From cache" : "Fetching"} ${i} of ${total}: ${name}`;
         });
-        status.textContent = "Handing off to the parser…";
+        const fromCache = blob.__fromCache || 0;
+        status.textContent = fromCache
+          ? `Handing off to the parser (${fromCache} of ${files.length} from cache)…`
+          : "Handing off to the parser…";
         const stamp = new Date().toISOString().slice(0, 10);
         const file = new File([blob], `dropbox_${stamp}.dbb`, { type: "application/zip" });
         closeModal(root);
@@ -359,14 +434,40 @@
     if (typeof window.JSZip === "undefined") throw new Error("ZIP library not loaded");
     const zip = new window.JSZip();
     const used = new Set();
+    const cache = window.DropboxSource && window.DropboxSource.cache;
+    let fromCache = 0;
     for (let i = 0; i < files.length; i += 1) {
       const f = files[i];
-      if (onProgress) onProgress(i + 1, files.length, f.name);
-      const blob = await window.DropboxSource.downloadBlob(f.path);
+      let blob = null;
+      let hit = false;
+      if (cache) {
+        const cached = await cache.get(f.path);
+        if (cached && cached.blob && cached.contentHash && cached.contentHash === f.contentHash) {
+          blob = cached.blob;
+          hit = true;
+          fromCache += 1;
+        }
+      }
+      if (onProgress) onProgress(i + 1, files.length, f.name, hit);
+      if (!blob) {
+        blob = await window.DropboxSource.downloadBlob(f.path);
+        if (cache && f.contentHash) {
+          await cache.put(f.path, {
+            blob,
+            contentHash: f.contentHash,
+            size: f.size,
+            name: f.name,
+            modified: f.modified,
+            cachedAt: Date.now(),
+          });
+        }
+      }
       const name = uniqueName(f.name, used);
       zip.file(name, blob);
     }
-    return await zip.generateAsync({ type: "blob", compression: "STORE" });
+    const out = await zip.generateAsync({ type: "blob", compression: "STORE" });
+    out.__fromCache = fromCache;
+    return out;
   }
 
   function uniqueName(base, used) {

@@ -383,6 +383,80 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
     margin: 0 1.4rem 1.1rem;
     min-height: 1.1rem;
 }
+#source-instructions .dbx-cached-count {
+    color: rgba(128, 230, 180, 0.9);
+    font-weight: 600;
+}
+#source-instructions .dbx-clear {
+    margin-left: 0.5rem;
+    font-size: 0.74rem;
+    color: rgba(255, 255, 255, 0.45);
+    padding: 0 0.4rem;
+    border-radius: 4px;
+}
+#source-instructions .dbx-clear:hover {
+    background: rgba(255, 80, 80, 0.15);
+    color: #ffb0b0;
+}
+#source-instructions .dbx-rows {
+    list-style: none;
+    margin: 0.55rem 0 0;
+    padding: 0;
+    max-height: 220px;
+    overflow-y: auto;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+#source-instructions .dbx-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto auto;
+    align-items: center;
+    gap: 0.7rem;
+    padding: 0.45rem 0.2rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    font-size: 0.82rem;
+}
+#source-instructions .dbx-row:last-child { border-bottom: none; }
+#source-instructions .dbx-row-name {
+    color: #fff;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.78rem;
+}
+#source-instructions .dbx-row-meta {
+    color: rgba(224, 232, 240, 0.5);
+    font-size: 0.74rem;
+    white-space: nowrap;
+}
+#source-instructions .dbx-row-tag {
+    font-size: 0.66rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.05);
+    color: rgba(255, 255, 255, 0.5);
+}
+#source-instructions .dbx-row.is-cached .dbx-row-tag {
+    background: rgba(0, 200, 130, 0.16);
+    color: #80e6b4;
+}
+#source-instructions .dbx-row-open {
+    background: rgba(0, 97, 255, 0.15);
+    color: #b0c4ff;
+    border: 1px solid rgba(0, 97, 255, 0.35);
+    padding: 0.25rem 0.7rem;
+    border-radius: 6px;
+    font: inherit;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+#source-instructions .dbx-row-open:hover {
+    background: rgba(0, 97, 255, 0.32);
+    color: #fff;
+}
 
 #upload-actions {
     display: flex;
