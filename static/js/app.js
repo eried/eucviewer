@@ -1156,11 +1156,20 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function applyRoute() {
+    // `?file=<encoded-url>` is the share-style entry point: EUC Planet's
+    // Inspect online / Copy eucviewer link actions build it from a
+    // dl.dropboxusercontent.com direct CSV. Strip the query before
+    // continuing so the rest of the route logic operates on a clean URL.
+    const fileParam = new URLSearchParams(location.search).get("file");
+    if (fileParam) {
+      const url = fileParam;
+      history.replaceState(null, "", location.pathname);
+      loadTripFromUrl(url);
+      return;
+    }
     const hash = location.hash;
-    // `#trip=<encoded-url>` is the deep link used by the EUC Planet
-    // mobile app's "Inspect online" action: a public Dropbox link with
-    // `?dl=1` so the CSV downloads directly. We fetch it, run it through
-    // the normal handleFile pipeline, then navigate to #view.
+    // Legacy `#trip=<encoded-url>` deep link kept for any links shared
+    // before the move to `?file=`.
     if (hash.startsWith("#trip=")) {
       const url = decodeURIComponent(hash.substring("#trip=".length));
       loadTripFromUrl(url);
