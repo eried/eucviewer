@@ -170,25 +170,25 @@
       }
     } catch (e) {
       const msg = String(e.message || e);
-      // App Folder is created lazily — list_folder returns "not_found" until
-      // the user's app first writes something. Treat as empty, not error.
-      if (/path\/not_found/i.test(msg) || /not_found/i.test(msg)) return [];
+      // 409 from list_folder is a path-shape problem (not_found, not_folder,
+      // restricted, malformed). The user just hasn't written to /trips yet;
+      // surface as "no trips found" rather than a scary fetch error.
+      if (/\b409\b/.test(msg) || /not_found|not_folder|path\//i.test(msg)) return [];
       throw e;
     }
     out.sort((a, b) => (a.modified < b.modified ? 1 : -1));
     return out;
   }
 
+  // /2/files/download uses content.dropboxapi.com and its CORS preflight
+  // rejects the Dropbox-API-Arg header in some browser/extension setups.
+  // Two-step via get_temporary_link is bulletproof: api.dropboxapi.com
+  // (CORS-clean) hands back a short-lived presigned URL we can GET
+  // straight from the CDN, no custom headers, no auth on the second hop.
   async function downloadBlob(path) {
-    const token = await ensureToken();
-    if (!token) throw new Error("not signed in");
-    const res = await fetch("https://content.dropboxapi.com/2/files/download", {
-      method: "POST",
-      headers: {
-        Authorization: "Bearer " + token,
-        "Dropbox-API-Arg": JSON.stringify({ path }),
-      },
-    });
+    const meta = await rpc("/2/files/get_temporary_link", { path });
+    if (!meta || !meta.link) throw new Error("no temporary link for " + path);
+    const res = await fetch(meta.link);
     if (!res.ok) throw new Error("download " + path + " " + res.status);
     return await res.blob();
   }
