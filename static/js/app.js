@@ -1744,20 +1744,28 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     function setGroupChecked(container, checked) {
-      container.querySelectorAll(".trip-check").forEach(cb => {
-        const idx = parseInt(cb.dataset.idx);
-        cb.checked = checked;
-        if (checked) trackVisible.add(idx);
-        else {
-          trackVisible.delete(idx);
-          if (selectedIdx === idx) {
-            selectedIdx = -1;
-            const item = cb.closest(".trip-item");
-            if (item) item.classList.remove("active");
+      // Collect every month body inside this container (yearbody contains
+      // several, monthbody is itself one). Update trackVisible from the
+      // stashed index list so unbuilt cards toggle too.
+      const bodies = container.classList.contains("month-body")
+        ? [container]
+        : Array.from(container.querySelectorAll(".month-body"));
+      for (const body of bodies) {
+        const indices = body._tripIndices || [];
+        for (const idx of indices) {
+          if (checked) trackVisible.add(idx);
+          else {
+            trackVisible.delete(idx);
+            if (selectedIdx === idx) {
+              selectedIdx = -1;
+              const item = body.querySelector(`.trip-item[data-idx="${idx}"]`);
+              if (item) item.classList.remove("active");
+            }
           }
         }
-      });
-      // Sync inner month checkboxes when toggling a year
+      }
+      // Sync any already-built checkboxes inside the container.
+      container.querySelectorAll(".trip-check").forEach(cb => { cb.checked = checked; });
       container.querySelectorAll(".month-group").forEach(g => updateGroupCheckbox(g));
     }
 
@@ -1835,6 +1843,10 @@ document.addEventListener("DOMContentLoaded", function () {
 
       const body = document.createElement("div");
       body.className = "month-body";
+      // Stash the index list so setGroupChecked can toggle visibility
+      // even before the chunked card build has materialised the .trip-check
+      // checkboxes for this month.
+      body._tripIndices = mg.indices.slice();
       if (expandByDefault) groupEl.classList.add("expanded");
 
       header.querySelector(".month-check").addEventListener("change", (e) => {
@@ -1851,10 +1863,45 @@ document.addEventListener("DOMContentLoaded", function () {
         groupEl.classList.toggle("expanded");
       });
 
-      mg.indices.forEach(i => body.appendChild(buildTripItem(allTracks[i], i)));
+      // Build only the first few cards synchronously so the panel feels
+      // instant; queue the rest in idle chunks. For 244-trip libraries
+      // this drops the single 500–900 ms long-task warning to a series
+      // of short yields without changing the final DOM.
+      const SYNC_FIRST = expandByDefault ? 8 : 0;
+      for (let k = 0; k < Math.min(SYNC_FIRST, mg.indices.length); k += 1) {
+        body.appendChild(buildTripItem(allTracks[mg.indices[k]], mg.indices[k]));
+      }
+      if (SYNC_FIRST < mg.indices.length) {
+        scheduleCardChunks(body, mg.indices.slice(SYNC_FIRST));
+      }
       groupEl.appendChild(header);
       groupEl.appendChild(body);
       return groupEl;
+    }
+
+    // Chunked card builder: appends ~20 cards per idle slice so a 244-trip
+    // library never blocks the main thread for more than a few frames.
+    // Falls back to setTimeout(0) on browsers without requestIdleCallback.
+    function scheduleCardChunks(body, indices) {
+      const CHUNK = 20;
+      let i = 0;
+      const step = () => {
+        const end = Math.min(i + CHUNK, indices.length);
+        for (let j = i; j < end; j += 1) {
+          body.appendChild(buildTripItem(allTracks[indices[j]], indices[j]));
+        }
+        i = end;
+        if (i < indices.length) {
+          if (typeof requestIdleCallback === "function") {
+            requestIdleCallback(step, { timeout: 250 });
+          } else {
+            setTimeout(step, 0);
+          }
+        }
+      };
+      // Kick off the first deferred chunk on the next macrotask so it
+      // doesn't pile back onto the current call stack.
+      setTimeout(step, 0);
     }
 
     // Footer: add more + selected summary + export
