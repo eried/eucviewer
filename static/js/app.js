@@ -1662,12 +1662,30 @@ document.addEventListener("DOMContentLoaded", function () {
             flashShareStatus(shareBtn, "Link copied", false);
           } catch (err) {
             const msg = String(err && err.message || err);
-            const friendly = /sharing\.write/i.test(msg)
-              ? "Enable sharing.write in Dropbox App Console"
-              : /sharing\.read/i.test(msg)
-                ? "Enable sharing.read in Dropbox App Console"
-                : "Share failed";
-            flashShareStatus(shareBtn, friendly, true);
+            if (/session expired|not signed in/i.test(msg)) {
+              // The tokens have already been wiped by rpc(). Trips stay
+              // loaded — they're cached locally and don't need Dropbox
+              // to view. We just need to re-auth before this trip can
+              // generate a share link again. Ask before redirecting so
+              // the user doesn't lose any current state by accident.
+              flashShareStatus(shareBtn, "Dropbox session expired", true);
+              setTimeout(() => {
+                const ok = window.confirm(
+                  "Your Dropbox session has expired.\n\n" +
+                  "Reconnect now to share this trip? You'll come back to the viewer after sign-in."
+                );
+                if (ok && window.DropboxSource && window.DropboxSource.startOAuth) {
+                  window.DropboxSource.startOAuth();
+                }
+              }, 250);
+            } else {
+              const friendly = /sharing\.write/i.test(msg)
+                ? "Enable sharing.write in Dropbox App Console"
+                : /sharing\.read/i.test(msg)
+                  ? "Enable sharing.read in Dropbox App Console"
+                  : "Share failed";
+              flashShareStatus(shareBtn, friendly, true);
+            }
             console.warn("Share link error:", err);
           } finally {
             shareBtn.classList.remove("is-busy");
