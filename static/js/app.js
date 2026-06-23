@@ -1326,20 +1326,31 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // Auto-open panel — but only on landscape / desktop. On portrait
     // phones the panel covers the map, so we leave it closed and let the
-    // user tap the peek-tab when they want it. Mobile WebViews used to
-    // glitch the slide animation because we toggled .open inside a
-    // setTimeout right after display:none → display:flex, which ate the
-    // transition's starting state. Double-rAF: first frame commits the
-    // closed paint, second frame queues the transform transition.
+    // user tap the peek-tab when they want it.
+    //
+    // We pin the closed state with an inline transform first: Chromium
+    // sometimes drops the CSS rule's transform on the first paint after
+    // display:none → display:flex (the transition eats the starting
+    // state), and on portrait the result is the panel rendering open
+    // instead of closed. The inline style overrides the missing initial
+    // paint. Double-rAF before adding .open lets the closed paint commit
+    // so the transition animates from the right start point.
+    panel.style.transform = "translateX(320px)";
     if (window.innerWidth >= window.innerHeight) {
       requestAnimationFrame(() => {
-        requestAnimationFrame(() => panel.classList.add("open"));
+        requestAnimationFrame(() => {
+          panel.style.transform = "";
+          panel.classList.add("open");
+        });
       });
     }
 
     // Auto-select the first (newest) track so the map & details aren't empty.
+    // On portrait, pass keepPanelClosed so the highlight + map fit happen
+    // but the panel doesn't slide in over the map.
     if (tracks.length > 0) {
-      setTimeout(() => selectTrip(0), 200);
+      const keepPanelClosed = window.innerHeight > window.innerWidth;
+      setTimeout(() => selectTrip(0, { keepPanelClosed }), 200);
     }
   }
 
@@ -2573,7 +2584,7 @@ document.addEventListener("DOMContentLoaded", function () {
     subtree: true, attributes: true, attributeFilter: ["class"],
   });
 
-  function selectTrip(idx) {
+  function selectTrip(idx, opts) {
     if (selectedIdx === idx) {
       selectedIdx = -1;
       updateGlow();
@@ -2594,7 +2605,11 @@ document.addEventListener("DOMContentLoaded", function () {
 
     updateGlow();
     fitTrack(idx);
-    panel.classList.add("open");
+    // Auto-select on load doesn't want to pop the panel open on portrait —
+    // it just wants the first track highlighted on the map. Other callers
+    // (tooltip click, list click, search) leave keepPanelClosed unset so
+    // the panel still opens like before.
+    if (!(opts && opts.keepPanelClosed)) panel.classList.add("open");
 
     document.querySelectorAll(".trip-item.active").forEach((el) => el.classList.remove("active"));
     const el = tripList.querySelector(`.trip-item[data-idx="${idx}"]`);
