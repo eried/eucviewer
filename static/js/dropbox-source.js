@@ -199,25 +199,27 @@
   }
 
   // Return a public direct-download URL for a file in the app folder.
-  // Reuses an existing shared link if Dropbox already minted one for the
-  // path; otherwise creates one with public visibility. Final URL is
-  // rewritten to dl.dropboxusercontent.com so a browser can fetch it
-  // without CORS pain.
+  // We list existing links first so the common path (link already minted
+  // on a previous share click) doesn't trip the noisy 409 + retry dance.
+  // Only fall through to create_shared_link_with_settings on a clean
+  // miss. Final URL is rewritten to dl.dropboxusercontent.com so a
+  // browser can fetch it without CORS pain.
   async function getOrCreateShareLink(path) {
     let url = "";
     try {
+      const list = await rpc("/2/sharing/list_shared_links", { path, direct_only: true });
+      if (list && list.links && list.links.length) url = list.links[0].url;
+    } catch (e) {
+      // list endpoint returns 409 with path/not_found if the file moved
+      // or was deleted; in any other shape we let the create attempt
+      // give a clearer error.
+    }
+    if (!url) {
       const resp = await rpc("/2/sharing/create_shared_link_with_settings", {
         path,
         settings: { requested_visibility: { ".tag": "public" } },
       });
       url = resp && resp.url ? resp.url : "";
-    } catch (e) {
-      const msg = String(e.message || e);
-      if (!/shared_link_already_exists/i.test(msg)) throw e;
-      const list = await rpc("/2/sharing/list_shared_links", {
-        path, direct_only: true,
-      });
-      if (list && list.links && list.links.length) url = list.links[0].url;
     }
     if (!url) throw new Error("Dropbox did not return a share URL");
     return toDirectLink(url);
