@@ -1324,8 +1324,18 @@ document.addEventListener("DOMContentLoaded", function () {
       panel.classList.remove("hidden");
     }
 
-    // Auto-open panel with smooth animation
-    setTimeout(() => panel.classList.add("open"), 150);
+    // Auto-open panel — but only on landscape / desktop. On portrait
+    // phones the panel covers the map, so we leave it closed and let the
+    // user tap the peek-tab when they want it. Mobile WebViews used to
+    // glitch the slide animation because we toggled .open inside a
+    // setTimeout right after display:none → display:flex, which ate the
+    // transition's starting state. Double-rAF: first frame commits the
+    // closed paint, second frame queues the transform transition.
+    if (window.innerWidth >= window.innerHeight) {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => panel.classList.add("open"));
+      });
+    }
 
     // Auto-select the first (newest) track so the map & details aren't empty.
     if (tracks.length > 0) {
