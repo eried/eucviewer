@@ -1,22 +1,36 @@
 document.addEventListener("DOMContentLoaded", function () {
   // Imperial unit toggle — drives display labels and converters everywhere
   // values are shown. Resolution order: ?units= URL param, then localStorage
-  // (the cogwheel toggle persists here), then a strict locale check: only
-  // default to imperial when the browser language is explicitly an English
-  // variant of one of the three countries that actually use imperial in
-  // daily life. Anything else (including bare "en" — which a Polish browser
-  // set to English would send) defaults to metric so we don't accidentally
-  // show miles to a metric user.
+  // (the cogwheel toggle persists here), then timezone-based inference.
+  //
+  // We deliberately do NOT use navigator.language any more: English Windows
+  // installations everywhere — including all of Europe — send en-US by
+  // default, so language was misclassifying metric users as imperial.
+  // Timezone is OS-set from the user's actual location and is the strongest
+  // signal we can get without geolocation. Imperial is opt-in: it only
+  // fires when the timezone is unambiguously in the US, a US territory,
+  // Liberia or Myanmar. Anything else (including unknown / missing tz)
+  // falls through to metric so a European never sees miles by accident.
   const UNITS_STORAGE_KEY = "eucviewer-units";
+  const IMPERIAL_TZ_RE = new RegExp("^(?:" +
+    "America/(?:Adak|Anchorage|Boise|Chicago|Denver|Detroit|Indiana/[^/]+|Juneau|Kentucky/[^/]+|Los_Angeles|Menominee|Metlakatla|New_York|Nome|North_Dakota/[^/]+|Phoenix|Puerto_Rico|Sitka|St_Thomas|Yakutat)" +
+    "|Pacific/(?:Honolulu|Pago_Pago|Guam|Saipan|Midway|Wake)" +
+    "|Africa/Monrovia" +
+    "|Asia/(?:Yangon|Rangoon)" +
+    ")$");
   function detectUnits() {
-    const force = new URLSearchParams(location.search).get("units");
-    if (force === "imperial" || force === "metric") return force;
+    try {
+      const force = new URLSearchParams(location.search).get("units");
+      if (force === "imperial" || force === "metric") return force;
+    } catch (_) {}
     try {
       const stored = localStorage.getItem(UNITS_STORAGE_KEY);
       if (stored === "imperial" || stored === "metric") return stored;
     } catch (_) {}
-    const lang = (navigator.language || "").toLowerCase();
-    if (lang === "en-us" || lang === "en-lr" || lang === "en-mm") return "imperial";
+    try {
+      const tz = (Intl.DateTimeFormat().resolvedOptions().timeZone || "").trim();
+      if (IMPERIAL_TZ_RE.test(tz)) return "imperial";
+    } catch (_) {}
     return "metric";
   }
   const UNITS = (() => {

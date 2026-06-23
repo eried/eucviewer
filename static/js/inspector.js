@@ -2,19 +2,30 @@
   "use strict";
 
   // Imperial unit toggle — drives display labels and converters everywhere
-  // values are shown. Strict: only default to imperial when the browser
-  // language is en-US (or the two other countries that actually use it).
+  // values are shown. Timezone-based: imperial only when the OS timezone is
+  // in the US, US territories, Liberia or Myanmar. navigator.language is
+  // unreliable because English Windows defaults to en-US worldwide.
   // Keep in sync with app.js / analytics.js.
   const UNITS_STORAGE_KEY = "eucviewer-units";
+  const IMPERIAL_TZ_RE = new RegExp("^(?:" +
+    "America/(?:Adak|Anchorage|Boise|Chicago|Denver|Detroit|Indiana/[^/]+|Juneau|Kentucky/[^/]+|Los_Angeles|Menominee|Metlakatla|New_York|Nome|North_Dakota/[^/]+|Phoenix|Puerto_Rico|Sitka|St_Thomas|Yakutat)" +
+    "|Pacific/(?:Honolulu|Pago_Pago|Guam|Saipan|Midway|Wake)" +
+    "|Africa/Monrovia" +
+    "|Asia/(?:Yangon|Rangoon)" +
+    ")$");
   function detectUnits() {
-    const force = new URLSearchParams(location.search).get("units");
-    if (force === "imperial" || force === "metric") return force;
+    try {
+      const force = new URLSearchParams(location.search).get("units");
+      if (force === "imperial" || force === "metric") return force;
+    } catch (_) {}
     try {
       const stored = localStorage.getItem(UNITS_STORAGE_KEY);
       if (stored === "imperial" || stored === "metric") return stored;
     } catch (_) {}
-    const lang = (navigator.language || "").toLowerCase();
-    if (lang === "en-us" || lang === "en-lr" || lang === "en-mm") return "imperial";
+    try {
+      const tz = (Intl.DateTimeFormat().resolvedOptions().timeZone || "").trim();
+      if (IMPERIAL_TZ_RE.test(tz)) return "imperial";
+    } catch (_) {}
     return "metric";
   }
   const UNITS = (() => {
