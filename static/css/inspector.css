@@ -227,7 +227,8 @@ html, body {
 /* ---------- Main stage ---------- */
 #stage {
     display: grid;
-    grid-template-columns: 1fr 360px;
+    /* --charts-w is updated by the sidebar resize drag handle. */
+    grid-template-columns: 1fr var(--charts-w, 360px);
     min-height: 0;
 }
 
@@ -253,6 +254,7 @@ html, body {
 
 /* ---------- Charts ---------- */
 #charts {
+    position: relative;
     background: rgba(10, 10, 15, 0.95);
     border-left: 1px solid rgba(0, 229, 255, 0.12);
     overflow-y: auto;
@@ -261,6 +263,21 @@ html, body {
     padding: 6px;
     gap: 6px;
 }
+#sidebar-resize {
+    position: absolute;
+    left: -3px;
+    top: 0;
+    bottom: 0;
+    width: 6px;
+    cursor: col-resize;
+    z-index: 30;
+    background: transparent;
+    transition: background 0.18s;
+}
+#sidebar-resize:hover,
+body.sidebar-resizing #sidebar-resize { background: rgba(0, 229, 255, 0.18); }
+body.sidebar-resizing { user-select: none; cursor: col-resize; }
+body.sidebar-resizing * { cursor: col-resize !important; }
 #charts::-webkit-scrollbar { width: 4px; }
 #charts::-webkit-scrollbar-thumb { background: #00e5ff33; border-radius: 2px; }
 
@@ -423,8 +440,122 @@ html, body {
 #play-btn:hover { background: #00ffc8; }
 #play-btn:active { transform: scale(0.95); }
 #play-btn.playing { background: #ffa000; }
+#play-btn.held {
+    box-shadow: 0 0 0 6px rgba(0, 229, 255, 0.25),
+                0 0 18px rgba(0, 229, 255, 0.55);
+}
 
-.scrub-wrap { flex: 1; display: flex; align-items: center; }
+.scrub-wrap {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    position: relative;
+}
+.scrub-ab-fill {
+    position: absolute;
+    top: 50%;
+    height: 8px;
+    transform: translateY(-50%);
+    background: rgba(255, 160, 0, 0.18);
+    border-left: 1px solid rgba(255, 160, 0, 0.6);
+    border-right: 1px solid rgba(255, 160, 0, 0.6);
+    border-radius: 2px;
+    pointer-events: none;
+    z-index: 1;
+}
+.scrub-ab-fill.loop-on { background: rgba(255, 160, 0, 0.32); }
+.scrub-ab-fill.hidden { display: none; }
+.zoom-indicator {
+    position: absolute;
+    top: -22px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(255, 160, 0, 0.18);
+    border: 1px solid rgba(255, 160, 0, 0.4);
+    color: #ffb74d;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    cursor: pointer;
+    white-space: nowrap;
+    z-index: 2;
+    transition: background 0.18s;
+}
+.zoom-indicator:hover { background: rgba(255, 160, 0, 0.32); }
+.zoom-indicator.hidden { display: none; }
+
+/* Drag handles at the edges of the highlighted section. Sit just above
+   the scrub thumb so the user can grab them, but their pointer-events
+   are toggled off when the playhead overlaps so scrubbing stays the
+   priority gesture there. */
+.zoom-handle {
+    position: absolute;
+    top: 50%;
+    width: 8px;
+    height: 16px;
+    margin-left: -4px;
+    margin-top: -8px;
+    background: rgba(255, 160, 0, 0.85);
+    border: 1px solid rgba(255, 200, 130, 0.95);
+    border-radius: 3px;
+    cursor: ew-resize;
+    z-index: 3;
+    box-shadow: 0 0 4px rgba(0, 0, 0, 0.4);
+    transition: transform 0.12s;
+}
+.zoom-handle::before {
+    content: "";
+    position: absolute;
+    top: 3px; bottom: 3px;
+    left: 50%;
+    width: 1px;
+    background: rgba(0, 0, 0, 0.5);
+    margin-left: -0.5px;
+}
+.zoom-handle:hover { transform: scale(1.15); }
+.zoom-handle.hidden { display: none; }
+.zoom-handle.suppressed { pointer-events: none; opacity: 0.45; }
+
+.ab-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+.ab-btn {
+    height: 32px;
+    min-width: 32px;
+    padding: 0 8px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 160, 0, 0.25);
+    background: rgba(255, 160, 0, 0.05);
+    color: rgba(255, 200, 130, 0.75);
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.ab-btn:hover {
+    background: rgba(255, 160, 0, 0.15);
+    color: #ffb74d;
+    border-color: rgba(255, 160, 0, 0.55);
+}
+.ab-btn.ab-set {
+    background: rgba(255, 160, 0, 0.18);
+    color: #ffd180;
+    border-color: rgba(255, 160, 0, 0.6);
+}
+.ab-loop-btn { font-size: 1.05rem; }
+.ab-loop-btn.ab-set {
+    background: rgba(255, 160, 0, 0.32);
+    color: #fff;
+    border-color: #ffa000;
+    box-shadow: 0 0 8px rgba(255, 160, 0, 0.4);
+}
+.ab-loop-btn.hidden { display: none; }
 #scrub {
     width: 100%;
     appearance: none;

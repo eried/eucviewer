@@ -133,6 +133,55 @@
   const duration = ts[ts.length - 1][SEC] - ts[0][SEC];
   const t0 = ts[0][SEC];
 
+  // The zoom window IS the playback section. viewT0/viewT1 are seconds
+  // from trip start. When viewT0 > 0 or viewT1 < duration we say the trip
+  // is "zoomed" — Play snaps the playhead into the window and loopOn
+  // wraps it back to viewT0 when it crosses viewT1.
+  let viewT0 = 0;
+  let viewT1 = duration;
+  let loopOn = false;
+  const isZoomed = () => viewT0 > 0.01 || viewT1 < duration - 0.01;
+  const sampleTimes = new Float64Array(ts.length);
+  for (let i = 0; i < ts.length; i += 1) sampleTimes[i] = ts[i][SEC] - t0;
+
+  function clampTime(t) { return Math.max(0, Math.min(duration, t)); }
+  function fmtMs(s) {
+    s = Math.max(0, s);
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s - m * 60);
+    return m + ":" + (sec < 10 ? "0" : "") + sec;
+  }
+  // Pick a "nice" tick spacing in seconds based on the visible time
+  // window. The step ladder is fixed (1s, 15s, 30s, 1m, 5m, 10m, 30m,
+  // 1h) so the boundaries are tuned to keep the visible-line count in
+  // the rough 3–7 range whenever the ladder allows it; 1s deliberately
+  // carries further so the user gets a per-second rhythm at small spans
+  // rather than dropping to a 2-line 15s grid right away.
+  function chooseTimeStep(span) {
+    if (span <= 20)    return 1;
+    if (span <= 105)   return 15;
+    if (span <= 210)   return 30;
+    if (span <= 600)   return 60;
+    if (span <= 2100)  return 300;
+    if (span <= 4200)  return 600;
+    if (span <= 12600) return 1800;
+    return 3600;
+  }
+  function fmtRelativeStep(s) {
+    if (s < 60) return "+" + s + "s";
+    if (s < 3600) return "+" + Math.round(s / 60) + "m";
+    return "+" + Math.round(s / 3600) + "h";
+  }
+  // Sample index whose time is <= t.
+  function sampleAtTime(t) {
+    let lo = 0, hi = sampleTimes.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (sampleTimes[mid] <= t) lo = mid; else hi = mid - 1;
+    }
+    return lo;
+  }
+
   // Optional ?t=<sec> URL param: start the playhead at that point in the
   // trip (seconds from trip start, before the trip's t0 offset). Used by
   // the analytics anomaly list so a clicked event lands near its moment.
@@ -1030,15 +1079,17 @@
 
   // 2-colour filled current chart: amber above the 0 A baseline, green below
   // it (regen). The baseline is a faint reference line.
-  function drawCurrentChart(ctx, c, n, px, py, dpr) {
+  function drawCurrentChart(ctx, c, n, px, py, dpr, iLo, iHi) {
+    if (iLo == null) iLo = 0;
+    if (iHi == null) iHi = n - 1;
     const idx = c.cfg.idx;
     const zeroY = py(0);
     const W = ctx.canvas.width, H = ctx.canvas.height;
     const areaPath = () => {
       ctx.beginPath();
-      ctx.moveTo(px(0), zeroY);
-      for (let i = 0; i < n; i++) ctx.lineTo(px(i), py(ts[i][idx]));
-      ctx.lineTo(px(n - 1), zeroY);
+      ctx.moveTo(px(iLo), zeroY);
+      for (let i = iLo; i <= iHi; i++) ctx.lineTo(px(i), py(ts[i][idx]));
+      ctx.lineTo(px(iHi), zeroY);
       ctx.closePath();
     };
     ctx.save();
@@ -1052,14 +1103,14 @@
     // 0 A baseline
     ctx.strokeStyle = "rgba(255,255,255,0.16)";
     ctx.lineWidth = 1 * dpr;
-    ctx.beginPath(); ctx.moveTo(px(0), zeroY); ctx.lineTo(px(n - 1), zeroY); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(px(iLo), zeroY); ctx.lineTo(px(iHi), zeroY); ctx.stroke();
     // line, coloured per segment by sign. Where a segment crosses 0 the line
     // is split at the zero point so green never spills into the positive side
     // and vice-versa.
     ctx.lineWidth = 1.6 * dpr;
     ctx.lineJoin = "round";
     const zeroYline = py(0);
-    for (let i = 1; i < n; i++) {
+    for (let i = Math.max(1, iLo); i <= iHi; i++) {
       const a = ts[i - 1][idx], b = ts[i][idx];
       const x0 = px(i - 1), y0 = py(a);
       const x1 = px(i), y1 = py(b);
@@ -1090,8 +1141,45 @@
     const n = ts.length;
     const render = c.cfg.render || "area";
 
+    // Faint vertical time grid. Drawn first so all data sits on top.
+    // The first visible gridline gets an absolute time label ("3:43"),
+    // the second gets the relative step label ("+1s" / "+15s" / …).
+    // Anything after just shows the line.
+    {
+      const pad = 4;
+      const innerW = w - pad * 2;
+      const viewW = (viewT1 - viewT0) || 1;
+      const step = chooseTimeStep(viewW);
+      const first = Math.ceil(viewT0 / step) * step;
+      const last = Math.floor(viewT1 / step) * step;
+      if (last >= first) {
+        ctx.save();
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.07)";
+        ctx.lineWidth = 1;
+        ctx.font = (10 * dpr) + "px ui-sans-serif, system-ui, sans-serif";
+        ctx.fillStyle = "rgba(255, 255, 255, 0.32)";
+        ctx.textBaseline = "top";
+        let i = 0;
+        for (let t = first; t <= last + 0.001; t += step, i += 1) {
+          const x = pad + (t - viewT0) / viewW * innerW;
+          ctx.beginPath();
+          ctx.moveTo(x, 0);
+          ctx.lineTo(x, h);
+          ctx.stroke();
+          if (i === 0) ctx.fillText(fmtMs(t), x + 4 * dpr, 2 * dpr);
+          else if (i === 1) ctx.fillText(fmtRelativeStep(step), x + 4 * dpr, 2 * dpr);
+        }
+        ctx.restore();
+      }
+    }
+
+    // Visible sample window from viewT0..viewT1; include the two
+    // samples either side so the line touches the edges of the canvas.
+    const iLo = Math.max(0, sampleAtTime(viewT0) - 1);
+    const iHi = Math.min(n - 1, sampleAtTime(viewT1) + 1);
+
     let minV = Infinity, maxV = -Infinity;
-    for (let i = 0; i < n; i++) {
+    for (let i = iLo; i <= iHi; i++) {
       const v = ts[i][idx];
       if (v < minV) minV = v;
       if (v > maxV) maxV = v;
@@ -1112,11 +1200,24 @@
     maxV += range * 0.08;
 
     const pad = 4;
-    const px = (i) => pad + (i / (n - 1)) * (w - pad * 2);
+    const innerW = w - pad * 2;
+    const viewW = viewT1 - viewT0 || 1;
+    // px(i) supports both integer and fractional sample indices. We
+    // resolve to a time first so a zoomed view spaces samples by their
+    // real time stamps, not by their array position.
+    const px = (iOrFrac) => {
+      const i0 = Math.floor(iOrFrac);
+      const i1 = Math.min(n - 1, i0 + 1);
+      const f = iOrFrac - i0;
+      const t = sampleTimes[i0] + (sampleTimes[i1] - sampleTimes[i0]) * f;
+      return pad + (t - viewT0) / viewW * innerW;
+    };
     const py = (v) => h - pad - ((v - minV) / (maxV - minV)) * (h - pad * 2);
+    // Convenience for AB markers / drag overlay (time → x).
+    const pxT = (t) => pad + (t - viewT0) / viewW * innerW;
 
     if (render === "current") {
-      drawCurrentChart(ctx, c, n, px, py, dpr);
+      drawCurrentChart(ctx, c, n, px, py, dpr, iLo, iHi);
     } else {
       if (render !== "line") {
         // Filled area under the line.
@@ -1125,9 +1226,9 @@
         grad.addColorStop(1, c.cfg.color + "00");
         ctx.fillStyle = grad;
         ctx.beginPath();
-        ctx.moveTo(px(0), h);
-        for (let i = 0; i < n; i++) ctx.lineTo(px(i), py(ts[i][idx]));
-        ctx.lineTo(px(n - 1), h);
+        ctx.moveTo(px(iLo), h);
+        for (let i = iLo; i <= iHi; i++) ctx.lineTo(px(i), py(ts[i][idx]));
+        ctx.lineTo(px(iHi), h);
         ctx.closePath();
         ctx.fill();
       }
@@ -1135,9 +1236,9 @@
       ctx.lineWidth = 1.6 * dpr;
       ctx.lineJoin = "round";
       ctx.beginPath();
-      for (let i = 0; i < n; i++) {
+      for (let i = iLo; i <= iHi; i++) {
         const x = px(i), y = py(ts[i][idx]);
-        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        if (i === iLo) ctx.moveTo(x, y); else ctx.lineTo(x, y);
       }
       ctx.stroke();
     }
@@ -1150,13 +1251,25 @@
       ctx.setLineDash([5 * dpr, 4 * dpr]);
       ctx.beginPath();
       let started = false;
-      for (let k = 0; k < n; k++) {
+      for (let k = iLo; k <= iHi; k++) {
         const v = ts[k][c.extra.idx];
         if (typeof v !== "number") { started = false; continue; }
         const x = px(k), y = py(v);
         if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
       }
       ctx.stroke();
+      ctx.restore();
+    }
+
+    // When the trip is zoomed, the chart edges already align with the
+    // selected section, so we don't need extra A/B verticals. Loop mode
+    // tints the chart's border instead so the user has an at-a-glance
+    // reminder that playback will wrap.
+    if (loopOn && isZoomed()) {
+      ctx.save();
+      ctx.strokeStyle = "rgba(255, 160, 0, 0.55)";
+      ctx.lineWidth = 1.6 * dpr;
+      ctx.strokeRect(0.5, 0.5, w - 1, h - 1);
       ctx.restore();
     }
 
@@ -1226,13 +1339,22 @@
     const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
     return Math.round(ratio * (ts.length - 1));
   }
+  // Time under the cursor, honouring the current zoom window so click /
+  // drag positions the playhead exactly where the mouse is even when
+  // zoomed. Falls back to the full trip when the section is full width.
+  function timeFromClientX(canvas, clientX) {
+    const rect = canvas.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    return viewT0 + ratio * (viewT1 - viewT0);
+  }
 
   // Chart drag/scrub interaction
   charts.forEach(c => {
     let dragging = false;
     const onMove = (clientX) => {
-      const t = ts[sampleFromClientX(c.canvas, clientX)][SEC] - t0;
-      setCurrentTime(t);
+      // Map directly to the time under the cursor so clicks land on the
+      // exact playhead position even when the chart is zoomed.
+      setCurrentTime(timeFromClientX(c.canvas, clientX));
     };
     const onWindowMove = e => { if (dragging) onMove(e.clientX); };
     const onWindowUp = () => { dragging = false; };
@@ -1300,13 +1422,48 @@
     }
   }
 
-  playBtn.addEventListener("click", () => {
-    setPlayingState(!playing);
+  // Hold the play button to restart from the start of the current
+  // section (or the start of the trip when not zoomed). Quick click is
+  // the normal play/pause toggle — the timer drops the long-press
+  // gesture if the user releases before HOLD_MS.
+  const HOLD_MS = 350;
+  let holdTimer = null;
+  let holdFired = false;
+  function startPlayback(snapToStart) {
+    if (!playing) setPlayingState(true);
     lastFrame = performance.now();
-    if (playing && currentTime >= duration) {
+    if (snapToStart) {
+      setCurrentTime(isZoomed() ? viewT0 : 0);
+    } else if (isZoomed() && (currentTime < viewT0 || currentTime >= viewT1 - 0.01)) {
+      setCurrentTime(viewT0);
+    } else if (!isZoomed() && currentTime >= duration) {
       setCurrentTime(0);
     }
-    if (playing) requestAnimationFrame(loop);
+    requestAnimationFrame(loop);
+  }
+  playBtn.addEventListener("pointerdown", (e) => {
+    if (e.button != null && e.button !== 0) return;
+    holdFired = false;
+    if (holdTimer) clearTimeout(holdTimer);
+    holdTimer = setTimeout(() => {
+      holdFired = true;
+      playBtn.classList.add("held");
+      startPlayback(true);
+    }, HOLD_MS);
+  });
+  const cancelHold = () => {
+    if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
+    playBtn.classList.remove("held");
+  };
+  playBtn.addEventListener("pointerup", cancelHold);
+  playBtn.addEventListener("pointercancel", cancelHold);
+  playBtn.addEventListener("pointerleave", cancelHold);
+  playBtn.addEventListener("click", () => {
+    // The long-press already started playback; the click that fires on
+    // pointerup should not flip the state back off.
+    if (holdFired) { holdFired = false; return; }
+    setPlayingState(!playing);
+    if (playing) startPlayback(false);
   });
 
   scrub.addEventListener("input", e => {
@@ -1377,6 +1534,10 @@
     if (document.activeElement !== scrub) {
       scrub.value = duration > 0 ? (currentTime / duration) * 1000 : 0;
     }
+    // Re-evaluate handle priority — when the playhead moves into the same
+    // pixel as a section edge handle, the handle becomes non-interactive
+    // so click+drag from there scrubs the playhead instead.
+    if (typeof updateHandlePriority === "function") updateHandlePriority();
 
     // Charts: refresh each header's live value (and the Speed difference row),
     // then redraw the canvas of every expanded block.
@@ -1452,13 +1613,262 @@
     const dt = (now - lastFrame) / 1000;
     lastFrame = now;
     let nt = currentTime + dt * playSpeed;
-    if (nt >= duration) {
-      nt = duration;
-      setPlayingState(false);
+    // The section is the current zoom window. When zoomed, hitting the
+    // window's right edge either wraps to viewT0 (loop on) or stops
+    // playback. When not zoomed, the whole trip is the section.
+    const sectionEnd = isZoomed() ? viewT1 : duration;
+    const sectionStart = isZoomed() ? viewT0 : 0;
+    if (nt >= sectionEnd) {
+      if (loopOn) {
+        nt = sectionStart;
+      } else {
+        nt = sectionEnd;
+        setPlayingState(false);
+      }
+    } else if (nt < sectionStart) {
+      nt = sectionStart;
     }
     setCurrentTime(nt);
     if (playing) requestAnimationFrame(loop);
   }
+
+  // ---------- Zoom / section loop / sidebar resize ----------
+
+  const zoomIndicator = document.getElementById("zoom-indicator");
+  const zoomRangeEl = document.getElementById("zoom-range");
+  const scrubAbFill = document.getElementById("scrub-ab-fill");
+  const zoomHandleA = document.getElementById("zoom-handle-a");
+  const zoomHandleB = document.getElementById("zoom-handle-b");
+  const loopBtn = document.getElementById("loop-btn");
+  const sidebarResize = document.getElementById("sidebar-resize");
+  const chartsAside = document.getElementById("charts");
+
+  // While a handle is being dragged we keep the section UI visible even
+  // if the user pulls one edge to the full-trip boundary mid-drag. The
+  // edges only collapse to "no zoom" on pointerup so the user has
+  // room to nudge handles past the boundary without losing the grip.
+  let anyHandleDragging = false;
+
+  function refreshSectionUi() {
+    const zoomed = isZoomed() || anyHandleDragging;
+    if (zoomed) {
+      zoomIndicator.classList.remove("hidden");
+      // Just the section endpoints — the full trip duration is already
+      // implied by the un-highlighted scrub bar around the section.
+      zoomRangeEl.textContent = fmtMs(viewT0) + " → " + fmtMs(viewT1);
+      const aPct = (viewT0 / duration) * 100;
+      const bPct = (viewT1 / duration) * 100;
+      const midPct = (aPct + bPct) / 2;
+      // Center the pill on the section so it visually labels its range.
+      zoomIndicator.style.left = midPct + "%";
+      zoomIndicator.style.transform = "translateX(-50%)";
+      scrubAbFill.style.left = aPct + "%";
+      scrubAbFill.style.width = (bPct - aPct) + "%";
+      scrubAbFill.classList.toggle("loop-on", loopOn);
+      scrubAbFill.classList.remove("hidden");
+      zoomHandleA.style.left = aPct + "%";
+      zoomHandleB.style.left = bPct + "%";
+      zoomHandleA.classList.remove("hidden");
+      zoomHandleB.classList.remove("hidden");
+      updateHandlePriority();
+    } else {
+      zoomIndicator.classList.add("hidden");
+      scrubAbFill.classList.add("hidden");
+      zoomHandleA.classList.add("hidden");
+      zoomHandleB.classList.add("hidden");
+    }
+    loopBtn.classList.toggle("ab-set", loopOn);
+    loopBtn.title = loopOn
+      ? "Loop is ON — playback wraps at the end of the section"
+      : "Loop the selected section";
+  }
+
+  // Suppress handle hit-testing when the playhead sits on top of it so
+  // dragging from that pixel scrubs the playhead instead of resizing the
+  // section. The user can scrub the playhead away and the handle becomes
+  // grabbable again. Called on every setCurrentTime and on every
+  // refreshSectionUi.
+  function updateHandlePriority() {
+    if (!isZoomed()) return;
+    const scrubRect = document.getElementById("scrub").getBoundingClientRect();
+    if (scrubRect.width <= 0) return;
+    const playPx = (currentTime / duration) * scrubRect.width;
+    const aPx = (viewT0 / duration) * scrubRect.width;
+    const bPx = (viewT1 / duration) * scrubRect.width;
+    const THRESH = 12;
+    zoomHandleA.classList.toggle("suppressed", Math.abs(playPx - aPx) < THRESH);
+    zoomHandleB.classList.toggle("suppressed", Math.abs(playPx - bPx) < THRESH);
+  }
+
+  function setView(t0New, t1New) {
+    const minSpan = 0.5;
+    let a = clampTime(t0New);
+    let b = clampTime(t1New);
+    if (b - a < minSpan) {
+      const mid = (a + b) / 2;
+      a = Math.max(0, mid - minSpan / 2);
+      b = Math.min(duration, mid + minSpan / 2);
+    }
+    viewT0 = a;
+    viewT1 = b;
+    refreshSectionUi();
+    drawAllCharts();
+  }
+
+  function resetView() { setView(0, duration); }
+
+  // Wheel zoom anchored on the cursor's time. Up = zoom in, down = out.
+  function attachZoomControls(c) {
+    c.canvas.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      const rect = c.canvas.getBoundingClientRect();
+      const xFrac = (e.clientX - rect.left) / rect.width;
+      const anchor = viewT0 + xFrac * (viewT1 - viewT0);
+      const factor = e.deltaY < 0 ? 0.8 : 1.25;
+      const newSpan = (viewT1 - viewT0) * factor;
+      const span = Math.max(0.5, Math.min(duration, newSpan));
+      setView(anchor - (anchor - viewT0) * (span / (viewT1 - viewT0)),
+              anchor + (viewT1 - anchor) * (span / (viewT1 - viewT0)));
+    }, { passive: false });
+    c.canvas.addEventListener("dblclick", () => resetView());
+
+    // Touch pinch zoom via Pointer Events. Two-finger pinch on a chart
+    // narrows / widens the zoom window anchored on the midpoint between
+    // the two contacts. Single touch falls through to the existing scrub
+    // drag logic (which uses mousedown / window mousemove).
+    const pointers = new Map();
+    let prevDist = 0;
+    let pinchAnchorT = 0;
+    c.canvas.addEventListener("pointerdown", (e) => {
+      if (e.pointerType !== "touch") return;
+      pointers.set(e.pointerId, e);
+      if (pointers.size === 2) {
+        const arr = Array.from(pointers.values());
+        prevDist = Math.abs(arr[0].clientX - arr[1].clientX);
+        const mid = (arr[0].clientX + arr[1].clientX) / 2;
+        const rect = c.canvas.getBoundingClientRect();
+        const xFrac = (mid - rect.left) / rect.width;
+        pinchAnchorT = viewT0 + xFrac * (viewT1 - viewT0);
+      }
+    });
+    c.canvas.addEventListener("pointermove", (e) => {
+      if (!pointers.has(e.pointerId)) return;
+      pointers.set(e.pointerId, e);
+      if (pointers.size !== 2) return;
+      e.preventDefault();
+      const arr = Array.from(pointers.values());
+      const dist = Math.abs(arr[0].clientX - arr[1].clientX);
+      if (prevDist > 4 && dist > 4) {
+        const factor = prevDist / dist;
+        const span = Math.max(0.5, Math.min(duration, (viewT1 - viewT0) * factor));
+        const ratio = span / (viewT1 - viewT0);
+        setView(pinchAnchorT - (pinchAnchorT - viewT0) * ratio,
+                pinchAnchorT + (viewT1 - pinchAnchorT) * ratio);
+      }
+      prevDist = dist;
+    });
+    const dropPointer = (e) => {
+      if (!pointers.has(e.pointerId)) return;
+      pointers.delete(e.pointerId);
+      if (pointers.size < 2) prevDist = 0;
+    };
+    c.canvas.addEventListener("pointerup", dropPointer);
+    c.canvas.addEventListener("pointercancel", dropPointer);
+    c.canvas.addEventListener("pointerleave", dropPointer);
+  }
+  charts.forEach(attachZoomControls);
+
+  // Loop toggle. Reset-zoom is now the pill click — one less button.
+  loopBtn.addEventListener("click", () => {
+    loopOn = !loopOn;
+    refreshSectionUi();
+    drawAllCharts();
+  });
+  zoomIndicator.addEventListener("click", () => resetView());
+
+  // Scrub-bar handle drag. Each handle nudges its edge of the section.
+  // The setView call enforces a minimum span so they can't cross over
+  // and reverses if the user tries to drag one past the other.
+  function attachZoomHandleDrag(handle, isA) {
+    let dragging = false;
+    handle.addEventListener("pointerdown", (e) => {
+      if (handle.classList.contains("suppressed")) return;
+      e.preventDefault();
+      e.stopPropagation();
+      dragging = true;
+      anyHandleDragging = true;
+      try { handle.setPointerCapture(e.pointerId); } catch (_) {}
+    });
+    handle.addEventListener("pointermove", (e) => {
+      if (!dragging) return;
+      const scrubRect = document.getElementById("scrub").getBoundingClientRect();
+      const ratio = Math.max(0, Math.min(1, (e.clientX - scrubRect.left) / scrubRect.width));
+      const t = ratio * duration;
+      if (isA) setView(t, viewT1);
+      else setView(viewT0, t);
+    });
+    const finish = () => {
+      if (!dragging) return;
+      dragging = false;
+      anyHandleDragging = false;
+      // Now that the drag is done, run the regular refresh which will
+      // hide the section UI if the user landed exactly at the full-trip
+      // boundary on both ends.
+      refreshSectionUi();
+      drawAllCharts();
+    };
+    handle.addEventListener("pointerup", finish);
+    handle.addEventListener("pointercancel", finish);
+    handle.addEventListener("pointerleave", finish);
+  }
+  attachZoomHandleDrag(zoomHandleA, true);
+  attachZoomHandleDrag(zoomHandleB, false);
+
+  // Sidebar resize. Drag handle on the left edge of the charts column.
+  // We drive a CSS variable on #stage so the grid track itself reflows;
+  // no inline width on #charts means the flex/scroll behaviour inside is
+  // unaffected.
+  (function setupSidebarResize() {
+    const STORAGE_KEY = "inspector-sidebar-w";
+    const stage = document.getElementById("stage");
+    function applyW(w) {
+      const cap = Math.min(700, Math.floor(window.innerWidth * 0.6));
+      w = Math.max(240, Math.min(cap, w));
+      stage.style.setProperty("--charts-w", w + "px");
+      try { localStorage.setItem(STORAGE_KEY, String(w)); } catch (_) {}
+      requestAnimationFrame(() => {
+        resizeCharts();
+        if (typeof map !== "undefined" && map && typeof map.resize === "function") map.resize();
+      });
+    }
+    try {
+      const stored = parseInt(localStorage.getItem(STORAGE_KEY) || "", 10);
+      if (stored && stored > 0) applyW(stored);
+    } catch (_) {}
+    let dragging = false;
+    let startX = 0;
+    let startW = 0;
+    sidebarResize.addEventListener("mousedown", (e) => {
+      dragging = true;
+      startX = e.clientX;
+      startW = chartsAside.getBoundingClientRect().width;
+      document.body.classList.add("sidebar-resizing");
+      e.preventDefault();
+    });
+    window.addEventListener("mousemove", (e) => {
+      if (!dragging) return;
+      // Sidebar is on the right edge — dragging left widens it.
+      applyW(startW + (startX - e.clientX));
+    });
+    window.addEventListener("mouseup", () => {
+      if (!dragging) return;
+      dragging = false;
+      document.body.classList.remove("sidebar-resizing");
+    });
+    sidebarResize.addEventListener("dblclick", () => applyW(360));
+  })();
+
+  refreshSectionUi();
 
   // ---------- Init ----------
   window.addEventListener("resize", resizeCharts);
