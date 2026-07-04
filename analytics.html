@@ -6,7 +6,7 @@
     <title>Wheel Forensics &middot; EUC Planet</title>
     <link rel="icon" href="static/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="static/css/analytics.css?v=44" />
+    <link rel="stylesheet" href="static/css/analytics.css?v=47" />
     <script type="text/javascript">
         (function(c,l,a,r,i,t,y){
             c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
@@ -117,20 +117,29 @@
             </div>
         </header>
 
-        <div id="date-range-panel" class="hidden">
-            <div class="dr-header">
-                <span class="dr-title">Scope</span>
-                <span class="dr-summary" id="dr-summary">All trips</span>
-                <button type="button" id="dr-reset" class="dr-reset" title="Reset to the full history">Reset</button>
-            </div>
-            <div class="dr-track">
-                <input type="range" id="dr-min" min="0" max="100" value="0" step="1" />
-                <input type="range" id="dr-max" min="0" max="100" value="100" step="1" />
-                <div class="dr-rail"><div class="dr-fill" id="dr-fill"></div></div>
-            </div>
-            <div class="dr-labels">
-                <span id="dr-lo">…</span>
-                <span id="dr-hi">…</span>
+        <div id="date-range-panel" class="hidden" role="dialog" aria-label="Scope">
+            <div class="calc-backdrop" data-scope-close></div>
+            <div class="calc-panel scope-panel">
+                <header class="calc-header scope-header">
+                    <span class="calc-tag scope-tag">SCOPE</span>
+                    <h3>Narrow the history</h3>
+                    <button type="button" class="calc-close" data-scope-close aria-label="Close">&times;</button>
+                </header>
+                <div class="scope-body">
+                    <div class="dr-track">
+                        <input type="range" id="dr-min" min="0" max="100" value="0" step="1" />
+                        <input type="range" id="dr-max" min="0" max="100" value="100" step="1" />
+                        <div class="dr-rail"><div class="dr-fill" id="dr-fill"></div></div>
+                    </div>
+                    <div class="dr-labels">
+                        <span id="dr-lo">…</span>
+                        <span id="dr-hi">…</span>
+                    </div>
+                    <div class="scope-actions">
+                        <span class="dr-summary" id="dr-summary">All trips</span>
+                        <button type="button" id="dr-reset" class="dr-reset" title="Reset to the full history">Reset</button>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -209,6 +218,17 @@
                     <canvas id="chart-range-speed"></canvas>
                 </div>
                 <div class="chart-takeaway" id="range-speed-takeaway"></div>
+                <div class="chart-host hidden" id="speed-cost-host">
+                    <div class="chart-title">In-ride cost of speed <span class="chart-title-axes">(full-charge range by riding speed band)</span></div>
+                    <canvas id="chart-speed-cost"></canvas>
+                </div>
+                <div class="chart-takeaway" id="speed-cost-takeaway"></div>
+                <p class="chart-explainer hidden" id="speed-cost-explainer">Every ride is cut into short slices, and each slice lands
+                   in the speed band it was ridden at. Each bar shows how far a full charge would take you if the whole
+                   ride stayed in that band. Unlike the scatter above, this compares speeds <b>inside</b> your rides, so
+                   route mix can't skew it. Slow bands cost more because balancing and stop-and-go burn power while
+                   covering almost no distance. Fast bands cost more because air drag grows with the square of speed.
+                   The cheapest cruise is the green band in between.</p>
                 <div class="chart-host hidden" id="range-climb-host">
                     <div class="chart-title">Range vs climb rate <span class="chart-title-axes">(meters of altitude gain per km of ride)</span></div>
                     <canvas id="chart-range-climb"></canvas>
@@ -593,6 +613,7 @@
               </div>
             </div>
             <div class="calc-verdict" id="calc-verdict">&mdash;</div>
+            <div class="calc-model-note hidden" id="calc-model-note"></div>
           </div>
           <div class="calc-chart">
             <div class="calc-chart-title">Battery depletion <span class="calc-chart-axes">(% over distance, hover for details)</span></div>
@@ -602,7 +623,8 @@
           <p class="calc-foot">
             Bands are <b class="calc-pess">pessimistic</b> &middot; <b class="calc-neut">neutral</b> &middot; <b class="calc-opt">optimistic</b>,
             derived from your own history using the multivariate range model (intercept + speed + temp + climb).
-            Pessimistic / optimistic come from the model&rsquo;s residual standard error.
+            Speeds beyond your usual trip averages follow your measured in-ride cost-of-speed curve instead of the
+            linear speed term. Pessimistic / optimistic come from the model&rsquo;s residual standard error.
           </p>
         </div>
         <div class="calc-subview hidden" id="calc-mapview">
@@ -685,6 +707,6 @@
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="static/js/analytics.js?v=63"></script>
+    <script src="static/js/analytics.js?v=65"></script>
 </body>
 </html>

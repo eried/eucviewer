@@ -129,6 +129,11 @@ body::before {
     padding: 4px 6px;
     font-size: 0.78rem;
     outline: none;
+    color-scheme: dark;
+}
+.controls select option {
+    background: #1a1a1f;
+    color: #e0e0e0;
 }
 .controls select:focus { border-color: rgba(179, 136, 255, 0.5); }
 
@@ -275,29 +280,41 @@ body[data-layout="single"] .layout-toggle-btn .layout-icon-tabs { display: block
     box-shadow: 0 0 8px rgba(0, 229, 255, 0.25);
 }
 
-/* Date-range scope filter: lets the user narrow the analyses to a sub-window
-   of their history. Two range inputs stacked with their thumbs overlapping
-   a single rail; a coloured fill spans the selected window. */
+/* Date-range scope filter: a modal dialog (same skeleton as the range
+   calculator, purple accent). Two range inputs stacked with their thumbs
+   overlapping a single rail; a coloured fill spans the selected window. */
 #date-range-panel {
-    padding: 10px 16px 8px;
-    background: rgba(10, 10, 15, 0.55);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
 }
-.dr-header {
+#date-range-panel.hidden { display: none; }
+.calc-panel.scope-panel {
+    width: min(560px, 100%);
+    border-color: rgba(179, 136, 255, 0.35);
+    border-left-color: #b388ff;
+}
+.calc-header.scope-header { background: rgba(179, 136, 255, 0.04); }
+.calc-tag.scope-tag {
+    color: #b388ff;
+    background: rgba(179, 136, 255, 0.12);
+    border-color: rgba(179, 136, 255, 0.45);
+}
+.scope-panel .calc-close:hover { border-color: #b388ff; }
+.scope-body { padding: 18px 18px 12px; }
+.scope-actions {
     display: flex;
     align-items: center;
     gap: 10px;
-    font-size: 0.72rem;
-    margin-bottom: 6px;
-}
-.dr-title {
-    color: #888;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Consolas, monospace;
+    margin-top: 12px;
 }
 .dr-summary {
     color: #fff;
+    font-size: 0.72rem;
     font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Consolas, monospace;
     font-variant-numeric: tabular-nums;
 }
@@ -1461,6 +1478,11 @@ body.weather-loaded .forensic-tag.weather-tag {
     padding: 4px 6px;
     font-size: 0.78rem;
     font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    color-scheme: dark;
+}
+.calc-weather-form select option {
+    background: #1a1a1f;
+    color: #e0e0e0;
 }
 .calc-weather-form #calc-weather-fetch {
     margin-left: 0;
@@ -1636,6 +1658,18 @@ body.weather-loaded .forensic-tag.weather-tag {
     color: #ffc8c8;
 }
 .calc-verdict b { color: #fff; font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Consolas, monospace; }
+/* Shown when the chosen pace sits outside the trip-average envelope and
+   the estimate extends along the in-ride cost-of-speed curve. */
+.calc-model-note {
+    margin-top: 6px;
+    padding: 6px 10px;
+    border-radius: 2px;
+    font-size: 0.72rem;
+    line-height: 1.4;
+    background: rgba(179, 136, 255, 0.06);
+    border-left: 3px solid rgba(179, 136, 255, 0.6);
+    color: #cbb8ee;
+}
 .calc-chart {
     grid-column: 1 / -1;
     position: relative;

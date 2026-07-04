@@ -755,6 +755,42 @@
       m.battDelta = m.battStart - m.battEnd;
     }
 
+    // In-ride cost of speed: file every sample-to-sample segment under the
+    // speed band it was ridden at (5 km/h buckets) and accumulate battery
+    // drop + distance. Aggregated across trips at render time this gives
+    // consumption vs speed with trip mix held constant, which is what the
+    // range-vs-average-speed scatter can't show. Distance comes from the
+    // cumulative mileage column when the logger filled it, else from the
+    // GPS track; tracks with neither just skip.
+    m.spdCost = null;
+    {
+      const buckets = Object.create(null);
+      let any = false;
+      for (let i = 1; i < ts.length; i++) {
+        const a = ts[i - 1], b = ts[i];
+        const s0 = a[SPD], s1 = b[SPD];
+        if (typeof s0 !== "number" || typeof s1 !== "number" || s0 < 3 || s1 < 3) continue;
+        let dk = null;
+        const k0 = a[MILEAGE], k1 = b[MILEAGE];
+        if (typeof k0 === "number" && typeof k1 === "number" && k1 > k0) {
+          dk = k1 - k0;
+        } else if (typeof a[LAT] === "number" && typeof b[LAT] === "number" &&
+                   Math.abs(a[LAT]) > 0.01 && Math.abs(b[LAT]) > 0.01) {
+          dk = haversineKm(a[LAT], a[LON], b[LAT], b[LON]);
+        }
+        if (dk == null || !(dk > 0) || dk > 3) continue;
+        const b0 = a[BATT], b1 = b[BATT];
+        if (typeof b0 !== "number" || typeof b1 !== "number" || b0 <= 0 || b1 <= 0) continue;
+        const db = b0 - b1;
+        if (db < -0.5 || db > 5) continue; // charge jump / BMS reset
+        const key = Math.floor(((s0 + s1) / 2) / 5) * 5;
+        const acc = buckets[key] || (buckets[key] = [0, 0, 0]); // [batt %, km, segments]
+        acc[0] += db; acc[1] += dk; acc[2]++;
+        any = true;
+      }
+      if (any) m.spdCost = buckets;
+    }
+
     // Energy: prefer the logged power column, else reconstruct V×I.
     let hasPower = false, hasVolt = false, hasCurrent = false;
     for (const row of ts) {
@@ -1291,14 +1327,22 @@
   drHi.textContent = drFmt.format(datedFull[datedFull.length - 1].date);
   drSummary.textContent = "All trips (" + datedFull.length + ")";
 
-  // Scope toggle: hide the slider panel behind a small button near the
-  // page title. The button glows whenever a sub-range is active so the
-  // user can't forget the analyses are scoped.
+  // Scope: a modal dialog behind a small button near the page title.
+  // The button glows whenever a sub-range is active so the user can't
+  // forget the analyses are scoped.
   const scopeToggle = document.getElementById("scope-toggle");
   const scopePanel = document.getElementById("date-range-panel");
   if (scopeToggle && scopePanel) {
     scopeToggle.addEventListener("click", () => {
-      scopePanel.classList.toggle("hidden");
+      scopePanel.classList.remove("hidden");
+    });
+    scopePanel.querySelectorAll("[data-scope-close]").forEach((el) => {
+      el.addEventListener("click", () => scopePanel.classList.add("hidden"));
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && !scopePanel.classList.contains("hidden")) {
+        scopePanel.classList.add("hidden");
+      }
     });
   }
   function refreshScopeButton() {
@@ -2173,6 +2217,12 @@
       const html = `<b>${fmtVal(b.from)}</b>–<b>${fmtVal(b.to)}</b> ${an.unit || ""}<br>` +
                    `<b>${b.count}</b> trip${b.count === 1 ? "" : "s"}`;
       showTooltip(html, e.clientX, e.clientY);
+    } else if (an.type === "bars") {
+      hideAllCrosshairs();
+      const idx = an.xToBin(mx);
+      const b = idx >= 0 && idx < an.bins.length ? an.bins[idx] : null;
+      if (!b || !b.html) { hideTooltip(); return; }
+      showTooltip(b.html, e.clientX, e.clientY);
     } else {
       hideAllCrosshairs();
       let best = null, bestD = Infinity;
@@ -2282,6 +2332,11 @@
       medSpeedKmh: median(speeds),
       medTempC:    median(temps),
       medClimbMperKm: median(climbs),
+      // Envelope of trip-average speeds the fit actually saw. Outside it
+      // the linear speed term is extrapolation; the hybrid model in
+      // calcRangeKm switches to the in-ride cost curve there.
+      sLoKmh: percentile(speeds, 0.05),
+      sHiKmh: percentile(speeds, 0.95),
     };
   }
 
@@ -2313,10 +2368,7 @@
     const tC = Number(whatIfEls.temp.dataset.c);
     const cMperKm = Number(whatIfEls.climb.dataset.mperkm);
     if (!isFinite(sKmh) || !isFinite(tC) || !isFinite(cMperKm)) return null;
-    return multiFit.intercept
-         + multiFit.speedSlope * sKmh
-         + multiFit.tempSlope  * tC
-         + multiFit.climbSlope * cMperKm;
+    return calcRangeKm(sKmh, tC, cMperKm);
   }
   function fmtSpeedOut(kmh) {
     return `${UNITS.speed(kmh).toFixed(0)} ${UNITS.speedUnit}`;
@@ -2553,15 +2605,21 @@
               `<b>${Math.abs(slopeDisp * 10).toFixed(1)}</b> ${UNITS.distUnit} of range.`,
       });
     }
-    // Speed sensitivity (multivariate slope — isolated effect).
+    // Speed sensitivity (multivariate slope — isolated effect). A positive
+    // slope is trip mix, not physics: faster trip averages mean less time
+    // in the expensive crawl zone, so say so instead of implying speed is
+    // free energy.
     const speedSlopeKm = multiFit ? multiFit.speedSlope : (speedFit ? speedFit.slope : null);
     if (speedSlopeKm != null) {
       const slopeDisp = UNITS.dist(speedSlopeKm) / UNITS.speed(1);
-      const sign = slopeDisp >= 0 ? "gains" : "loses";
+      const sign = slopeDisp >= 0 ? "gain" : "lose";
+      const why = slopeDisp >= 0
+        ? " Faster averages mean less time crawling, which is your most expensive zone per km."
+        : "";
       out.push({
         kind: slopeDisp < -0.5 ? "warn" : "info",
-        html: `Every <b>5 ${UNITS.speedUnit}</b> faster you ride on average ${sign} ` +
-              `<b>${Math.abs(slopeDisp * 5).toFixed(1)}</b> ${UNITS.distUnit} of range.`,
+        html: `Trips with a <b>5 ${UNITS.speedUnit}</b> faster average ${sign} about ` +
+              `<b>${Math.abs(slopeDisp * 5).toFixed(1)}</b> ${UNITS.distUnit} of range.${why}`,
       });
     }
     // Climb sensitivity (multivariate slope, isolated effect). Anchor the
@@ -3155,8 +3213,7 @@
       const sKmh = multiFit.medSpeedKmh, cMperKm = multiFit.medClimbMperKm;
       modelLine = (xDisp) => {
         const tC = UNITS.imperial ? (xDisp - 32) * 5 / 9 : xDisp;
-        const km = multiFit.intercept + multiFit.speedSlope * sKmh + multiFit.tempSlope * tC + multiFit.climbSlope * cMperKm;
-        return UNITS.dist(km);
+        return UNITS.dist(calcRangeKm(sKmh, tC, cMperKm));
       };
     }
     drawRangeFactorScatter(canvas, rangeTempHost, pts, {
@@ -3186,8 +3243,7 @@
       const tC = multiFit.medTempC, cMperKm = multiFit.medClimbMperKm;
       modelLine = (xDisp) => {
         const sKmh = UNITS.imperial ? xDisp / 0.621371 : xDisp;
-        const km = multiFit.intercept + multiFit.speedSlope * sKmh + multiFit.tempSlope * tC + multiFit.climbSlope * cMperKm;
-        return UNITS.dist(km);
+        return UNITS.dist(calcRangeKm(sKmh, tC, cMperKm));
       };
     }
     drawRangeFactorScatter(canvas, host, pts, {
@@ -3220,8 +3276,7 @@
       const sKmh = multiFit.medSpeedKmh, tC = multiFit.medTempC;
       modelLine = (xDisp) => {
         const mPerKm = UNITS.imperial ? xDisp / 3.28084 : xDisp;
-        const km = multiFit.intercept + multiFit.speedSlope * sKmh + multiFit.tempSlope * tC + multiFit.climbSlope * mPerKm;
-        return UNITS.dist(km);
+        return UNITS.dist(calcRangeKm(sKmh, tC, mPerKm));
       };
     }
     drawRangeFactorScatter(canvas, host, pts, {
@@ -3230,6 +3285,118 @@
       fitColor: "rgba(255,160,0,0.8)",
       modelLine,
     });
+  }
+
+  // In-ride cost of speed: aggregate the per-trip 5 km/h buckets over the
+  // scoped trips. Bands need enough riding behind them (20+ km, 50+
+  // segments) or one downhill burst would fabricate a cheap band.
+  function computeSpeedCostRows() {
+    const agg = Object.create(null);
+    for (const m of dated) {
+      const bk = m.spdCost;
+      if (!bk) continue;
+      for (const k in bk) {
+        const a = agg[k] || (agg[k] = [0, 0, 0]);
+        a[0] += bk[k][0]; a[1] += bk[k][1]; a[2] += bk[k][2];
+      }
+    }
+    const rows = [];
+    for (const k in agg) {
+      const db = agg[k][0], km = agg[k][1], n = agg[k][2];
+      if (km < 20 || n < 50 || db <= 0) continue;
+      rows.push({ from: +k, to: +k + 5, pctPerKm: db / km, rangeKm: (100 * km) / db, km, n });
+    }
+    rows.sort((a, b) => a.from - b.from);
+    return rows;
+  }
+
+  // One bar per speed band: how far a full charge goes if the whole ride
+  // sits in that band. Sweet-spot bands (within 3% of the cheapest) are
+  // green. Returns true when the chart drew so the caller can set the
+  // takeaway from the same rows.
+  function drawSpeedCostBars(canvas, rows) {
+    const host = document.getElementById("speed-cost-host");
+    const explainer = document.getElementById("speed-cost-explainer");
+    if (!host || !canvas) return false;
+    if (rows.length < 3) {
+      host.classList.add("hidden");
+      if (explainer) explainer.classList.add("hidden");
+      return false;
+    }
+    host.classList.remove("hidden");
+    if (explainer) explainer.classList.remove("hidden");
+    const cv = setupCanvas(canvas);
+    if (!cv) return false;
+    const { ctx, w, h } = cv;
+    const pad = { top: 42, bottom: 28, left: 44, right: 14 };
+    const cw = w - pad.left - pad.right;
+    const chh = h - pad.top - pad.bottom;
+    const vals = rows.map((r) => UNITS.dist(r.rangeKm));
+    const yMax = Math.max(...vals) * 1.14; // headroom for the value labels
+    ctx.font = FONT;
+    ctx.strokeStyle = GRID_COLOR;
+    ctx.fillStyle = AXIS_COLOR;
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    for (const tv of niceTicks(0, yMax, 4)) {
+      if (tv > yMax) continue;
+      const y = pad.top + chh - (tv / yMax) * chh;
+      ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(w - pad.right, y); ctx.stroke();
+      ctx.fillText(String(Math.round(tv)), pad.left - 6, y);
+    }
+    const n = rows.length;
+    const barW = cw / n;
+    const bestPct = Math.min(...rows.map((r) => r.pctPerKm));
+    const sweet = rows.map((r) => r.pctPerKm <= bestPct * 1.03);
+    rows.forEach((r, i) => {
+      const v = vals[i];
+      const x = pad.left + i * barW;
+      const yTop = pad.top + chh - (v / yMax) * chh;
+      const grad = ctx.createLinearGradient(0, yTop, 0, pad.top + chh);
+      if (sweet[i]) {
+        grad.addColorStop(0, "rgba(105,240,174,0.95)");
+        grad.addColorStop(1, "rgba(105,240,174,0.2)");
+      } else {
+        grad.addColorStop(0, "rgba(179,136,255,0.9)");
+        grad.addColorStop(1, "rgba(179,136,255,0.18)");
+      }
+      ctx.fillStyle = grad;
+      ctx.fillRect(x + 2, yTop, barW - 4, pad.top + chh - yTop);
+      ctx.fillStyle = sweet[i] ? "rgba(105,240,174,0.95)" : "rgba(255,255,255,0.7)";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "bottom";
+      ctx.fillText(String(Math.round(v)), x + barW / 2, yTop - 2);
+    });
+    // Band edges along the x axis, unit on the last edge.
+    ctx.fillStyle = AXIS_COLOR;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    rows.forEach((r, i) => {
+      ctx.fillText(String(Math.round(UNITS.speed(r.from))), pad.left + i * barW, pad.top + chh + 6);
+    });
+    ctx.textAlign = "right";
+    ctx.fillText(Math.round(UNITS.speed(rows[n - 1].to)) + " " + UNITS.speedUnit, w - pad.right, pad.top + chh + 6);
+    // Titles + sweet-spot legend chip (left side, clear of the HTML title
+    // overlay that lives in the top-right corner).
+    ctx.fillStyle = "rgba(255,255,255,0.55)";
+    ctx.textAlign = "left";
+    ctx.fillText("est. full-charge range (" + UNITS.distUnit + ")", pad.left + 4, 4);
+    ctx.fillStyle = "rgba(105,240,174,0.9)";
+    ctx.fillRect(pad.left + 4, 21, 8, 8);
+    ctx.fillStyle = "rgba(255,255,255,0.65)";
+    ctx.fillText("sweet spot", pad.left + 16, 20);
+    canvas._an = {
+      type: "bars",
+      pad, w, h,
+      xToBin: (mx) => Math.floor((mx - pad.left) / barW),
+      bins: rows.map((r, i) => ({
+        html: `<b>${Math.round(UNITS.speed(r.from))}–${Math.round(UNITS.speed(r.to))} ${UNITS.speedUnit}</b>` +
+              `<br>Full charge at this pace: <b>${Math.round(vals[i])} ${UNITS.distUnit}</b>` +
+              `<br>Battery cost: <b>${(r.pctPerKm / UNITS.dist(1)).toFixed(2)}</b> %/${UNITS.distUnit}` +
+              `<br>Sampled from <b>${Math.round(UNITS.dist(r.km))} ${UNITS.distUnit}</b> of riding`,
+      })),
+    };
+    return true;
   }
 
   // ---------- Ride planner (modal calculator) ----------
@@ -3267,12 +3434,56 @@
     const dof = Math.max(1, multiFit.n - 4);
     return Math.sqrt(multiFit.rss / dof);
   }
+  // Cached in-ride cost curve for the hybrid range model. Rebuilt when the
+  // scope changes (renderAll clears it). Points are band centers paired
+  // with the full-charge range equivalent of that band's battery cost.
+  let speedCurveCache; // undefined = stale, null = not enough band data
+  function getSpeedCurve() {
+    if (speedCurveCache !== undefined) return speedCurveCache;
+    const rows = computeSpeedCostRows();
+    speedCurveCache = rows.length >= 3
+      ? { pts: rows.map((r) => ({ s: (r.from + r.to) / 2, r: r.rangeKm })), sMax: rows[rows.length - 1].to }
+      : null;
+    return speedCurveCache;
+  }
+  function speedCurveRangeAt(curve, sKmh) {
+    const p = curve.pts;
+    if (sKmh <= p[0].s) return p[0].r;
+    for (let i = 1; i < p.length; i++) {
+      if (sKmh <= p[i].s) {
+        const k = (sKmh - p[i - 1].s) / (p[i].s - p[i - 1].s);
+        return p[i - 1].r + k * (p[i].r - p[i - 1].r);
+      }
+    }
+    return p[p.length - 1].r;
+  }
+  // Hybrid range model. Inside the envelope of observed trip-average speeds
+  // the trip-level OLS applies (that's where it was trained). Outside it the
+  // prediction continues along the measured in-ride cost-of-speed curve, so
+  // pushing the speed slider past your data bends the estimate down with
+  // drag instead of riding the positive linear speed term into fantasy.
   function calcRangeKm(sKmh, tC, climbMperKm) {
     if (!multiFit) return null;
-    return multiFit.intercept
-         + multiFit.speedSlope * sKmh
-         + multiFit.tempSlope  * tC
-         + multiFit.climbSlope * climbMperKm;
+    const lin = (s) => multiFit.intercept
+                     + multiFit.speedSlope * s
+                     + multiFit.tempSlope  * tC
+                     + multiFit.climbSlope * climbMperKm;
+    const curve = getSpeedCurve();
+    if (!curve || multiFit.sLoKmh == null) return lin(sKmh);
+    if (sKmh > multiFit.sHiKmh) {
+      return lin(multiFit.sHiKmh) + speedCurveRangeAt(curve, sKmh) - speedCurveRangeAt(curve, multiFit.sHiKmh);
+    }
+    if (sKmh < multiFit.sLoKmh) {
+      return lin(multiFit.sLoKmh) + speedCurveRangeAt(curve, sKmh) - speedCurveRangeAt(curve, multiFit.sLoKmh);
+    }
+    return lin(sKmh);
+  }
+  // True when the speed input sits meaningfully outside the trip-average
+  // envelope (2 km/h grace so the note doesn't nag at the boundary), i.e.
+  // the prediction is riding the in-ride curve extension.
+  function calcSpeedBeyondData(sKmh) {
+    if (!multiFit || multiFit.sLoKmh == null || !getSpeedCurve()) return false;
+    return sKmh > multiFit.sHiKmh + 2 || sKmh < multiFit.sLoKmh - 2;
   }
   // Battery-used (pess / neut / opt) for a single leg of distance D km,
   // given internal-units inputs. Pessimistic = the worst (largest) battery
@@ -3316,7 +3527,7 @@
     // total at the prevailing rate (or flat = 0) for the projection.
     const climbMTotal = calcClimbM(cDisp);
     const climbProjPerKm = dDisp > 0 ? climbMTotal / calcDistKm(dDisp) : 0;
-    const rangeOptKm = (multiFit.intercept + multiFit.speedSlope * sKmh + multiFit.tempSlope * tC + multiFit.climbSlope * climbProjPerKm) + calcModelSigmaKm();
+    const rangeOptKm = calcRangeKm(sKmh, tC, climbProjPerKm) + calcModelSigmaKm();
     const maxOptKm = Math.max(2, (B / 100) * Math.max(0.5, rangeOptKm));
     const newMaxDisp = Math.max(5, Math.ceil(UNITS.dist(maxOptKm) * 1.15));
     const srcId = srcEvt && srcEvt.target && srcEvt.target.id;
@@ -3393,6 +3604,20 @@
     }
     calcEls.verdict.className = "calc-verdict" + (cls ? " " + cls : "");
     calcEls.verdict.innerHTML = msg;
+
+    // Extrapolation flag: the chosen pace sits outside the trip averages the
+    // model was trained on, so the estimate rides the in-ride curve instead.
+    const noteEl = document.getElementById("calc-model-note");
+    if (noteEl) {
+      if (calcSpeedBeyondData(sKmh)) {
+        const loD = Math.round(UNITS.speed(multiFit.sLoKmh));
+        const hiD = Math.round(UNITS.speed(multiFit.sHiKmh));
+        noteEl.innerHTML = `Your trips average ${loD}&ndash;${hiD} ${UNITS.speedUnit}. Beyond that the estimate follows your in-ride cost-of-speed curve, thinner data.`;
+        noteEl.classList.remove("hidden");
+      } else {
+        noteEl.classList.add("hidden");
+      }
+    }
 
     drawCalcChart(B, distKm, sKmh, tC, climbMperKm, calcEls.roundtrip.checked);
   }
@@ -3730,7 +3955,11 @@
     const medT = temps.length  ? median(temps)  : 20;
     const maxD = dists.length ? percentile(dists, 0.99) * 1.5 : 50;
     const maxC = climbs.length ? Math.max(500, percentile(climbs.map(Math.abs), 0.95) * 1.5) : 500;
-    const sMin = 10, sMax = 55, tMin = -15, tMax = 40;
+    // Speed ceiling: the fastest in-ride band with real data behind it
+    // (hybrid model territory), not an arbitrary constant. Falls back to
+    // 55 when there aren't enough bands to build the curve.
+    const curve = getSpeedCurve();
+    const sMin = 10, sMax = curve ? Math.max(30, curve.sMax) : 55, tMin = -15, tMax = 40;
     const sMinD = Math.round(UNITS.speed(sMin));
     const sMaxD = Math.round(UNITS.speed(sMax));
     const tMinD = Math.round(UNITS.temp(tMin));
@@ -4373,6 +4602,7 @@
     if (!dated.length) return;
     refreshSubtitle();
     refreshScopeButton();
+    speedCurveCache = undefined; // scope may have changed; rebuild on demand
     const minBattUse = Number(battMinSel.value);
     const minPerBin = Number(minBinSel.value);
     for (const m of dated) applyRangeGating(m, minBattUse);
@@ -4466,18 +4696,51 @@
         // multivariate slope (the conditional effect, holding temp+climb
         // constant) — that's the one with the right sign and magnitude.
         drawRangeSpeedScatter(document.getElementById("chart-range-speed"));
+        const speedCostRows = computeSpeedCostRows();
         const speedSlopeKm = multiFit ? multiFit.speedSlope : (speedFit ? speedFit.slope : null);
         if (speedSlopeKm != null) {
           const slopeDisp = UNITS.dist(speedSlopeKm) / UNITS.speed(1);
           const sign = slopeDisp < 0 ? "loses" : "gains";
           const perStep = Math.abs(slopeDisp);
           const tag = multiFit ? " (after factoring out temperature + climb)" : "";
-          setTakeaway("range-speed-takeaway", [
-            `Each <b>1 ${UNITS.speedUnit}</b> faster average ${sign} about <b>${perStep.toFixed(2)} ${UNITS.distUnit}</b> of range${tag}`,
-            `Going <b>5 ${UNITS.speedUnit}</b> harder is worth ${slopeDisp < 0 ? "−" : "+"}<b>${(perStep * 5).toFixed(1)} ${UNITS.distUnit}</b>`,
-          ], slopeDisp < 0 ? "warn" : null);
+          const parts = [
+            `Across whole trips, each <b>1 ${UNITS.speedUnit}</b> faster average ${sign} about <b>${perStep.toFixed(2)} ${UNITS.distUnit}</b> of range${tag}`,
+          ];
+          if (slopeDisp > 0) {
+            parts.push(speedCostRows.length >= 3
+              ? `That is trip mix, not free speed: a faster average means less time crawling. The in-ride chart below shows the real cost per band`
+              : `That is trip mix, not free speed: a faster average usually means less time in the expensive stop-and-go zone`);
+          } else {
+            parts.push(`Going <b>5 ${UNITS.speedUnit}</b> harder is worth −<b>${(perStep * 5).toFixed(1)} ${UNITS.distUnit}</b>`);
+          }
+          setTakeaway("range-speed-takeaway", parts, slopeDisp < 0 ? "warn" : null);
         } else {
           setTakeaway("range-speed-takeaway", []);
+        }
+
+        // In-ride cost of speed: the segment-level curve that answers the
+        // question the scatter above raises. Green bands are the cheapest
+        // cruise, the tails show why crawling and hammering both cost range.
+        if (drawSpeedCostBars(document.getElementById("chart-speed-cost"), speedCostRows)) {
+          const bestIdx = speedCostRows.reduce((bi, r, i, a) => (r.pctPerKm < a[bi].pctPerKm ? i : bi), 0);
+          const bestPct = speedCostRows[bestIdx].pctPerKm;
+          let lo = bestIdx, hi = bestIdx;
+          while (lo > 0 && speedCostRows[lo - 1].pctPerKm <= bestPct * 1.03) lo--;
+          while (hi < speedCostRows.length - 1 && speedCostRows[hi + 1].pctPerKm <= bestPct * 1.03) hi++;
+          const parts = [
+            `Sweet spot: <b>${Math.round(UNITS.speed(speedCostRows[lo].from))}–${Math.round(UNITS.speed(speedCostRows[hi].to))} ${UNITS.speedUnit}</b>, a full charge is good for about <b>${Math.round(UNITS.dist(speedCostRows[bestIdx].rangeKm))} ${UNITS.distUnit}</b>`,
+          ];
+          if (lo > 0) {
+            const slow = speedCostRows[0];
+            parts.push(`Below <b>${Math.round(UNITS.speed(slow.to))} ${UNITS.speedUnit}</b> each ${UNITS.distUnit} costs <b>${Math.round((slow.pctPerKm / bestPct - 1) * 100)}%</b> more battery`);
+          }
+          if (hi < speedCostRows.length - 1) {
+            const fast = speedCostRows[speedCostRows.length - 1];
+            parts.push(`Above <b>${Math.round(UNITS.speed(fast.from))} ${UNITS.speedUnit}</b> drag adds <b>${Math.round((fast.pctPerKm / bestPct - 1) * 100)}%</b>`);
+          }
+          setTakeaway("speed-cost-takeaway", parts);
+        } else {
+          setTakeaway("speed-cost-takeaway", []);
         }
 
         // Range vs climb rate. Same logic: multivariate slope for the
