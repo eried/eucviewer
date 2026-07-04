@@ -415,11 +415,21 @@
                     <canvas id="chart-efficiency"></canvas>
                 </div>
                 <div class="chart-takeaway" id="efficiency-takeaway"></div>
-                <div class="chart-host">
+                <div class="chart-host" id="power-hist-host">
                     <div class="chart-title">Power-draw distribution <span class="chart-title-axes">(trip count by avg-W band)</span></div>
                     <canvas id="chart-power-hist"></canvas>
                 </div>
                 <div class="chart-takeaway" id="power-hist-takeaway"></div>
+                <div class="chart-host hidden" id="idle-cost-host">
+                    <div class="chart-title">Cost of standing still <span class="chart-title-axes">(battery per hour at walking-and-below paces)</span></div>
+                    <canvas id="chart-idle-cost"></canvas>
+                </div>
+                <div class="chart-takeaway" id="idle-cost-takeaway"></div>
+                <p class="chart-explainer hidden" id="idle-cost-explainer">Battery gauges bounce back up right after load
+                   disappears, so battery flow at low speeds is measured carefully: for the moving paces drops are netted
+                   against rebounds, and the standing-still number comes only from stops of 2 minutes or more with stable
+                   voltage, where the rebound has settled and charging breaks are excluded. Hover a bar for the time
+                   sampled and the per-distance equivalent.</p>
                 <p class="sec-hint">Energy per distance (Wh/km, computed from logged power or voltage&times;current)
                    and distance per battery percent (km/%). The histogram shows how hard you typically push the
                    wheel: most riders sit in a narrow average-power band with a long tail toward steep climbs / sprints.</p>
@@ -707,6 +717,6 @@
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="static/js/analytics.js?v=65"></script>
+    <script src="static/js/analytics.js?v=67"></script>
 </body>
 </html>

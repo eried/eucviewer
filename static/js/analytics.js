@@ -791,6 +791,71 @@
       if (any) m.spdCost = buckets;
     }
 
+    // Slow-state ledger: time + battery flow at standstill, balancing,
+    // walking and slow-riding paces, with cruise as reference. Battery
+    // gauges rebound upward right after load disappears (voltage-derived
+    // gauges especially), so drops and rises are kept separate and netted
+    // at render time. The honest standstill number comes from m.idleStops:
+    // contiguous stops of 2+ minutes with stable voltage, where the
+    // rebound has settled and charging breaks or power-offs are excluded.
+    m.stateCost = null;
+    m.idleStops = null;
+    {
+      const states = { stopped: [0, 0, 0], balance: [0, 0, 0], walk: [0, 0, 0], slowride: [0, 0, 0], cruise: [0, 0, 0] };
+      let any = false;
+      for (let i = 1; i < ts.length; i++) {
+        const a = ts[i - 1], b = ts[i];
+        const dt = b[SEC] - a[SEC];
+        if (!(dt > 0) || dt > 60) continue;
+        const s0 = a[SPD], s1 = b[SPD];
+        if (typeof s0 !== "number" || typeof s1 !== "number") continue;
+        const v = (s0 + s1) / 2;
+        const key = v < 0.5 ? "stopped" : v < 3 ? "balance" : v < 7 ? "walk"
+                  : v < 12 ? "slowride" : (v >= 20 && v < 30) ? "cruise" : null;
+        if (!key) continue;
+        const acc = states[key];
+        acc[0] += dt; // [seconds, batt % dropped, batt % risen]
+        const b0 = a[BATT], b1 = b[BATT];
+        if (typeof b0 === "number" && typeof b1 === "number" && b0 > 0 && b1 > 0) {
+          const d = b0 - b1;
+          if (d >= 0 && d <= 5) acc[1] += d;
+          else if (d < 0 && d >= -5) acc[2] += -d;
+        }
+        any = true;
+      }
+      if (any) m.stateCost = states;
+
+      const runs = [0, 0, 0]; // [seconds, batt % dropped, stop count]
+      let i0 = -1;
+      const flushRun = (iEnd) => {
+        if (i0 < 0 || iEnd <= i0) { i0 = -1; return; }
+        const dur = ts[iEnd][SEC] - ts[i0][SEC];
+        if (dur >= 120) {
+          const b0 = ts[i0][BATT], b1 = ts[iEnd][BATT];
+          const v0 = ts[i0][VOLT], v1 = ts[iEnd][VOLT];
+          if (typeof b0 === "number" && typeof b1 === "number" &&
+              typeof v0 === "number" && typeof v1 === "number" &&
+              Math.abs(b0 - b1) <= 3 && Math.abs(v1 - v0) <= 3) {
+            runs[0] += dur; runs[1] += b0 - b1; runs[2]++;
+          }
+        }
+        i0 = -1;
+      };
+      for (let i = 0; i < ts.length; i++) {
+        const spd = ts[i][SPD];
+        const stopped = typeof spd === "number" && spd < 0.5;
+        const gapOk = i === 0 || (ts[i][SEC] - ts[i - 1][SEC]) <= 60;
+        if (stopped && gapOk) {
+          if (i0 < 0) i0 = i;
+        } else {
+          flushRun(i - 1);
+          if (stopped) i0 = i; // gap split: start a fresh run here
+        }
+      }
+      flushRun(ts.length - 1);
+      if (runs[2] > 0) m.idleStops = runs;
+    }
+
     // Energy: prefer the logged power column, else reconstruct V×I.
     let hasPower = false, hasVolt = false, hasCurrent = false;
     for (const row of ts) {
@@ -2223,6 +2288,12 @@
       const b = idx >= 0 && idx < an.bins.length ? an.bins[idx] : null;
       if (!b || !b.html) { hideTooltip(); return; }
       showTooltip(b.html, e.clientX, e.clientY);
+    } else if (an.type === "hbars") {
+      hideAllCrosshairs();
+      const idx = an.yToBin(my);
+      const b = idx >= 0 && idx < an.bins.length ? an.bins[idx] : null;
+      if (!b || !b.html) { hideTooltip(); return; }
+      showTooltip(b.html, e.clientX, e.clientY);
     } else {
       hideAllCrosshairs();
       let best = null, bestD = Infinity;
@@ -3395,6 +3466,132 @@
               `<br>Battery cost: <b>${(r.pctPerKm / UNITS.dist(1)).toFixed(2)}</b> %/${UNITS.distUnit}` +
               `<br>Sampled from <b>${Math.round(UNITS.dist(r.km))} ${UNITS.distUnit}</b> of riding`,
       })),
+    };
+    return true;
+  }
+
+  // Cost of standing still: aggregate the per-trip slow-state ledgers.
+  // Standstill uses the long-stop method (see computeTripMetrics); the
+  // moving states net drops against gauge-rebound rises. States need 1+
+  // hour of samples to show; standstill additionally needs 10+ stops.
+  function computeIdleCostRows() {
+    const keys = ["stopped", "balance", "walk", "slowride", "cruise"];
+    const agg = {};
+    keys.forEach((k) => { agg[k] = [0, 0, 0]; });
+    const idle = [0, 0, 0];
+    for (const m of dated) {
+      if (m.stateCost) {
+        for (const k of keys) {
+          const s = m.stateCost[k];
+          if (s) { agg[k][0] += s[0]; agg[k][1] += s[1]; agg[k][2] += s[2]; }
+        }
+      }
+      if (m.idleStops) { idle[0] += m.idleStops[0]; idle[1] += m.idleStops[1]; idle[2] += m.idleStops[2]; }
+    }
+    const defs = [
+      { key: "stopped",  label: "standing still", midKmh: 0 },
+      { key: "balance",  label: "balancing",      loK: 0.5, hiK: 3,  midKmh: 1.75 },
+      { key: "walk",     label: "walking pace",   loK: 3,   hiK: 7,  midKmh: 5 },
+      { key: "slowride", label: "slow riding",    loK: 7,   hiK: 12, midKmh: 9.5 },
+      { key: "cruise",   label: "cruise",         loK: 20,  hiK: 30, midKmh: 25 },
+    ];
+    const rows = [];
+    for (const d of defs) {
+      if (d.key === "stopped") {
+        const h = idle[0] / 3600;
+        if (h < 1 || idle[2] < 10) continue;
+        rows.push({ ...d, pctPerH: Math.max(0, idle[1] / h), hours: h, stops: idle[2] });
+      } else {
+        const a = agg[d.key];
+        const h = a[0] / 3600;
+        if (h < 1) continue;
+        rows.push({ ...d, pctPerH: Math.max(0, (a[1] - a[2]) / h), hours: h });
+      }
+    }
+    return rows;
+  }
+
+  // Horizontal bars: battery % per hour for each slow state, cruise as the
+  // dim reference bar. Returns true when the chart drew.
+  function drawIdleCostBars(canvas, rows) {
+    const host = document.getElementById("idle-cost-host");
+    const explainer = document.getElementById("idle-cost-explainer");
+    if (!host || !canvas) return false;
+    const cruise = rows.find((r) => r.key === "cruise");
+    if (rows.length < 3 || !cruise) {
+      host.classList.add("hidden");
+      if (explainer) explainer.classList.add("hidden");
+      return false;
+    }
+    host.classList.remove("hidden");
+    if (explainer) explainer.classList.remove("hidden");
+    const cv = setupCanvas(canvas);
+    if (!cv) return false;
+    const { ctx, w, h } = cv;
+    const pad = { top: 42, bottom: 26, left: 120, right: 60 };
+    const cw = w - pad.left - pad.right;
+    const chh = h - pad.top - pad.bottom;
+    const xMax = Math.max(...rows.map((r) => r.pctPerH)) * 1.05 || 1;
+    ctx.font = FONT;
+    // Vertical grid + x ticks.
+    ctx.strokeStyle = GRID_COLOR;
+    ctx.fillStyle = AXIS_COLOR;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    for (const tv of niceTicks(0, xMax, 5)) {
+      if (tv > xMax) continue;
+      const x = pad.left + (tv / xMax) * cw;
+      ctx.beginPath(); ctx.moveTo(x, pad.top); ctx.lineTo(x, pad.top + chh); ctx.stroke();
+      ctx.fillText(String(Math.round(tv)), x, pad.top + chh + 6);
+    }
+    const n = rows.length;
+    const rowH = chh / n;
+    const barH = Math.min(26, rowH * 0.62);
+    const speedBand = (r) => r.loK == null ? "" :
+      ` (${Math.round(UNITS.speed(r.loK))}–${Math.round(UNITS.speed(r.hiK))} ${UNITS.speedUnit})`;
+    rows.forEach((r, i) => {
+      const y = pad.top + i * rowH + (rowH - barH) / 2;
+      const bw = Math.max(2, (r.pctPerH / xMax) * cw);
+      const isRef = r.key === "cruise";
+      const grad = ctx.createLinearGradient(pad.left, 0, pad.left + bw, 0);
+      if (isRef) {
+        grad.addColorStop(0, "rgba(255,255,255,0.16)");
+        grad.addColorStop(1, "rgba(255,255,255,0.34)");
+      } else {
+        grad.addColorStop(0, "rgba(179,136,255,0.25)");
+        grad.addColorStop(1, "rgba(179,136,255,0.9)");
+      }
+      ctx.fillStyle = grad;
+      ctx.fillRect(pad.left, y, bw, barH);
+      // State label on the left.
+      ctx.fillStyle = isRef ? "rgba(255,255,255,0.5)" : "#ccc";
+      ctx.textAlign = "right";
+      ctx.textBaseline = "middle";
+      ctx.fillText(r.label, pad.left - 8, y + barH / 2);
+      // Value at the bar end.
+      ctx.fillStyle = isRef ? "rgba(255,255,255,0.55)" : "rgba(255,255,255,0.85)";
+      ctx.textAlign = "left";
+      ctx.fillText(r.pctPerH.toFixed(r.pctPerH < 5 ? 1 : 0) + " %/h", pad.left + bw + 6, y + barH / 2);
+    });
+    // Axis title.
+    ctx.fillStyle = "rgba(255,255,255,0.55)";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.fillText("battery % per hour", pad.left + 4, 4);
+    canvas._an = {
+      type: "hbars",
+      pad, w, h,
+      yToBin: (my) => Math.floor((my - pad.top) / rowH),
+      bins: rows.map((r) => {
+        const perKm = r.midKmh > 0 ? (r.pctPerH / r.midKmh / UNITS.dist(1)).toFixed(2) + " %/" + UNITS.distUnit : null;
+        return {
+          html: `<b>${r.label}${speedBand(r)}</b>` +
+                `<br>Battery: <b>${r.pctPerH.toFixed(2)} %/h</b>` +
+                (perKm ? `<br>Per distance: <b>${perKm}</b>` : "") +
+                `<br>Sampled: <b>${r.hours.toFixed(1)} h</b>` +
+                (r.stops ? ` across <b>${r.stops}</b> stops of 2+ min` : ""),
+        };
+      }),
     };
     return true;
   }
@@ -5214,8 +5411,10 @@
           }
           setTakeaway("efficiency-takeaway", parts);
         }
-        // Power-draw histogram
+        // Power-draw histogram (host hidden when the exports carry no power)
         const powers = dated.map((m) => m.avgPower).filter((v) => v != null && v > 0);
+        const powerHost = document.getElementById("power-hist-host");
+        if (powerHost) powerHost.classList.toggle("hidden", powers.length < 5);
         if (powers.length >= 5) {
           drawHistogram(document.getElementById("chart-power-hist"), powers, {
             xLabel: "W",
@@ -5239,12 +5438,49 @@
       }
     }
 
+    // 2a. Cost of standing still: battery per hour at walking-and-below
+    // paces, standstill from long stops so gauge rebound can't fake it.
+    {
+      const rows = computeIdleCostRows();
+      if (drawIdleCostBars(document.getElementById("chart-idle-cost"), rows)) {
+        const cruise = rows.find((r) => r.key === "cruise");
+        const stopped = rows.find((r) => r.key === "stopped");
+        const walk = rows.find((r) => r.key === "walk");
+        const parts = [];
+        const cruisePctPerKm = cruise ? cruise.pctPerH / cruise.midKmh : null;
+        if (stopped && cruisePctPerKm > 0) {
+          const kmEquiv = stopped.pctPerH / cruisePctPerKm;
+          parts.push(`An hour of standing costs about <b>${stopped.pctPerH.toFixed(1)}%</b>, roughly <b>${UNITS.dist(kmEquiv).toFixed(1)} ${UNITS.distUnit}</b> of cruise range`);
+        }
+        if (walk && cruisePctPerKm > 0) {
+          const walkPctPerKm = walk.pctPerH / walk.midKmh;
+          const ratio = walkPctPerKm / cruisePctPerKm;
+          if (ratio >= 0.7 && ratio <= 1.6) {
+            parts.push(`Walking the wheel costs about as much per ${UNITS.distUnit} as riding it (<b>${(walkPctPerKm / UNITS.dist(1)).toFixed(2)}</b> vs <b>${(cruisePctPerKm / UNITS.dist(1)).toFixed(2)} %/${UNITS.distUnit}</b>)`);
+          } else {
+            parts.push(`Walking the wheel: <b>${walk.pctPerH.toFixed(1)} %/h</b>, ${ratio > 1.6 ? "pricier" : "cheaper"} per ${UNITS.distUnit} than cruising`);
+          }
+        }
+        setTakeaway("idle-cost-takeaway", parts);
+      } else {
+        setTakeaway("idle-cost-takeaway", []);
+      }
+    }
+
     // 2b. Regen: trend, descent scatter, share histogram.
     {
       const tripsWithRegen = dated.filter((m) => m.driveWh != null && m.driveWh > 0);
       const meta = document.getElementById("regen-meta");
       if (tripsWithRegen.length < 5) {
-        setSectionEmpty("regen", "Not enough trips with sample-level power data to split drive vs regen.");
+        // Tell the user exactly what's missing: "0 of 276" means the export's
+        // Current/Power columns are empty, not that the history is too short.
+        const msg = tripsWithRegen.length === 0
+          ? `None of the ${dated.length} loaded trips carry motor current or power samples ` +
+            `(the export's Current/Power columns are empty), so drive vs regen can't be split. ` +
+            `If your wheel reports amps, check the logger app's export settings.`
+          : `Only ${tripsWithRegen.length} of ${dated.length} trips carry sample-level power data; ` +
+            `at least 5 are needed to split drive vs regen.`;
+        setSectionEmpty("regen", msg);
         if (meta) meta.textContent = "";
         setTakeaway("regen-trend-takeaway", []);
         setTakeaway("regen-scatter-takeaway", []);
@@ -5365,7 +5601,9 @@
       }
       const meta = document.getElementById("motor-meta");
       if (pts.length < 5) {
-        setSectionEmpty("motor", "Not enough trips with current data for this analysis.");
+        setSectionEmpty("motor", pts.length === 0
+          ? `None of the ${dated.length} loaded trips carry motor current samples (the export's Current column is empty), so speed vs amps can't be analyzed.`
+          : `Only ${pts.length} of ${dated.length} trips carry current data; at least 5 are needed.`);
         meta.textContent = "";
         setTakeaway("motor-takeaway", []);
         setTakeaway("motor-trend-takeaway", []);
