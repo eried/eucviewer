@@ -2734,6 +2734,67 @@ document.addEventListener("DOMContentLoaded", function () {
     if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
   });
 
+  // --- Logo: tap refreshes the page, holding it 5 s opens the runner
+  // minigame (euc-game.js, lazy-loaded on first trigger). The spin-up
+  // animation on hold doubles as the progress indicator. Opening the page
+  // with #skills in the URL boots straight into the game (shareable link).
+  (function () {
+    const logo = document.getElementById("upload-icon");
+    if (!logo) return;
+    let holdTimer = null, downAt = 0, launched = false;
+    const cancelHold = () => {
+      clearTimeout(holdTimer);
+      holdTimer = null;
+      logo.classList.remove("logo-charging");
+    };
+    // Start fetching the game's display font as soon as a hold begins so
+    // the 5 s wind-up hides the download (euc-game.js reuses this link by
+    // its id and skips the wait when the faces are already loaded).
+    const kickFont = () => {
+      if (document.getElementById("eg-font")) return;
+      const l = document.createElement("link");
+      l.id = "eg-font";
+      l.rel = "stylesheet";
+      l.href = "https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&display=swap";
+      l.onload = () => {
+        if (document.fonts && document.fonts.load) {
+          ["500", "700", "900"].forEach((w) => document.fonts.load(w + " 16px Orbitron"));
+        }
+      };
+      document.head.appendChild(l);
+    };
+    const openGame = () => {
+      if (window.eucGameOpen) { window.eucGameOpen(); return; }
+      kickFont();
+      const s = document.createElement("script");
+      s.src = "static/js/euc-game.js?v=4";
+      s.onload = () => { if (window.eucGameOpen) window.eucGameOpen(); };
+      document.head.appendChild(s);
+    };
+    const checkHash = () => {
+      if (location.hash.toLowerCase() === "#skills") openGame();
+    };
+    window.addEventListener("hashchange", checkHash);
+    checkHash();
+    logo.addEventListener("contextmenu", (e) => e.preventDefault());
+    logo.addEventListener("dragstart", (e) => e.preventDefault());
+    logo.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      launched = false;
+      downAt = Date.now();
+      kickFont();
+      logo.classList.add("logo-charging");
+      holdTimer = setTimeout(() => { launched = true; cancelHold(); openGame(); }, 5000);
+    });
+    logo.addEventListener("pointerup", () => {
+      cancelHold();
+      if (!launched && downAt && Date.now() - downAt < 600) location.reload();
+      downAt = 0;
+    });
+    logo.addEventListener("pointercancel", () => { cancelHold(); downAt = 0; });
+    logo.addEventListener("pointerleave", () => { cancelHold(); downAt = 0; });
+  })();
+
   // --- Programmatic data injection (used by EvenDarkerBot Android app) ---
   // Accepts a base64-encoded .dbb (ZIP) or .csv file and loads it.
   // Does NOT save to recents or cache — keeps the viewer clean for embedded use.

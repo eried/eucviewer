@@ -3,7 +3,11 @@
 body, html {
     height: 100%;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    /* clip (where supported) also blocks focus/programmatic scrolling:
+       the trip panel's closed transform extends past the right edge and
+       could otherwise briefly scroll the whole page sideways. */
     overflow: hidden;
+    overflow: clip;
 }
 
 #map {
@@ -57,7 +61,26 @@ body, html {
     max-width: 420px;
     padding: 3rem;
 }
-#upload-icon { width: 5rem; height: 5rem; margin: 0 auto 1rem; display: block; }
+/* The logo doubles as a control: tap reloads, holding 5 s opens the
+   runner minigame. The spin-up animation is the hold progress cue. */
+#upload-icon {
+    width: 5rem;
+    height: 5rem;
+    margin: 0 auto 1rem;
+    display: block;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    touch-action: none;
+}
+#upload-icon.logo-charging {
+    animation: logo-rev 5s cubic-bezier(0.45, 0, 0.9, 0.6) forwards;
+}
+@keyframes logo-rev {
+    0%   { transform: rotate(0deg) scale(1); }
+    100% { transform: rotate(1440deg) scale(1.3); filter: drop-shadow(0 0 14px rgba(0, 229, 255, 0.8)); }
+}
 #upload-box h1 { font-size: 1.6rem; margin-bottom: 0.5rem; color: #fff; font-weight: 300; text-align: center; line-height: 1.4; }
 #upload-box h1 strong { font-weight: 700; }
 #app-link { color: #fff; text-decoration: none; }
@@ -812,6 +835,10 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
     display: flex;
     transition: transform 0.3s ease;
     transform: translateX(320px);
+    /* Pre-promote the layer: the backdrop-filter children make Chromium
+       re-rasterize on the first transform animation, which can flash a
+       white mis-painted frame and overshoot before correcting. */
+    will-change: transform;
 }
 #trip-panel.hidden { display: none; }
 #trip-panel.open { transform: translateX(0); }
