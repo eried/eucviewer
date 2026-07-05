@@ -250,7 +250,7 @@
       rushKind = Math.random() < 0.5 ? "cop" : "lame";
       if (rushKind === "lame") leaderType = ["ebike", "onewheel", "board"][Math.floor(Math.random() * 3)];
       showBanner(
-        rushKind === "cop" ? "NOT A VEHICLE!" : "FOLLOW THE LAME!",
+        rushKind === "cop" ? "LICENSE? LOL!" : "FOLLOW THE LAME!",
         rushKind === "cop" ? RED : GREEN
       );
       setRushClass(rushKind);
