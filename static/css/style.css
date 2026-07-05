@@ -72,7 +72,9 @@ body, html {
     user-select: none;
     -webkit-user-select: none;
     -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent; /* no blue flash on tap/hold */
     touch-action: none;
+    outline: none;
 }
 #upload-icon.logo-charging {
     animation: logo-rev 5s cubic-bezier(0.45, 0, 0.9, 0.6) forwards;

@@ -10,7 +10,7 @@
   const CYAN = "#00e5ff", PURPLE = "#b388ff", GREEN = "#69f0ae", RED = "#ff5252";
 
   let root = null, canvas = null, ctx = null, msgEl = null, scoreEl = null;
-  let raf = 0, lastT = 0, open = false;
+  let raf = 0, lastT = 0, open = false, prevHash = "";
 
   // --- game state ---
   let mode = "ready";           // ready | run | dead
@@ -37,13 +37,14 @@
   let sinceRush = 0, rushActive = false, rushT = 0, rushKind = "cop", leaderType = "ebike", rushMult = 1;
   const RUSH_EVERY = 30, RUSH_LEN = 10, RUSH_BOOST = 0.38;
 
-  const GROUND_H = 64;          // px from bottom of canvas to the ground line
   const WHEEL_X = 96, WHEEL_R = 17;
   const GRAV = 2400, JUMP_V = -760, JUMP_CUT = -280;
 
   function cssH() { return canvas.clientHeight; }
   function cssW() { return canvas.clientWidth; }
-  function groundY() { return cssH() - GROUND_H; }
+  // Ground sits ~16% up from the bottom (min 70 px) so the action rides
+  // closer to the middle of the screen.
+  function groundY() { return cssH() - Math.max(70, cssH() * 0.16); }
 
   function setRushClass(kind) {
     if (!root) return;
@@ -572,6 +573,12 @@
     document.removeEventListener("keyup", onKeyUp);
     if (root) root.remove();
     root = null;
+    // Leave the shareable #skills only while the game is up; restore
+    // whatever the page had (replaceState, so no router/hashchange runs).
+    try {
+      const back = prevHash && prevHash !== "#skills" ? prevHash : "#load";
+      history.replaceState(null, "", location.pathname + location.search + back);
+    } catch (e) {}
   }
 
   function onKey(e) {
@@ -597,6 +604,7 @@
         #euc-game .eg-score { margin-left: auto; display: flex; flex-direction: column;
           align-items: flex-end; gap: 4px; color: #fff; font-variant-numeric: tabular-nums; line-height: 1; }
         #euc-game .eg-score b { font-size: 1.8rem; font-weight: 900; display: inline-block;
+          min-width: 2.6em; text-align: right; /* fixed box: digits changing width can't jiggle the number */
           transform-origin: 100% 100%; } /* pop grows up-left, never over BEST */
         #euc-game .eg-score .eg-best { color: ${GREEN}; font-size: 0.62rem; letter-spacing: 0.14em; }
         #euc-game .eg-close { background: transparent; border: 1px solid rgba(255,255,255,0.2);
@@ -687,6 +695,9 @@
     if (open) return;
     open = true;
     invincible = !!(opts && opts.invincible);
+    // Put the shareable link in the URL bar while the game is up.
+    prevHash = location.hash;
+    try { history.replaceState(null, "", location.pathname + location.search + "#skills"); } catch (e) {}
     try { best = Number(localStorage.getItem(BEST_KEY)) || 0; } catch (e) { best = 0; }
     ensureFont().then(() => {
       if (!open || root) return;

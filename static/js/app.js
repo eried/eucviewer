@@ -2767,7 +2767,7 @@ document.addEventListener("DOMContentLoaded", function () {
       if (window.eucGameOpen) { window.eucGameOpen(); return; }
       kickFont();
       const s = document.createElement("script");
-      s.src = "static/js/euc-game.js?v=7";
+      s.src = "static/js/euc-game.js?v=8";
       s.onload = () => { if (window.eucGameOpen) window.eucGameOpen(); };
       document.head.appendChild(s);
     };
