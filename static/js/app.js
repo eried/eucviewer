@@ -1256,7 +1256,7 @@ document.addEventListener("DOMContentLoaded", function () {
     } else {
       overlay.classList.remove("hidden");
       panel.classList.add("hidden");
-      panel.classList.remove("open");
+      setPanelOpen(false);
       resetUploadUI();
       // Re-render the recent files panel each time we land here. The
       // background saveRecentFile() from the previous upload may have
@@ -1326,21 +1326,15 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // Auto-open panel — but only on landscape / desktop. On portrait
     // phones the panel covers the map, so we leave it closed and let the
-    // user tap the peek-tab when they want it.
-    //
-    // We pin the closed state with an inline transform first: Chromium
-    // sometimes drops the CSS rule's transform on the first paint after
-    // display:none → display:flex (the transition eats the starting
-    // state), and on portrait the result is the panel rendering open
-    // instead of closed. The inline style overrides the missing initial
-    // paint. Double-rAF before adding .open lets the closed paint commit
-    // so the transition animates from the right start point.
-    panel.style.transform = "translateX(320px)";
+    // user tap the peek-tab when they want it. setPanelOpen drives the
+    // position with an inline transform (see its comment for the Chromium
+    // compositor story); the double-rAF lets the closed state paint first
+    // so the open transition animates from the right start point.
+    setPanelOpen(false);
     if (window.innerWidth >= window.innerHeight) {
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          panel.style.transform = "";
-          panel.classList.add("open");
+          setPanelOpen(true);
         });
       });
     }
@@ -2674,7 +2668,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // it just wants the first track highlighted on the map. Other callers
     // (tooltip click, list click, search) leave keepPanelClosed unset so
     // the panel still opens like before.
-    if (!(opts && opts.keepPanelClosed)) panel.classList.add("open");
+    if (!(opts && opts.keepPanelClosed)) setPanelOpen(true);
 
     document.querySelectorAll(".trip-item.active").forEach((el) => el.classList.remove("active"));
     const el = tripList.querySelector(`.trip-item[data-idx="${idx}"]`);
@@ -2691,7 +2685,42 @@ document.addEventListener("DOMContentLoaded", function () {
     updateVisibilityUI();
   }
 
-  panelTab.addEventListener("click", () => panel.classList.toggle("open"));
+  // The trip panel's slide is driven by an inline transform, not just the
+  // .open class: Chromium intermittently wedges the transition on this
+  // element (the backdrop-filter children promote it to its own layer) so
+  // a class- or style-driven transform write never reaches the renderer
+  // and the panel stays put while the inline style says otherwise. Cure:
+  // write the transform inline, then verify after the 0.3s transition
+  // window and snap without animation if the write didn't land.
+  function setPanelOpen(open) {
+    panel.classList.toggle("open", open);
+    const target = open ? "translateX(0px)" : "translateX(320px)";
+    panel.style.transform = target;
+    clearTimeout(setPanelOpen._verify);
+    setPanelOpen._verify = setTimeout(() => {
+      // Compare the RENDERED position, not computed style: one wedge mode
+      // freezes computed at the old value, the other updates computed but
+      // never repaints. The rect catches both.
+      const want = open ? 0 : 320;
+      const base = window.innerWidth - panel.offsetWidth;
+      const gotOffset = panel.getBoundingClientRect().left - base;
+      if (Math.abs(gotOffset - want) > 4) {
+        const prevTransition = panel.style.transition;
+        panel.style.transition = "none";
+        // Nudge through a different value first: a same-value rewrite can
+        // be ignored by the wedged renderer, a changed one cannot.
+        panel.style.transform = "translateX(" + (want + 1) + "px)";
+        void panel.offsetWidth;
+        panel.style.transform = target;
+        void panel.offsetWidth;
+        panel.style.transition = prevTransition;
+      }
+    }, 400);
+  }
+
+  panelTab.addEventListener("click", () => {
+    setPanelOpen(!panel.classList.contains("open"));
+  });
 
   fileInput.addEventListener("change", (e) => {
     if (e.target.files[0]) handleFile(e.target.files[0]);

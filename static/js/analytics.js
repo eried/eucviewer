@@ -684,6 +684,14 @@
     return out;
   }
 
+  // Display label for a trip. The parser only fills t.date when the
+  // filename carries a date (old "MAC_dd.MM.yyyy_n" exports); new-style
+  // "trip_YYYYMMDD_HHMMSS" names don't match, so fall back to formatting
+  // the first-sample timestamp instead of showing the raw filename.
+  function fmtTripLabel(d) {
+    const p = (n) => String(n).padStart(2, "0");
+    return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  }
   function computeTripMetrics(t) {
     const rawTs = Array.isArray(t.timeseries) ? t.timeseries : [];
     const lastAlive = lastAliveIndex(rawTs);
@@ -692,7 +700,7 @@
     const m = {
       date,
       dateStr: date ? localDateStr(date) : null,
-      label: t.date || t.name || "Trip",
+      label: t.date || (date ? fmtTripLabel(date) : (t.name || "Trip")),
       distKm: tripDistanceKm(t),
       durH: 0,
       battStart: null, battEnd: null, battDelta: null,
@@ -5269,9 +5277,11 @@
         const p25 = sortedDiffs[Math.floor(sortedDiffs.length * 0.25)];
         const p75 = sortedDiffs[Math.floor(sortedDiffs.length * 0.75)];
         const max = sortedDiffs[sortedDiffs.length - 1];
+        const worstTrip = dated.find((m) => m.gpsMeanAbsDiff === max);
         setTakeaway("gpsdelta-hist-takeaway", [
           `Most rides land in the <b>${p25.toFixed(2)} − ${p75.toFixed(2)} km/h</b> band`,
-          `Worst trip: <b>${max.toFixed(2)} km/h</b> typical gap`,
+          `Worst trip: <b>${max.toFixed(2)} km/h</b> typical gap` +
+            (worstTrip ? ` on <b>${tripLink(worstTrip.label, worstTrip.tripIdx)}</b>` : ""),
         ]);
       }
     }
@@ -5330,7 +5340,8 @@
           setTakeaway("gforce-hist-takeaway", [
             `Typical hardest corner per ride: <b>${med.toFixed(2)} G</b>`,
             `Top 10% beyond: <b>${p90.toFixed(2)} G</b>`,
-            `Hardest ever: <b>${sortedAsc[sortedAsc.length - 1].toFixed(2)} G</b>`,
+            `Hardest ever: <b>${sortedAsc[sortedAsc.length - 1].toFixed(2)} G</b>` +
+              (latTrip ? ` on <b>${tripLink(latTrip.label, latTrip.tripIdx)}</b>` : ""),
           ]);
         } else {
           setTakeaway("gforce-hist-takeaway", []);
@@ -5344,6 +5355,8 @@
               x: UNITS.speed(spd),
               y: latG,
               epoch: m.epoch,
+              label: m.label,
+              tripIdx: m.tripIdx,
               meta: `<b>${m.label}</b><br>Avg speed in corner: <b>${fmtVal(UNITS.speed(spd), 1)}</b> ${UNITS.speedUnit}<br>Peak lateral G: <b>${latG.toFixed(2)}</b>`,
             });
           }
@@ -5363,10 +5376,14 @@
             if (g.y >= 0.3 && (!fastestGrip || g.x > fastestGrip.x)) fastestGrip = g;
           }
           const parts = [
-            `Hardest held: <b>${best.y.toFixed(2)} G</b> at <b>${best.x.toFixed(0)} ${UNITS.speedUnit}</b>`,
+            `Hardest held: <b>${best.y.toFixed(2)} G</b> at <b>${best.x.toFixed(0)} ${UNITS.speedUnit}</b>` +
+              (best.tripIdx != null ? ` on <b>${tripLink(best.label, best.tripIdx)}</b>` : ""),
             `<b>${grip.length}</b> sustained corners across <b>${dated.filter((m) => m.gripScatter && m.gripScatter.length).length}</b> rides`,
           ];
-          if (fastestGrip) parts.push(`Fastest hard corner (≥0.3 G): <b>${fastestGrip.x.toFixed(0)} ${UNITS.speedUnit}</b>`);
+          if (fastestGrip) {
+            parts.push(`Fastest hard corner (≥0.3 G): <b>${fastestGrip.x.toFixed(0)} ${UNITS.speedUnit}</b>` +
+              (fastestGrip.tripIdx != null ? ` on <b>${tripLink(fastestGrip.label, fastestGrip.tripIdx)}</b>` : ""));
+          }
           setTakeaway("grip-takeaway", parts);
         } else {
           gripHost.classList.add("hidden");
@@ -5427,10 +5444,13 @@
           const medP = sortedP[Math.floor(sortedP.length / 2)];
           const p90P = sortedP[Math.floor(sortedP.length * 0.9)];
           const maxP = sortedP[sortedP.length - 1];
+          const hardTrip = dated.reduce((best, m) =>
+            (m.avgPower != null && (!best || m.avgPower > best.avgPower)) ? m : best, null);
           setTakeaway("power-hist-takeaway", [
             `Median ride pulls <b>${medP.toFixed(0)} W</b>`,
             `Top 10% beyond: <b>${p90P.toFixed(0)} W</b>`,
-            `Hardest ride: <b>${maxP.toFixed(0)} W</b> avg`,
+            `Hardest ride: <b>${maxP.toFixed(0)} W</b> avg` +
+              (hardTrip ? ` on <b>${tripLink(hardTrip.label, hardTrip.tripIdx)}</b>` : ""),
           ]);
         } else {
           setTakeaway("power-hist-takeaway", []);
