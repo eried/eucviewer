@@ -249,9 +249,8 @@
       rushActive = true; rushT = 0;
       rushKind = Math.random() < 0.5 ? "cop" : "lame";
       if (rushKind === "lame") leaderType = ["ebike", "onewheel", "board"][Math.floor(Math.random() * 3)];
-      const COP_LINES = ["RUN, IT'S THE FUZZ!", "5-0 ON YOUR SIX!", "NO PLATES, NO PROBLEM!"];
       showBanner(
-        rushKind === "cop" ? COP_LINES[Math.floor(Math.random() * COP_LINES.length)] : "FOLLOW THE LAME!",
+        rushKind === "cop" ? "OUTRUN THE DONUT!" : "FOLLOW THE LAME!",
         rushKind === "cop" ? RED : GREEN
       );
       setRushClass(rushKind);
