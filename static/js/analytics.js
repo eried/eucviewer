@@ -48,6 +48,40 @@
   // Temperature *differences* scale by 9/5 but must not get the +32 offset.
   const tempDelta = (c) => (UNITS.imperial ? c * 9 / 5 : c);
 
+  // Static HTML copy carries metric units in chart subtitles, hints,
+  // tooltips and select labels. Data values convert at render time; this
+  // one-time pass converts the fixed strings around them for imperial
+  // users. The anomaly threshold inputs stay km/h on purpose (their
+  // stored values are metric).
+  if (UNITS.imperial) {
+    const conv = (s) => s
+      // innerHTML serializes U+00A0 back to the &nbsp; entity, which \s
+      // can't match; normalize before converting.
+      .replace(/&nbsp;/g, " ")
+      .replace(/(\d+(?:\.\d+)?)\s*km\/h/g, (_, n) => `${Math.round(n * 0.621371)} mph`)
+      .replace(/km\/h/g, "mph")
+      .replace(/(\d+(?:\.\d+)?)\s*°C/g, (_, n) => `${Math.round(n * 9 / 5 + 32)} °F`)
+      .replace(/°C/g, "°F")
+      .replace(/Wh\/km/g, "Wh/mi")
+      .replace(/km\/%/g, "mi/%")
+      .replace(/meters of altitude gain per km/g, "feet of altitude gain per mi")
+      .replace(/(\d+(?:\.\d+)?)\s*km\b/g, (_, n) => `${Math.round(n * 0.621371)} mi`);
+    document.querySelectorAll(
+      ".sec-hint, .chart-explainer, .chart-title, #group-select option, .controls .check-label > span"
+    ).forEach((el) => {
+      if (el.children.length === 0) el.textContent = conv(el.textContent);
+      else el.innerHTML = conv(el.innerHTML);
+    });
+    document.querySelectorAll("#lifetime-bar .stat-card[title], .controls .info-icon[title]").forEach((el) => {
+      el.setAttribute("title", conv(el.getAttribute("title") || ""));
+    });
+    const accelCard = document.getElementById("lf-accel40");
+    if (accelCard) {
+      const lbl = accelCard.parentElement.querySelector(".sl");
+      if (lbl) lbl.innerHTML = conv(lbl.innerHTML);
+    }
+  }
+
   // ---------- DOM ----------
   const errorBanner = document.getElementById("error-banner");
   const subtitleEl = document.getElementById("page-subtitle");
@@ -2599,7 +2633,9 @@
     setStat("lf-accel40", bestAccel, bestAccelTarget ? "s" : "");
     {
       const lbl = document.querySelector("#lf-accel40 + .sl");
-      if (lbl && bestAccelTarget) lbl.textContent = "Best 0 → " + bestAccelTarget + " km/h";
+      if (lbl && bestAccelTarget) {
+        lbl.textContent = `Best 0 → ${Math.round(UNITS.speed(bestAccelTarget))} ${UNITS.speedUnit}`;
+      }
     }
     setStat("lf-anomalies", anomCount, "");
     setStat("lf-climb", UNITS.alt(totalClimb), UNITS.altUnit);
@@ -2645,7 +2681,7 @@
         html: `Estimated range ${pct >= 0 ? "up" : "down"} <b>${Math.abs(pct).toFixed(0)}%</b> ` +
               `from your first third of trips (<b>${dispA.toFixed(1)} ${UNITS.distUnit}</b>) ` +
               `to your last third (<b>${dispB.toFixed(1)} ${UNITS.distUnit}</b>)` +
-              (useNorm ? ", normalized to 20 °C." : ". Add weather to factor out temperature."),
+              (useNorm ? `, normalized to ${UNITS.temp(20).toFixed(0)} ${UNITS.tempUnit}.` : ". Add weather to factor out temperature."),
       });
     }
 
@@ -2693,7 +2729,7 @@
       const slopeDisp = UNITS.dist(speedSlopeKm) / UNITS.speed(1);
       const sign = slopeDisp >= 0 ? "gain" : "lose";
       const why = slopeDisp >= 0
-        ? " Faster averages mean less time crawling, which is your most expensive zone per km."
+        ? ` Faster averages mean less time crawling, which is your most expensive zone per ${UNITS.distUnit}.`
         : "";
       out.push({
         kind: slopeDisp < -0.5 ? "warn" : "info",
@@ -2734,7 +2770,7 @@
     if (multiFit) {
       const predKm = multiFit.intercept + multiFit.speedSlope * 25 + multiFit.tempSlope * 20 + multiFit.climbSlope * 0;
       if (isFinite(predKm) && predKm > 0) {
-        const std = "25 km/h cruise, 20 °C, flat";
+        const std = `${UNITS.speed(25).toFixed(0)} ${UNITS.speedUnit} cruise, ${UNITS.temp(20).toFixed(0)} ${UNITS.tempUnit}, flat`;
         const r2 = Math.max(0, Math.min(1, multiFit.r2 || 0));
         const tag = ` <span class="model-quality">(n=${multiFit.n} · R²=${r2.toFixed(2)})</span>`;
         out.push({
@@ -5118,11 +5154,14 @@
         setSectionActive("accel");
         const field = useTarget === 40 ? "accel40" : "accel25";
         const usable = useTarget === 40 ? usable40 : usable25;
-        meta.textContent = usable + " trips with 0 to " + useTarget + " km/h runs";
+        // Thresholds are defined in km/h; show them in the user's units
+        // (40 km/h reads as 25 mph for imperial riders).
+        const spdLabel = (kmh) => `${Math.round(UNITS.speed(kmh))} ${UNITS.speedUnit}`;
+        meta.textContent = `${usable} trips with 0 to ${spdLabel(useTarget)} runs`;
         const stats = binStats(bins, (m) => m[field], minPerBin);
         const series = [{
           stats, color: "#ffd740",
-          label: "Best 0 to " + useTarget + " km/h",
+          label: "Best 0 to " + spdLabel(useTarget),
           unit: "s", band: true, dp: 2,
         }];
         drawTrendChart(document.getElementById("chart-accel40"), bins, series, { rolling });
@@ -5136,16 +5175,16 @@
           const all = dated.map((m) => m.accel25).filter((v) => v != null).sort((a, b) => a - b);
           const med = all[Math.floor(all.length / 2)];
           const f = findFastest("accel25");
-          parts.push(`Fastest 0&hairsp;&rarr;&hairsp;25 km/h: <b>${f.v.toFixed(2)} s</b>` + (f.date ? ` on <b>${tripLink(dateFmt.format(f.date), f.idx)}</b>` : ""));
+          parts.push(`Fastest 0&hairsp;&rarr;&hairsp;${spdLabel(25)}: <b>${f.v.toFixed(2)} s</b>` + (f.date ? ` on <b>${tripLink(dateFmt.format(f.date), f.idx)}</b>` : ""));
           parts.push(`Typical: <b>${med.toFixed(2)} s</b>`);
         }
         if (usable40) {
           const f = findFastest("accel40");
-          parts.push(`Fastest 0&hairsp;&rarr;&hairsp;40 km/h: <b>${f.v.toFixed(2)} s</b>` + (f.date ? ` on <b>${tripLink(dateFmt.format(f.date), f.idx)}</b>` : ""));
+          parts.push(`Fastest 0&hairsp;&rarr;&hairsp;${spdLabel(40)}: <b>${f.v.toFixed(2)} s</b>` + (f.date ? ` on <b>${tripLink(dateFmt.format(f.date), f.idx)}</b>` : ""));
         }
         if (usable60) {
           const f = findFastest("accel60");
-          parts.push(`Fastest 0&hairsp;&rarr;&hairsp;60 km/h: <b>${f.v.toFixed(2)} s</b>` + (f.date ? ` on <b>${tripLink(dateFmt.format(f.date), f.idx)}</b>` : ""));
+          parts.push(`Fastest 0&hairsp;&rarr;&hairsp;${spdLabel(60)}: <b>${f.v.toFixed(2)} s</b>` + (f.date ? ` on <b>${tripLink(dateFmt.format(f.date), f.idx)}</b>` : ""));
         }
         setTakeaway("accel40-takeaway", parts);
       }
