@@ -1435,6 +1435,13 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
     backdrop-filter: blur(8px);
     pointer-events: auto;
     user-select: none;
+    white-space: nowrap;
+    max-width: calc(100vw - 16px);
+}
+/* Narrow phones: icon-only GitHub link so the build date keeps one line */
+@media (max-width: 480px) {
+    #page-footer { gap: 8px; }
+    #page-footer a span { display: none; }
 }
 #page-footer a {
     display: inline-flex;
