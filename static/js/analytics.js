@@ -3537,14 +3537,16 @@
       { key: "balance",  label: "balancing",      loK: 0.5, hiK: 3,  midKmh: 1.75 },
       { key: "walk",     label: "walking pace",   loK: 3,   hiK: 7,  midKmh: 5 },
       { key: "slowride", label: "slow riding",    loK: 7,   hiK: 12, midKmh: 9.5 },
-      { key: "cruise",   label: "cruise",         loK: 20,  hiK: 30, midKmh: 25 },
+      { key: "cruise",   label: `cruise ${Math.round(UNITS.speed(20))}–${Math.round(UNITS.speed(30))} ${UNITS.speedUnit}`, loK: 20, hiK: 30, midKmh: 25 },
     ];
     const rows = [];
     for (const d of defs) {
       if (d.key === "stopped") {
         const h = idle[0] / 3600;
         if (h < 1 || idle[2] < 10) continue;
-        rows.push({ ...d, pctPerH: Math.max(0, idle[1] / h), hours: h, stops: idle[2] });
+        // Keep the raw net: gauge rebound can push it to ~0 or below,
+        // which should read as "too small to measure", not "0.0%".
+        rows.push({ ...d, pctPerH: idle[1] / h, hours: h, stops: idle[2] });
       } else {
         const a = agg[d.key];
         const h = a[0] / 3600;
@@ -3572,7 +3574,7 @@
     const cv = setupCanvas(canvas);
     if (!cv) return false;
     const { ctx, w, h } = cv;
-    const pad = { top: 42, bottom: 26, left: 120, right: 60 };
+    const pad = { top: 42, bottom: 26, left: 158, right: 60 };
     const cw = w - pad.left - pad.right;
     const chh = h - pad.top - pad.bottom;
     const xMax = Math.max(...rows.map((r) => r.pctPerH)) * 1.05 || 1;
@@ -3595,7 +3597,7 @@
       ` (${Math.round(UNITS.speed(r.loK))}–${Math.round(UNITS.speed(r.hiK))} ${UNITS.speedUnit})`;
     rows.forEach((r, i) => {
       const y = pad.top + i * rowH + (rowH - barH) / 2;
-      const bw = Math.max(2, (r.pctPerH / xMax) * cw);
+      const bw = Math.max(2, (Math.max(0, r.pctPerH) / xMax) * cw);
       const isRef = r.key === "cruise";
       const grad = ctx.createLinearGradient(pad.left, 0, pad.left + bw, 0);
       if (isRef) {
@@ -3612,10 +3614,11 @@
       ctx.textAlign = "right";
       ctx.textBaseline = "middle";
       ctx.fillText(r.label, pad.left - 8, y + barH / 2);
-      // Value at the bar end.
+      // Value at the bar end. Sub-noise readings say so instead of "0.0".
       ctx.fillStyle = isRef ? "rgba(255,255,255,0.55)" : "rgba(255,255,255,0.85)";
       ctx.textAlign = "left";
-      ctx.fillText(r.pctPerH.toFixed(r.pctPerH < 5 ? 1 : 0) + " %/h", pad.left + bw + 6, y + barH / 2);
+      const valText = r.pctPerH < 0.2 ? "< 0.2 %/h" : r.pctPerH.toFixed(r.pctPerH < 5 ? 1 : 0) + " %/h";
+      ctx.fillText(valText, pad.left + bw + 6, y + barH / 2);
     });
     // Axis title.
     ctx.fillStyle = "rgba(255,255,255,0.55)";
@@ -3628,9 +3631,12 @@
       yToBin: (my) => Math.floor((my - pad.top) / rowH),
       bins: rows.map((r) => {
         const perKm = r.midKmh > 0 ? (r.pctPerH / r.midKmh / UNITS.dist(1)).toFixed(2) + " %/" + UNITS.distUnit : null;
+        const battTxt = r.pctPerH < 0.2
+          ? "<b>&lt; 0.2 %/h</b> (below gauge noise)"
+          : `<b>${r.pctPerH.toFixed(2)} %/h</b>`;
         return {
-          html: `<b>${r.label}${speedBand(r)}</b>` +
-                `<br>Battery: <b>${r.pctPerH.toFixed(2)} %/h</b>` +
+          html: `<b>${r.label}${r.key === "cruise" ? "" : speedBand(r)}</b>` +
+                `<br>Battery: ${battTxt}` +
                 (perKm ? `<br>Per distance: <b>${perKm}</b>` : "") +
                 `<br>Sampled: <b>${r.hours.toFixed(1)} h</b>` +
                 (r.stops ? ` across <b>${r.stops}</b> stops of 2+ min` : ""),
@@ -5507,17 +5513,24 @@
         const walk = rows.find((r) => r.key === "walk");
         const parts = [];
         const cruisePctPerKm = cruise ? cruise.pctPerH / cruise.midKmh : null;
+        const cruiseBand = `${Math.round(UNITS.speed(20))}–${Math.round(UNITS.speed(30))} ${UNITS.speedUnit}`;
         if (stopped && cruisePctPerKm > 0) {
-          const kmEquiv = stopped.pctPerH / cruisePctPerKm;
-          parts.push(`An hour of standing costs about <b>${stopped.pctPerH.toFixed(1)}%</b>, roughly <b>${UNITS.dist(kmEquiv).toFixed(1)} ${UNITS.distUnit}</b> of cruise range`);
+          if (stopped.pctPerH < 0.2) {
+            // Gauge rebound eats the signal: the honest answer is a bound.
+            const kmBound = UNITS.dist(0.2 / cruisePctPerKm).toFixed(1);
+            parts.push(`Standing still is effectively free: under <b>0.2%</b> per hour, less than <b>${kmBound} ${UNITS.distUnit}</b> of range at cruise pace (${cruiseBand})`);
+          } else {
+            const kmEquiv = stopped.pctPerH / cruisePctPerKm;
+            parts.push(`An hour of standing costs about <b>${stopped.pctPerH.toFixed(1)}%</b>, roughly <b>${UNITS.dist(kmEquiv).toFixed(1)} ${UNITS.distUnit}</b> of range at cruise pace (${cruiseBand})`);
+          }
         }
         if (walk && cruisePctPerKm > 0) {
           const walkPctPerKm = walk.pctPerH / walk.midKmh;
           const ratio = walkPctPerKm / cruisePctPerKm;
           if (ratio >= 0.7 && ratio <= 1.6) {
-            parts.push(`Walking the wheel costs about as much per ${UNITS.distUnit} as riding it (<b>${(walkPctPerKm / UNITS.dist(1)).toFixed(2)}</b> vs <b>${(cruisePctPerKm / UNITS.dist(1)).toFixed(2)} %/${UNITS.distUnit}</b>)`);
+            parts.push(`Walking the wheel costs about as much per ${UNITS.distUnit} as cruising at ${cruiseBand} (<b>${(walkPctPerKm / UNITS.dist(1)).toFixed(2)}</b> vs <b>${(cruisePctPerKm / UNITS.dist(1)).toFixed(2)} %/${UNITS.distUnit}</b>)`);
           } else {
-            parts.push(`Walking the wheel: <b>${walk.pctPerH.toFixed(1)} %/h</b>, ${ratio > 1.6 ? "pricier" : "cheaper"} per ${UNITS.distUnit} than cruising`);
+            parts.push(`Walking the wheel: <b>${walk.pctPerH.toFixed(1)} %/h</b>, ${ratio > 1.6 ? "pricier" : "cheaper"} per ${UNITS.distUnit} than cruising at ${cruiseBand}`);
           }
         }
         setTakeaway("idle-cost-takeaway", parts);
