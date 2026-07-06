@@ -598,7 +598,8 @@
           display: flex; flex-direction: column;
           font-family: "Orbitron", ui-monospace, Consolas, monospace;
           user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
-        #euc-game .eg-bar { display: flex; align-items: center; gap: 10px; padding: 10px 14px; }
+        #euc-game .eg-bar { display: flex; align-items: center; gap: 12px;
+          padding: max(18px, env(safe-area-inset-top)) 16px 10px; }
         #euc-game .eg-logo { color: ${CYAN}; font-weight: 700; letter-spacing: 0.18em;
           font-size: 0.8rem; text-transform: uppercase; }
         #euc-game .eg-score { margin-left: auto; display: flex; flex-direction: column;
@@ -643,9 +644,9 @@
         #euc-game.rush-out-lame::after { box-shadow: inset 0 0 60px rgba(105, 240, 174, 0.5); }
       </style>
       <div class="eg-bar">
+        <button type="button" class="eg-close" aria-label="Close">&times;</button>
         <span class="eg-logo">EUC RUN</span>
         <span class="eg-score" id="eg-score"></span>
-        <button type="button" class="eg-close" aria-label="Close">&times;</button>
       </div>
       <canvas></canvas>
       <div class="eg-banner" id="eg-banner"></div>
