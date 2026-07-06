@@ -457,9 +457,15 @@
 
     ctx.restore();
 
-    // HUD: just the number, big, plus the best badge
+    // HUD: just the number, big, plus the best badge. Write only when the
+    // value changes: a per-frame innerHTML rewrite keeps invalidating the
+    // bar and the text shimmers on mobile GPUs.
     const s = Math.floor(ptsTime) + ptsJumps;
-    scoreEl.innerHTML = `<b>${s}</b>` + (best ? `<span class="eg-best">BEST ${best}</span>` : "");
+    const hudKey = s + "|" + best;
+    if (draw._hudKey !== hudKey) {
+      draw._hudKey = hudKey;
+      scoreEl.innerHTML = `<b>${s}</b>` + (best ? `<span class="eg-best">BEST ${best}</span>` : "");
+    }
   }
 
   // Front of a compact cop SUV nosing in from the left edge, light bar
