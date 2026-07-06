@@ -2685,15 +2685,18 @@
       });
     }
 
-    // Internal resistance drift.
+    // Internal resistance drift. Changes inside the measurement noise
+    // (a few %) read as aging when they're nothing; call them flat.
     const ir0 = pick(early, (m) => m.ohmIR);
     const ir1 = pick(late, (m) => m.ohmIR);
     if (ir0 && ir1) {
       const pct = fmtPct(ir0, ir1);
       out.push({
         kind: pct > 15 ? "warn" : pct < -10 ? "good" : "info",
-        html: `Internal resistance ${pct >= 0 ? "rose" : "fell"} from <b>${(ir0 * 1000).toFixed(0)} mΩ</b> ` +
-              `in your first third of trips to <b>${(ir1 * 1000).toFixed(0)} mΩ</b> in your last third (${pct >= 0 ? "+" : ""}${pct.toFixed(0)}%).`,
+        html: Math.abs(pct) < 4
+          ? `Internal resistance is holding steady: <b>${(ir0 * 1000).toFixed(0)} mΩ</b> in your first third of trips vs <b>${(ir1 * 1000).toFixed(0)} mΩ</b> in your last third. No aging signal.`
+          : `Internal resistance ${pct >= 0 ? "rose" : "fell"} from <b>${(ir0 * 1000).toFixed(0)} mΩ</b> ` +
+            `in your first third of trips to <b>${(ir1 * 1000).toFixed(0)} mΩ</b> in your last third (${pct >= 0 ? "+" : ""}${pct.toFixed(0)}%).`,
       });
     }
 
@@ -2711,30 +2714,54 @@
       });
     }
 
-    // Temperature sensitivity (weather-only).
-    if (tempFit) {
-      const slopeDisp = UNITS.dist(tempFit.slope) / (UNITS.imperial ? 1.8 : 1);
+    // Temperature sensitivity. Same source the Range tab uses (multivariate
+    // when available, univariate fallback) so both places quote one number,
+    // and bounded to the ambient range actually ridden — the slope says
+    // nothing about temperatures outside it.
+    const tempSlopeKm = multiFit ? multiFit.tempSlope : (tempFit ? tempFit.slope : null);
+    if (tempSlopeKm != null) {
+      const slopeDisp = UNITS.dist(tempSlopeKm) / (UNITS.imperial ? 1.8 : 1);
+      const ambients = dated.map((m) => m.ambientC).filter((v) => v != null).sort((a, b) => a - b);
+      let envTxt = "";
+      if (ambients.length >= 10) {
+        const lo = ambients[Math.floor(ambients.length * 0.05)];
+        const hi = ambients[Math.floor(ambients.length * 0.95)];
+        envTxt = `, measured between <b>${Math.round(UNITS.temp(lo))}</b> and <b>${Math.round(UNITS.temp(hi))} ${UNITS.tempUnit}</b> ambient`;
+      }
       out.push({
         kind: "info",
-        html: `Every <b>10 ${UNITS.tempUnit}</b> drop in ambient costs ` +
-              `<b>${Math.abs(slopeDisp * 10).toFixed(1)}</b> ${UNITS.distUnit} of range.`,
+        html: `Every <b>10 ${UNITS.tempUnit}</b> drop in ambient costs about ` +
+              `<b>${Math.abs(slopeDisp * 10).toFixed(1)}</b> ${UNITS.distUnit} of range${envTxt}` +
+              (multiFit ? ` (speed and climb factored out).` : `.`),
       });
     }
     // Speed sensitivity (multivariate slope — isolated effect). A positive
     // slope is trip mix, not physics: faster trip averages mean less time
-    // in the expensive crawl zone, so say so instead of implying speed is
-    // free energy.
+    // in the expensive crawl zone. Bound the claim to the trip averages the
+    // fit actually saw and point at the in-ride curve for what lies beyond.
     const speedSlopeKm = multiFit ? multiFit.speedSlope : (speedFit ? speedFit.slope : null);
     if (speedSlopeKm != null) {
       const slopeDisp = UNITS.dist(speedSlopeKm) / UNITS.speed(1);
       const sign = slopeDisp >= 0 ? "gain" : "lose";
+      let loK = multiFit ? multiFit.sLoKmh : null;
+      let hiK = multiFit ? multiFit.sHiKmh : null;
+      if (loK == null) {
+        const sp = dated.map((m) => m.avgMovingSpeed).filter((v) => v != null && v > 5).sort((a, b) => a - b);
+        if (sp.length >= 10) {
+          loK = sp[Math.floor(sp.length * 0.05)];
+          hiK = sp[Math.floor(sp.length * 0.95)];
+        }
+      }
+      const env = loK != null
+        ? ` inside your usual <b>${Math.round(UNITS.speed(loK))}–${Math.round(UNITS.speed(hiK))} ${UNITS.speedUnit}</b> trip averages`
+        : "";
       const why = slopeDisp >= 0
-        ? ` Faster averages mean less time crawling, which is your most expensive zone per ${UNITS.distUnit}.`
+        ? ` That is trip mix (less time crawling), not free speed; the in-ride cost curve on the Range tab shows the price of actually riding faster.`
         : "";
       out.push({
         kind: slopeDisp < -0.5 ? "warn" : "info",
         html: `Trips with a <b>5 ${UNITS.speedUnit}</b> faster average ${sign} about ` +
-              `<b>${Math.abs(slopeDisp * 5).toFixed(1)}</b> ${UNITS.distUnit} of range.${why}`,
+              `<b>${Math.abs(slopeDisp * 5).toFixed(1)}</b> ${UNITS.distUnit} of range${env}.${why}`,
       });
     }
     // Climb sensitivity (multivariate slope, isolated effect). Anchor the
@@ -2762,20 +2789,36 @@
               `costs about <b>${lossDisp.toFixed(1)} ${UNITS.distUnit}</b> of full-charge range.${trustNote}`,
       });
     }
-    // Predicted range at a standard condition: 25 km/h cruise, 20 °C, flat.
-    // Plugs the multivariate equation in and reports what the model says
-    // you'd get on an "ideal" ride. Concrete number the rider can compare
-    // against their own best/typical range. R² + n tag tells the reader
-    // how trustworthy the prediction is.
+    // Model sanity check at the user's own MEDIAN conditions, with the
+    // residual band. The old version predicted an idealized "25 km/h,
+    // 20 °C, flat" ride — every factor more favorable than any real trip,
+    // so the number always beat the Range chart and read as nonsense.
+    // Predicting at median conditions must land near the observed median;
+    // showing both makes the model audit itself.
     if (multiFit) {
-      const predKm = multiFit.intercept + multiFit.speedSlope * 25 + multiFit.tempSlope * 20 + multiFit.climbSlope * 0;
-      if (isFinite(predKm) && predKm > 0) {
-        const std = `${UNITS.speed(25).toFixed(0)} ${UNITS.speedUnit} cruise, ${UNITS.temp(20).toFixed(0)} ${UNITS.tempUnit}, flat`;
+      const predKm = multiFit.intercept
+                   + multiFit.speedSlope * multiFit.medSpeedKmh
+                   + multiFit.tempSlope * multiFit.medTempC
+                   + multiFit.climbSlope * multiFit.medClimbMperKm;
+      const obs = dated
+        .filter((m) => m.estRangeKm != null && m.avgMovingSpeed > 5 && m.ambientC != null && m.climbM != null && m.distKm >= 2)
+        .map((m) => m.estRangeKm)
+        .sort((a, b) => a - b);
+      const obsMed = obs.length ? obs[Math.floor(obs.length / 2)] : null;
+      const sigma = Math.sqrt(multiFit.rss / Math.max(1, multiFit.n - 4));
+      if (isFinite(predKm) && predKm > 0 && obsMed != null) {
+        const conds = `${UNITS.speed(multiFit.medSpeedKmh).toFixed(0)} ${UNITS.speedUnit}, ` +
+                      `${UNITS.temp(multiFit.medTempC).toFixed(0)} ${UNITS.tempUnit}, ` +
+                      `${(UNITS.imperial ? multiFit.medClimbMperKm * 3.28084 : multiFit.medClimbMperKm).toFixed(0)} ${UNITS.imperial ? "ft/mi" : "m/km"}`;
         const r2 = Math.max(0, Math.min(1, multiFit.r2 || 0));
+        const agree = Math.abs(predKm - obsMed) <= sigma;
         const tag = ` <span class="model-quality">(n=${multiFit.n} · R²=${r2.toFixed(2)})</span>`;
         out.push({
-          kind: r2 < 0.3 ? "warn" : "info",
-          html: `Model-predicted range at <i>${std}</i>: <b>${UNITS.dist(predKm).toFixed(1)} ${UNITS.distUnit}</b>.${tag}`,
+          kind: agree ? "info" : "warn",
+          html: `Range model check: at your median conditions (<i>${conds}</i>) it predicts ` +
+                `<b>${UNITS.dist(predKm).toFixed(0)} ± ${UNITS.dist(sigma).toFixed(0)} ${UNITS.distUnit}</b>, ` +
+                `and your trips actually delivered a median of <b>${UNITS.dist(obsMed).toFixed(0)} ${UNITS.distUnit}</b>` +
+                (agree ? `.` : ` — outside the band, so treat the model's slopes with care.`) + tag,
         });
       }
     }
@@ -4922,13 +4965,17 @@
         setTakeaway("range-takeaway", trendParts);
         if (weatherLoaded) {
           drawRangeTempScatter(document.getElementById("chart-range-temp"));
-          if (tempFit) {
-            const slopeDisp = UNITS.dist(tempFit.slope) / (UNITS.imperial ? 1.8 : 1);
+          // Same slope source as the Overview insight (multivariate when
+          // available) so both places quote one number.
+          const tempSlopeKm2 = multiFit ? multiFit.tempSlope : (tempFit ? tempFit.slope : null);
+          if (tempSlopeKm2 != null) {
+            const slopeDisp = UNITS.dist(tempSlopeKm2) / (UNITS.imperial ? 1.8 : 1);
             // Show the per-degree cost and the 10-degree headline so readers
             // who think in big swings get the practical number too.
             const perStep = Math.abs(slopeDisp);
+            const tag = multiFit ? " (after factoring out speed + climb)" : "";
             setTakeaway("range-temp-takeaway", [
-              `Each <b>1 ${UNITS.tempUnit}</b> colder costs about <b>${perStep.toFixed(2)} ${UNITS.distUnit}</b> of range`,
+              `Each <b>1 ${UNITS.tempUnit}</b> colder costs about <b>${perStep.toFixed(2)} ${UNITS.distUnit}</b> of range${tag}`,
               `A <b>10 ${UNITS.tempUnit}</b> swing is worth <b>${(perStep * 10).toFixed(1)} ${UNITS.distUnit}</b>`,
             ]);
           } else {
