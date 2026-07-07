@@ -3281,7 +3281,10 @@
     drawScatter(canvas, pts, { xLabel: opts.xLabel, yLabel: opts.yLabel });
     if (!canvas._scatterMap) return;
     const { xAt, yAt, xMin, xMax } = canvas._scatterMap;
-    const dpr = window.devicePixelRatio || 1;
+    // The context is still carrying setupCanvas's dpr scale from the
+    // drawScatter call, and xAt/yAt are CSS-pixel mappers — draw directly.
+    // (An extra ctx.scale(dpr, dpr) here once made everything dpr²: fine at
+    // dpr 1, giant legend + offscreen fit lines on phones.)
     const ctx = canvas.getContext("2d");
 
     const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
@@ -3290,7 +3293,6 @@
 
     function drawSegmented(predictY, color, width, dashed) {
       ctx.save();
-      ctx.scale(dpr, dpr);
       ctx.strokeStyle = color;
       ctx.lineWidth = width;
       if (dashed) ctx.setLineDash(dashed);
@@ -3326,8 +3328,7 @@
     // Legend chip top-left. Drawn after the lines so it sits on top.
     if (univariate || modelPredict) {
       ctx.save();
-      ctx.scale(dpr, dpr);
-      const lx = 12, ly = 14, lineH = 13;
+      const lx = 12, ly = 32, lineH = 13; // below the y-axis title
       const items = [];
       if (modelPredict) items.push({ label: "model (multi)", color: "rgba(179,136,255,0.95)", width: 2.2, dash: null });
       if (univariate) items.push({ label: modelPredict ? "this view" : "fit", color: opts.fitColor || "rgba(255,241,118,0.75)", width: 1.4, dash: [4, 3] });

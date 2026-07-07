@@ -1935,6 +1935,11 @@ body.print-mode .anomaly-row .anom-peak { color: #000 !important; }
     .controls { width: 100%; gap: 8px; }
     .controls label { flex-direction: row; align-items: center; gap: 6px; }
     .controls label.check-label { font-size: 0.76rem; }
+    /* The vertical group separators turn into stray "|" marks once the
+       groups wrap onto their own rows — drop them and the side padding. */
+    .ctrl-group { padding: 0; }
+    .ctrl-group + .ctrl-group::before { display: none; }
+    .ctrl-group[data-group="binning"] { flex-wrap: wrap; row-gap: 8px; }
     #weather-status { font-size: 0.68rem; }
     .chart-title { font-size: 0.82rem; max-width: 75%; }
     .chart-title-axes { display: block; font-size: 0.66rem; }

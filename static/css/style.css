@@ -827,8 +827,22 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
     border-radius: 16px;
 }
 
-/* Trip panel */
+/* Trip panel. The clip wrapper is load-bearing: the closed panel's
+   translateX(320px) hangs past the right screen edge, and Android Chrome
+   grows the LAYOUT viewport to contain transformed overflow (root
+   overflow rules don't stop it). That inflated viewport let the visual
+   viewport pan into never-painted white space. Clipping at a fixed
+   full-viewport wrapper removes the overhang from layout entirely. */
+#trip-panel-clip {
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+    overflow: clip; /* preferred where supported; hidden is the fallback */
+    z-index: 800;
+    pointer-events: none;
+}
 #trip-panel {
+    pointer-events: auto;
     position: absolute;
     top: 0;
     right: 0;
@@ -1442,6 +1456,14 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
 @media (max-width: 480px) {
     #page-footer { gap: 8px; }
     #page-footer a span { display: none; }
+}
+
+/* Phones: backdrop blur is a mobile-GPU tax that can wedge the panel's
+   slide into stale pixels; solid backgrounds keep the compositor honest. */
+@media (max-width: 700px) {
+    #panel-tab, #panel-body { backdrop-filter: none; }
+    #panel-body { background: rgba(10, 10, 15, 0.97); }
+    #panel-tab { background: rgba(10, 10, 15, 0.94); }
 }
 #page-footer a {
     display: inline-flex;

@@ -6,7 +6,7 @@
     <title>EUC Planet Trip Viewer</title>
     <link rel="icon" href="static/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="static/css/style.css?v=59" />
+    <link rel="stylesheet" href="static/css/style.css?v=60" />
     <script type="text/javascript">
         (function(c,l,a,r,i,t,y){
             c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
@@ -98,13 +98,15 @@
         </div>
     </div>
 
-    <div id="trip-panel" class="hidden">
-        <div id="panel-tab"><span id="panel-tab-text">Trip Explorer</span></div>
-        <div id="panel-body">
-            <div id="panel-header"></div>
-            <div id="trip-detail" class="hidden"></div>
-            <div id="trip-list"></div>
-            <div id="panel-footer"></div>
+    <div id="trip-panel-clip">
+        <div id="trip-panel" class="hidden">
+            <div id="panel-tab"><span id="panel-tab-text">Trip Explorer</span></div>
+            <div id="panel-body">
+                <div id="panel-header"></div>
+                <div id="trip-detail" class="hidden"></div>
+                <div id="trip-list"></div>
+                <div id="panel-footer"></div>
+            </div>
         </div>
     </div>
 
