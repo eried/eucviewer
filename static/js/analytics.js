@@ -1965,14 +1965,47 @@
 
   // Trend chart over bins: each series is {stats, color, label, unit, band}.
   // `rolling` adds a white moving-average overlay per series.
+  // Legend chips. Wide canvases fit one row at the very top, left of the
+  // title; on narrow canvases the (wrapped) HTML title spans the whole
+  // width, so the entries stack below it inside the reserved band. The
+  // caller must size pad.top with legendPadTop() so the rows fit.
+  function legendPadTop(w, count) {
+    return w < 480 ? 48 + count * 13 : 42;
+  }
+  function drawLegend(ctx, w, padTop, padLeft, items) {
+    ctx.font = FONT;
+    ctx.textBaseline = "alphabetic";
+    ctx.textAlign = "left";
+    if (w >= 480) {
+      let lx = padLeft + 4;
+      for (const it of items) {
+        ctx.fillStyle = it.color;
+        ctx.fillRect(lx, 6, 8, 3);
+        ctx.fillStyle = "rgba(255,255,255,0.6)";
+        ctx.fillText(it.label, lx + 12, 11);
+        lx += 12 + ctx.measureText(it.label).width + 16;
+      }
+    } else {
+      let y = padTop - 8 - (items.length - 1) * 13;
+      for (const it of items) {
+        ctx.fillStyle = it.color;
+        ctx.fillRect(padLeft + 4, y - 5, 8, 3);
+        ctx.fillStyle = "rgba(255,255,255,0.6)";
+        ctx.fillText(it.label, padLeft + 16, y);
+        y += 13;
+      }
+    }
+  }
+
   function drawTrendChart(canvas, bins, series, opts = {}) {
     const cv = setupCanvas(canvas);
     if (!cv) return;
     const { ctx, w, h } = cv;
     // top: 42 leaves a clear band under the HTML chart-title overlay
     // (title + italic axes hint, ~36 px tall) so data lines never sit
-    // behind the heading text. Same logic on every chart below.
-    const pad = { top: 42, bottom: 22, left: 44, right: series.length > 1 ? 44 : 14 };
+    // behind the heading text; narrow canvases add room for stacked
+    // legend rows. Same logic on every chart below.
+    const pad = { top: legendPadTop(w, series.length), bottom: 22, left: 44, right: series.length > 1 ? 44 : 14 };
     const cw = w - pad.left - pad.right;
     const ch = h - pad.top - pad.bottom;
     const n = bins.length;
@@ -2132,16 +2165,7 @@
     });
 
     // Legend.
-    ctx.textBaseline = "alphabetic";
-    let lx = pad.left + 4;
-    for (const s of series) {
-      ctx.fillStyle = s.color;
-      ctx.fillRect(lx, 6, 8, 3);
-      ctx.fillStyle = "rgba(255,255,255,0.6)";
-      ctx.textAlign = "left";
-      ctx.fillText(s.label, lx + 12, 11);
-      lx += 12 + ctx.measureText(s.label).width + 16;
-    }
+    drawLegend(ctx, w, pad.top, pad.left, series.map((s) => ({ color: s.color, label: s.label })));
 
     canvas._an = { type: "trend", bins, series, pad, cw, ch, w, h, xAt };
   }
@@ -2913,7 +2937,7 @@
     const cv = setupCanvas(canvas);
     if (!cv) return;
     const { ctx, w, h } = cv;
-    const pad = { top: 42, bottom: 24, left: 46, right: 52 };
+    const pad = { top: legendPadTop(w, 2), bottom: 24, left: 46, right: 52 };
     const cw = w - pad.left - pad.right;
     const ch = h - pad.top - pad.bottom;
     const n = bins.length;
@@ -2991,18 +3015,10 @@
     }
 
     // Legend.
-    ctx.textBaseline = "alphabetic";
-    ctx.fillStyle = "rgba(179,136,255,0.85)";
-    ctx.fillRect(pad.left + 4, 6, 8, 3);
-    ctx.fillStyle = "rgba(255,255,255,0.6)";
-    ctx.textAlign = "left";
-    ctx.fillText("Distance per group (" + UNITS.distUnit + ")", pad.left + 16, 11);
-    const cumLabel = "Cumulative (" + UNITS.distUnit + ")";
-    const offX = pad.left + 16 + ctx.measureText("Distance per group (" + UNITS.distUnit + ")").width + 20;
-    ctx.fillStyle = "#69f0ae";
-    ctx.fillRect(offX, 6, 8, 3);
-    ctx.fillStyle = "rgba(255,255,255,0.6)";
-    ctx.fillText(cumLabel, offX + 12, 11);
+    drawLegend(ctx, w, pad.top, pad.left, [
+      { color: "rgba(179,136,255,0.85)", label: "Distance per group (" + UNITS.distUnit + ")" },
+      { color: "#69f0ae", label: "Cumulative (" + UNITS.distUnit + ")" },
+    ]);
 
     // Hover.
     canvas._an = {
@@ -3161,7 +3177,7 @@
     const cv = setupCanvas(canvas);
     if (!cv || !list.length) return;
     const { ctx, w, h } = cv;
-    const pad = { top: 42, bottom: 28, left: 42, right: 14 };
+    const pad = { top: legendPadTop(w, 3), bottom: 28, left: 42, right: 14 };
     const cw = w - pad.left - pad.right;
     const ch = h - pad.top - pad.bottom;
     const t0 = list[0].date.getTime();
@@ -3228,22 +3244,11 @@
       ctx.beginPath(); ctx.arc(x, yAt(c.to), 2.6, 0, Math.PI * 2); ctx.fill();
     }
     // Legend: greener = healthier
-    ctx.textBaseline = "alphabetic";
-    ctx.textAlign = "left";
-    const legendY = 14;
-    let lx = pad.left + 4;
-    const legendItems = [
-      ["#69f0ae", "Gentle (started >50%)"],
-      ["#ffd740", "Mid (20–50%)"],
-      ["#ff5252", "Deep (below 20%)"],
-    ];
-    for (const [col, lbl] of legendItems) {
-      ctx.fillStyle = col;
-      ctx.fillRect(lx, legendY - 7, 10, 3);
-      ctx.fillStyle = "rgba(255,255,255,0.7)";
-      ctx.fillText(lbl, lx + 14, legendY);
-      lx += 18 + ctx.measureText(lbl).width + 14;
-    }
+    drawLegend(ctx, w, pad.top, pad.left, [
+      { color: "#69f0ae", label: "Gentle (started >50%)" },
+      { color: "#ffd740", label: "Mid (20–50%)" },
+      { color: "#ff5252", label: "Deep (below 20%)" },
+    ]);
     // Y-axis title
     ctx.save();
     ctx.translate(14, pad.top + ch / 2);
