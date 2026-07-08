@@ -2157,7 +2157,9 @@
     const cv = setupCanvas(canvas);
     if (!cv) return;
     const { ctx, w, h } = cv;
-    const pad = { top: 42, bottom: 26, left: 44, right: 14 };
+    // Narrow canvases: the HTML title wraps onto two lines, so reserve a
+    // taller band before the plot begins.
+    const pad = { top: w < 480 ? 58 : 42, bottom: 26, left: 44, right: 14 };
     const cw = w - pad.left - pad.right;
     const ch = h - pad.top - pad.bottom;
     let xMin = Infinity, xMax = -Infinity, yMin = Infinity, yMax = -Infinity;
@@ -2239,8 +2241,12 @@
     }
     ctx.globalAlpha = 1;
 
-    // Old→new ramp legend.
-    const lw = 60, lx = w - pad.right - lw - 4, ly = 6;
+    // Old→new ramp legend: right-aligned so "new" ends inside the canvas,
+    // sitting just above the plot (below the HTML title band) instead of
+    // at the very top where the title used to overlap and clip it.
+    ctx.font = FONT;
+    const newW = ctx.measureText("new").width;
+    const lw = 60, lx = w - pad.right - newW - 6 - lw, ly = pad.top - 12;
     for (let i = 0; i < lw; i++) {
       ctx.fillStyle = epochColor(i / lw);
       ctx.fillRect(lx + i, ly, 1, 4);
