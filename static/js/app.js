@@ -1758,16 +1758,19 @@ document.addEventListener("DOMContentLoaded", function () {
         <div class="trip-header">
           <input type="checkbox" class="trip-check" data-idx="${i}" ${trackVisible.has(i) ? "checked" : ""}>
           <div class="trip-info">
-            <div class="trip-date">${formatTripLabel(t)}</div>
+            <div class="trip-title-row">
+              <div class="trip-date">${formatTripLabel(t)}</div>
+              ${t.dropboxPath ? `
+              <button type="button" class="share-btn" data-idx="${i}" title="Copy a shareable viewer link">
+                <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="3.5" r="2"/><circle cx="4" cy="8" r="2"/><circle cx="12" cy="12.5" r="2"/><line x1="5.7" y1="7" x2="10.3" y2="4.5"/><line x1="5.7" y1="9" x2="10.3" y2="11.5"/></svg>
+              </button>` : ""}
+              <a class="inspect-btn" href="inspector.html?i=${i}" target="_blank" rel="noopener" title="Replay this trip in the inspector (new tab)">
+                <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2.5 11.5 A6 6 0 1 1 13.5 11.5"/><line x1="8" y1="11" x2="11.2" y2="6.2"/><circle cx="8" cy="11" r="1.2" fill="currentColor" stroke="none"/></svg>
+                <span>Replay</span>
+              </a>
+            </div>
             <div class="trip-meta">${meta}</div>
           </div>
-          ${t.dropboxPath ? `
-          <button type="button" class="share-btn" data-idx="${i}" title="Copy a shareable viewer link">
-            <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="3.5" r="2"/><circle cx="4" cy="8" r="2"/><circle cx="12" cy="12.5" r="2"/><line x1="5.7" y1="7" x2="10.3" y2="4.5"/><line x1="5.7" y1="9" x2="10.3" y2="11.5"/></svg>
-          </button>` : ""}
-          <a class="inspect-btn" href="inspector.html?i=${i}" target="_blank" rel="noopener" title="Open trip inspector in a new tab">
-            <svg viewBox="0 0 16 16" width="14" height="14"><circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="10.5" y1="10.5" x2="14" y2="14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-          </a>
         </div>
         <div class="trip-detail-inline">${detailHtml}</div>
       `;

@@ -1195,16 +1195,32 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
     margin-top: 2px;
 }
 
+.trip-title-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.trip-title-row .trip-date {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
 .inspect-btn {
     flex-shrink: 0;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 22px;
+    gap: 4px;
     height: 22px;
+    padding: 0 6px;
     border-radius: 4px;
     color: #666;
+    font-size: 11px;
+    font-weight: 500;
     text-decoration: none;
+    white-space: nowrap;
     transition: background 0.15s, color 0.15s;
 }
 .inspect-btn:hover {
