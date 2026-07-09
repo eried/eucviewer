@@ -1480,29 +1480,24 @@ document.addEventListener("DOMContentLoaded", function () {
       panel.classList.remove("hidden");
     }
 
-    // Auto-open panel — but only on landscape / desktop. On portrait
-    // phones the panel covers the map, so we leave it closed and let the
-    // user tap the peek-tab when they want it. setPanelOpen drives the
-    // position with an inline transform (see its comment for the Chromium
-    // compositor story); the double-rAF lets the closed state paint first
-    // so the open transition animates from the right start point.
+    // Auto-open the panel on every load, portrait included: a taller-than-
+    // wide window (phone, snapped half-screen, vertical monitor) used to
+    // skip this, which read as "sometimes it starts collapsed". setPanelOpen
+    // drives the position with an inline transform (see its comment for the
+    // Chromium compositor story); the double-rAF lets the closed state paint
+    // first so the open transition animates from the right start point.
     setPanelOpen(false);
-    if (window.innerWidth >= window.innerHeight) {
+    requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          setPanelOpen(true);
-        });
+        setPanelOpen(true);
       });
-    }
+    });
 
     // Auto-select the first (newest) track so the map & details aren't empty.
-    // On portrait, pass keepPanelClosed so the highlight + map fit happen
-    // but the panel doesn't slide in over the map.
     if (tracks.length > 0) {
-      const keepPanelClosed = window.innerHeight > window.innerWidth;
       // Guard against a second auto-select racing this one: selectTrip on an
       // already-selected index toggles the selection off.
-      setTimeout(() => { if (selectedIdx !== 0) selectTrip(0, { keepPanelClosed }); }, 200);
+      setTimeout(() => { if (selectedIdx !== 0) selectTrip(0); }, 200);
     }
   }
 
