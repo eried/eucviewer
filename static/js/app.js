@@ -143,6 +143,27 @@ document.addEventListener("DOMContentLoaded", function () {
     return t.date || t.name || "Trip";
   }
 
+  // Trip duration in hours from the ISO timestamps, falling back to the
+  // timeseries span for tracks without dateStart/dateEnd.
+  function tripDurH(t) {
+    if (t.dateStart && t.dateEnd) {
+      const s = Date.parse(t.dateStart), e = Date.parse(t.dateEnd);
+      if (isFinite(s) && isFinite(e) && e > s) return (e - s) / 3600000;
+    }
+    const ts = t.timeseries;
+    if (Array.isArray(ts) && ts.length > 1) {
+      const span = ts[ts.length - 1][0] - ts[0][0];
+      if (span > 0) return span / 3600;
+    }
+    return 0;
+  }
+  function fmtDurH(h) {
+    const totalMin = Math.round(h * 60);
+    if (totalMin < 1) return "";
+    const hh = Math.floor(totalMin / 60), mm = totalMin % 60;
+    return hh > 0 ? `${hh}h ${mm}m` : `${mm}m`;
+  }
+
   // Cumulative distance arrays (km) cached per track
   function getCumDistPts(track) {
     if (track._cumDistPts) return track._cumDistPts;
@@ -1481,7 +1502,17 @@ document.addEventListener("DOMContentLoaded", function () {
     analyticsBtn.innerHTML = `
       <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M1.5 13.5 5.5 8l3 3 6-8"/><circle cx="5.5" cy="8" r="1.2" fill="currentColor"/><circle cx="8.5" cy="11" r="1.2" fill="currentColor"/></svg>
       <span class="analytics-label">Wheel Forensics</span>`;
+    // The whole-history analysis needs a real sample of rides before its
+    // trends and fits mean anything; below the floor the button explains
+    // itself instead of opening a page of empty sections.
+    const MIN_FORENSICS_TRIPS = 5;
+    if (allTracks.length < MIN_FORENSICS_TRIPS) {
+      analyticsBtn.classList.add("disabled");
+      analyticsBtn.removeAttribute("href");
+      analyticsBtn.title = `${MIN_FORENSICS_TRIPS} trips required for the whole-history analysis (you have ${allTracks.length})`;
+    }
     analyticsBtn.addEventListener("click", async (e) => {
+      if (allTracks.length < MIN_FORENSICS_TRIPS) { e.preventDefault(); return; }
       if (!allTracks.length) return;
       // The IDB write started by handleFile() may not have landed yet,
       // and the new tab would open against an empty currentSession.
@@ -1583,9 +1614,11 @@ document.addEventListener("DOMContentLoaded", function () {
       let detailHtml = buildDetailHtml(t);
       detailHtml += `<div class="chart-wrap"><canvas class="trip-chart" data-idx="${i}"></canvas></div>`;
 
+      const dur = fmtDurH(tripDurH(t));
+      const durBit = dur ? ` &middot; ${dur}` : "";
       const meta = s.points > 0
-        ? `${UNITS.dist(s.distanceKm).toFixed(2)} ${UNITS.distUnit} &middot; ${UNITS.speed(s.maxSpeed).toFixed(0)} ${UNITS.speedUnit} max`
-        : `No GPS &middot; ${UNITS.speed(s.maxSpeed).toFixed(0)} ${UNITS.speedUnit} max &middot; ${(s.rows || 0).toLocaleString()} samples`;
+        ? `${UNITS.dist(s.distanceKm).toFixed(2)} ${UNITS.distUnit} &middot; ${UNITS.speed(s.maxSpeed).toFixed(0)} ${UNITS.speedUnit} max${durBit}`
+        : `No GPS &middot; ${UNITS.speed(s.maxSpeed).toFixed(0)} ${UNITS.speedUnit} max${durBit} &middot; ${(s.rows || 0).toLocaleString()} samples`;
 
       li.innerHTML = `
         <div class="trip-header">
@@ -1825,13 +1858,14 @@ document.addEventListener("DOMContentLoaded", function () {
       const groupEl = document.createElement("div");
       groupEl.className = "month-group";
       const groupKm = mg.indices.reduce((sum, i) => sum + allTracks[i].stats.distanceKm, 0);
+      const groupDur = fmtDurH(mg.indices.reduce((sum, i) => sum + tripDurH(allTracks[i]), 0));
 
       const header = document.createElement("div");
       header.className = "month-header";
       header.innerHTML = `
         <input type="checkbox" class="month-check" checked>
         <span class="month-label">${mg.month}</span>
-        <span class="month-meta">${mg.indices.length} trips &middot; ${UNITS.dist(groupKm).toFixed(1)} ${UNITS.distUnit}</span>
+        <span class="month-meta">${mg.indices.length} trips &middot; ${UNITS.dist(groupKm).toFixed(1)} ${UNITS.distUnit}${groupDur ? ` &middot; ${groupDur}` : ""}</span>
         <span class="month-chevron">&#9662;</span>
       `;
 
@@ -1922,7 +1956,9 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const homeBtn = document.createElement("div");
     homeBtn.className = "main-screen-btn";
-    homeBtn.textContent = "Back to main screen";
+    // Direction-neutral: a ?file= deep link lands here without ever having
+    // seen the load screen, so "Back to main screen" read strangely.
+    homeBtn.textContent = "Home";
     homeBtn.addEventListener("click", () => navigate("#load"));
     navRow.appendChild(homeBtn);
 

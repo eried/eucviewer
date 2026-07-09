@@ -245,6 +245,14 @@
   if (track.stats) {
     if (track.stats.distanceKm) subBits.push(UNITS.dist(track.stats.distanceKm).toFixed(2) + " " + UNITS.distUnit);
     if (track.stats.maxSpeed) subBits.push(UNITS.speed(track.stats.maxSpeed).toFixed(0) + " " + UNITS.speedUnit + " max");
+    // Total ride time + the overall average it implies.
+    const durMin = Math.round(duration / 60);
+    if (durMin > 0) {
+      subBits.push(durMin >= 60 ? Math.floor(durMin / 60) + "h " + (durMin % 60) + "m" : durMin + "m");
+      if (totalKm > 0) {
+        subBits.push("avg " + UNITS.speed(totalKm / (duration / 3600)).toFixed(1) + " " + UNITS.speedUnit);
+      }
+    }
     subBits.push((track.stats.rows || ts.length).toLocaleString() + " samples");
   }
   document.getElementById("trip-subtitle").textContent = subBits.join(" \u00b7 ");

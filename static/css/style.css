@@ -1339,6 +1339,13 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
     transition: background 0.15s;
 }
 .analytics-btn:hover { background: rgba(179, 136, 255, 0.08); }
+/* Not enough trips yet: dimmed but still hoverable so the tooltip can
+   explain the requirement (clicks are blocked in JS). */
+.analytics-btn.disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+.analytics-btn.disabled:hover { background: transparent; }
 
 /* Header variant: prominent card under the summary stats. Always applies
    to the whole library, so it lives outside of selection-dependent UI. */
