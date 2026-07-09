@@ -1519,10 +1519,11 @@
 
   // Pick a sensible default speed so the trip plays back at a comfortable pace.
   function autoPlaySpeed(dur) {
-    if (dur <= 1800) return 16;   // ≤ 30 min
-    if (dur <= 3600) return 32;   // ≤ 1 h
-    if (dur <= 7200) return 64;   // ≤ 2 h
-    return 128;                   // > 2 h
+    if (dur <= 600) return 4;     // ≤ 10 min
+    if (dur <= 1800) return 8;    // ≤ 30 min
+    if (dur <= 3600) return 16;   // ≤ 1 h
+    if (dur <= 14400) return 32;  // ≤ 4 h
+    return 64;                    // > 4 h
   }
   let playSpeed = autoPlaySpeed(duration);
   // Sync the <select> to the chosen default.
