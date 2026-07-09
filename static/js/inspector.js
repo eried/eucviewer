@@ -399,7 +399,7 @@
   // restart begins at velocity zero, so pan/zoom visibly "pumped" four
   // times a second. A continuous glide has no restarts to feel.
   const PAN_TAU = 2.0;        // s to settle on the rider
-  const BEARING_TAU = 6.5;    // s — heading stays calm through GPS jitter
+  const BEARING_TAU = 15;     // s — heading turns like a slow drone shot
   const ZOOM_TAU = 9.0;       // s — zoom drifts very lazily
   const ZOOM_DEADBAND = 0.45; // ignore sub-half-level zoom wishes: fewer
                               // tile-level crossings, less res-flickering
@@ -523,6 +523,66 @@
     try { localStorage.removeItem(TRACE_STYLE_KEY_3D); } catch (_) {}
     syncTraceStyleSelect();
     applyTraceStyle();
+    startRoutePrefetch();
+  }
+
+  // --- Route tile prefetch ----------------------------------------------
+  // The whole flight path is known before playback starts, so warm the
+  // browser HTTP cache along the corridor: basemap raster + terrain DEM
+  // for the zoom band the follow camera actually uses (12-15). Tiles are
+  // queued in playback order, so they land ahead of the camera and come
+  // out of disk cache instead of popping in mid-flight.
+  const prefetchedThemes = new Set();
+  function startRoutePrefetch() {
+    if (!map || !Array.isArray(coords) || coords.length < 2) return;
+    if (prefetchedThemes.has(currentTheme)) return;
+    prefetchedThemes.add(currentTheme);
+    const theme = MAP_THEMES[currentTheme];
+    const baseTpl = theme && theme.source && theme.source.tiles ? theme.source.tiles[0] : null;
+    const demTpl = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png";
+    const urls = [];
+    const seen = new Set();
+    const push = (tpl, z, x, y) => {
+      if (!tpl) return;
+      const max = 1 << z;
+      if (y < 0 || y >= max) return;
+      x = ((x % max) + max) % max;
+      const key = tpl + "|" + z + "/" + x + "/" + y;
+      if (seen.has(key)) return;
+      seen.add(key);
+      urls.push(tpl.replace("{z}", z).replace("{x}", x).replace("{y}", y));
+    };
+    const tX = (lon, z) => Math.floor((lon + 180) / 360 * (1 << z));
+    const tY = (lat, z) => {
+      const lr = lat * Math.PI / 180;
+      return Math.floor((1 - Math.log(Math.tan(lr) + 1 / Math.cos(lr)) / Math.PI) / 2 * (1 << z));
+    };
+    const ZOOMS = [12, 13, 14, 15];
+    const step = Math.max(1, Math.floor(coords.length / 1500));
+    for (let i = 0; i < coords.length && urls.length < 2400; i += step) {
+      const lon = coords[i][0], lat = coords[i][1];
+      for (const z of ZOOMS) {
+        const cx = tX(lon, z), cy = tY(lat, z);
+        for (let dx = -1; dx <= 1; dx++) {
+          for (let dy = -1; dy <= 1; dy++) {
+            push(baseTpl, z, cx + dx, cy + dy);
+            push(demTpl, z, cx + dx, cy + dy);
+          }
+        }
+      }
+    }
+    // Modest pool — HTTP/2 multiplexes per host, and playback shouldn't
+    // starve behind its own prefetch.
+    let qi = 0;
+    const next = () => {
+      if (qi >= urls.length) return;
+      const url = urls[qi++];
+      fetch(url, { mode: "cors", credentials: "omit" })
+        .then((r) => (r.ok ? r.arrayBuffer() : null))
+        .catch(() => null)
+        .then(() => next());
+    };
+    for (let k = 0; k < 6; k++) next();
   }
 
   function metricColor(value, minV, maxV, invert) {
@@ -770,6 +830,9 @@
       // sharp children while the follow camera moves — a visible res
       // "flicker". A short fade makes the swap barely perceptible.
       fadeDuration: 100,
+      // Keep far more decoded tiles in memory than the dynamic default so
+      // the follow camera never re-fetches ground it already flew over.
+      maxTileCacheSize: 512,
       attributionControl: false
     });
 
@@ -913,6 +976,10 @@
       applyTrace();
 
       updateUI();
+
+      // Start warming the route corridor once the initial view has its
+      // tiles, so the prefetch never competes with what's on screen.
+      map.once("idle", startRoutePrefetch);
     });
   } else {
     document.getElementById("map").innerHTML =
