@@ -90,12 +90,31 @@ document.addEventListener("DOMContentLoaded", function () {
     satellite: { layer: satelliteLayer, dark: false },
     topo:      { layer: topoLayer,      dark: false },
   };
-  let selectedStyle = "standard";
+  let selectedStyle = "satellite"; // default for new users
   try {
     const saved = (localStorage.getItem(MAP_LAYER_KEY) || "").toLowerCase();
     if (BASE_STYLES[saved]) selectedStyle = saved;
   } catch (_) {}
   let glowLayer;
+
+  // Trace style: how the track lines are painted. "neon" is the layered
+  // glow, "normal" is flat solid lines, "dark" adds a dark casing under a
+  // saturated core so traces stay readable on whitish tiles. Unless the
+  // user picks one explicitly, the style follows the basemap (satellite →
+  // normal, dark → neon, standard/topo → dark); switching basemap returns
+  // to that automatic pairing.
+  const TRACE_STYLE_KEY = "eucviewer-trace-style";
+  let traceStyleUser = null;
+  try {
+    const savedTs = (localStorage.getItem(TRACE_STYLE_KEY) || "").toLowerCase();
+    if (savedTs === "normal" || savedTs === "neon" || savedTs === "dark") traceStyleUser = savedTs;
+  } catch (_) {}
+  function defaultTraceStyle(styleName) {
+    if (styleName === "dark") return "neon";
+    if (styleName === "satellite") return "normal";
+    return "dark"; // standard / topo: light tiles need the dark casing
+  }
+  function effectiveTraceStyle() { return traceStyleUser || defaultTraceStyle(selectedStyle); }
 
   const map = L.map("map", {
     center: [65, 15],
@@ -114,7 +133,7 @@ document.addEventListener("DOMContentLoaded", function () {
   // --- State ---
   let allTracks = [];
   let selectedIdx = -1;
-  let traceColor = "solid"; // "solid" | speed | battery | voltage | temp | altitude | distance
+  let traceColor = "speed"; // "solid" | speed | battery | voltage | temp | altitude | distance
   let trackVisible = new Set();
 
   function haversineKm(lat1, lon1, lat2, lon2) {
@@ -281,39 +300,72 @@ document.addEventListener("DOMContentLoaded", function () {
       const ox = topLeft.x;
       const oy = topLeft.y;
 
-      const cyanPasses = [
-        { width: 8, alpha: 0.04, color: "0,229,255" },
-        { width: 4, alpha: 0.08, color: "0,229,255" },
-        { width: 2, alpha: 0.25, color: "0,255,200" },
-        { width: 1, alpha: 0.5,  color: "200,255,255" },
-      ];
-      const orangePasses = [
-        { width: 18, alpha: 0.05, color: "255,160,0" },
-        { width: 12, alpha: 0.1,  color: "255,160,0" },
-        { width: 7,  alpha: 0.2,  color: "255,180,30" },
-        { width: 4,  alpha: 0.5,  color: "255,200,50" },
-        { width: 2,  alpha: 0.9,  color: "255,240,180" },
-      ];
-      const fuchsiaAlphaPasses = [
-        { width: 16, alpha: 0.02, color: "230, 0, 126" },
-        { width: 10, alpha: 0.04, color: "230, 0, 126" },
-        { width: 6,  alpha: 0.08, color: "230, 0, 126" },
-        { width: 3,  alpha: 0.16, color: "230, 0, 126" },
-        { width: 2,  alpha: 0.3, color: "230, 0, 126" },
-      ];
-      const fuchsiaPasses = [
-        { width: 16, alpha: 0.08, color: "230, 0, 126" },
-        { width: 10, alpha: 0.16, color: "230, 0, 126" },
-        { width: 6,  alpha: 0.35, color: "230, 0, 126" },
-        { width: 3,  alpha: 0.65, color: "230, 0, 126" },
-        { width: 2,  alpha: 0.95, color: "230, 0, 126" },
-      ];
-
+      // Pass sets per trace style. "neon" keeps the layered glow, "normal"
+      // is flat solid lines, "dark" draws a near-black casing under a
+      // saturated core so colors read on whitish tiles.
+      const styleMode = effectiveTraceStyle();
       const isLightMap = map.hasLayer(standardLayer) || map.hasLayer(topoLayer);
-      const basePassSource = isLightMap ? fuchsiaAlphaPasses : cyanPasses;
-      const basePasses = basePassSource.map((p) => ({
-        ...p, alpha: sel >= 0 ? p.alpha * 0.3 : p.alpha,
-      }));
+      const dimBase = sel >= 0 ? 0.35 : 1;
+      let basePasses, selectedPasses, heatPasses, heatCasing = null;
+      if (styleMode === "neon") {
+        const cyanPasses = [
+          { width: 8, alpha: 0.04, color: "0,229,255" },
+          { width: 4, alpha: 0.08, color: "0,229,255" },
+          { width: 2, alpha: 0.25, color: "0,255,200" },
+          { width: 1, alpha: 0.5,  color: "200,255,255" },
+        ];
+        const orangePasses = [
+          { width: 18, alpha: 0.05, color: "255,160,0" },
+          { width: 12, alpha: 0.1,  color: "255,160,0" },
+          { width: 7,  alpha: 0.2,  color: "255,180,30" },
+          { width: 4,  alpha: 0.5,  color: "255,200,50" },
+          { width: 2,  alpha: 0.9,  color: "255,240,180" },
+        ];
+        const fuchsiaAlphaPasses = [
+          { width: 16, alpha: 0.02, color: "230, 0, 126" },
+          { width: 10, alpha: 0.04, color: "230, 0, 126" },
+          { width: 6,  alpha: 0.08, color: "230, 0, 126" },
+          { width: 3,  alpha: 0.16, color: "230, 0, 126" },
+          { width: 2,  alpha: 0.3, color: "230, 0, 126" },
+        ];
+        const fuchsiaPasses = [
+          { width: 16, alpha: 0.08, color: "230, 0, 126" },
+          { width: 10, alpha: 0.16, color: "230, 0, 126" },
+          { width: 6,  alpha: 0.35, color: "230, 0, 126" },
+          { width: 3,  alpha: 0.65, color: "230, 0, 126" },
+          { width: 2,  alpha: 0.95, color: "230, 0, 126" },
+        ];
+        basePasses = (isLightMap ? fuchsiaAlphaPasses : cyanPasses).map((p) => ({
+          ...p, alpha: sel >= 0 ? p.alpha * 0.3 : p.alpha, comp: "lighter",
+        }));
+        selectedPasses = (isLightMap ? fuchsiaPasses : orangePasses).map((p) => ({
+          ...p, comp: isLightMap || p.width <= 4 ? "source-over" : "lighter",
+        }));
+        heatPasses = [
+          { width: 12, alpha: 0.1,  comp: "lighter" },
+          { width: 6,  alpha: 0.3,  comp: "lighter" },
+          { width: 3,  alpha: 0.9,  comp: "source-over" },
+        ];
+      } else if (styleMode === "normal") {
+        basePasses = [
+          { width: 2, alpha: 0.8 * dimBase, color: "0,229,255", comp: "source-over" },
+        ];
+        selectedPasses = [
+          { width: 3.5, alpha: 0.95, color: "255,170,0", comp: "source-over" },
+        ];
+        heatPasses = [{ width: 3.5, alpha: 1, comp: "source-over" }];
+      } else { // dark casing
+        basePasses = [
+          { width: 4.5, alpha: 0.85 * dimBase, color: "10,10,18", comp: "source-over" },
+          { width: 2,   alpha: 0.95 * dimBase, color: "0,229,255", comp: "source-over" },
+        ];
+        selectedPasses = [
+          { width: 6.5, alpha: 0.9, color: "10,10,18", comp: "source-over" },
+          { width: 3,   alpha: 1,   color: "255,170,0", comp: "source-over" },
+        ];
+        heatCasing = { width: 6, alpha: 0.9, color: "10,10,18" };
+        heatPasses = [{ width: 3, alpha: 1, comp: "source-over" }];
+      }
 
       function drawTrack(lls) {
         if (lls.length < 2) return;
@@ -333,7 +385,7 @@ document.addEventListener("DOMContentLoaded", function () {
         ctx.lineWidth = pass.width;
         ctx.lineJoin = "round";
         ctx.lineCap = "round";
-        ctx.globalCompositeOperation = "lighter";
+        ctx.globalCompositeOperation = pass.comp;
         for (let t = 0; t < this._latLngs.length; t++) {
           if (t === sel) continue;
           if (vis && !vis.has(t)) continue;
@@ -351,11 +403,18 @@ document.addEventListener("DOMContentLoaded", function () {
               const p = map.latLngToLayerPoint(ll);
               return [p.x - ox, p.y - oy];
             });
-            const heatPasses = [
-              { width: 12, alpha: 0.1,  comp: "lighter" },
-              { width: 6,  alpha: 0.3,  comp: "lighter" },
-              { width: 3,  alpha: 0.9,  comp: "source-over" },
-            ];
+            if (heatCasing) {
+              // Whole path once in the dark casing, colors on top.
+              ctx.strokeStyle = `rgba(${heatCasing.color},${heatCasing.alpha})`;
+              ctx.lineWidth = heatCasing.width;
+              ctx.lineJoin = "round";
+              ctx.lineCap = "round";
+              ctx.globalCompositeOperation = "source-over";
+              ctx.beginPath();
+              ctx.moveTo(layerPts[0][0], layerPts[0][1]);
+              for (let i = 1; i < layerPts.length; i++) ctx.lineTo(layerPts[i][0], layerPts[i][1]);
+              ctx.stroke();
+            }
             for (const pass of heatPasses) {
               ctx.lineWidth = pass.width;
               ctx.lineJoin = "round";
@@ -371,13 +430,12 @@ document.addEventListener("DOMContentLoaded", function () {
               }
             }
           } else {
-            const selectedPasses = isLightMap ? fuchsiaPasses : orangePasses;
             for (const pass of selectedPasses) {
               ctx.strokeStyle = `rgba(${pass.color},${pass.alpha})`;
               ctx.lineWidth = pass.width;
               ctx.lineJoin = "round";
               ctx.lineCap = "round";
-              ctx.globalCompositeOperation = isLightMap || pass.width <= 4 ? "source-over" : "lighter";
+              ctx.globalCompositeOperation = pass.comp;
               drawTrack(lls);
             }
           }
@@ -417,8 +475,12 @@ document.addEventListener("DOMContentLoaded", function () {
     }
     const speedOpt = sel.querySelector('option[value="speed"]');
     if (speedOpt) speedOpt.textContent = hasMetric(10) ? "Wheel speed" : "Speed";
+    // Only drop the preference when a *selected* trip genuinely lacks the
+    // metric. With nothing selected every option reads disabled, and
+    // resetting then would wipe the wheel-speed default before the
+    // auto-select even runs.
     const active = sel.querySelector(`option[value="${traceColor}"]`);
-    if (traceColor !== "solid" && active && active.disabled) {
+    if (track && traceColor !== "solid" && active && active.disabled) {
       traceColor = "solid";
       sel.value = "solid";
     }
@@ -483,7 +545,12 @@ document.addEventListener("DOMContentLoaded", function () {
     // Dark gets the invert filter; the others show their true colours.
     map.getContainer().classList.toggle("dark-tiles", style.dark);
     try { localStorage.setItem(MAP_LAYER_KEY, name); } catch (_) {}
-    // Track glow colours depend on a light vs dark basemap — repaint.
+    // Changing basemap returns the trace style to that map's automatic
+    // pairing (a manual pick applies until the next basemap switch).
+    traceStyleUser = null;
+    try { localStorage.removeItem(TRACE_STYLE_KEY); } catch (_) {}
+    syncTraceStyleSelect();
+    // Track colours + style depend on the basemap — repaint.
     if (glowLayer) glowLayer.redraw();
   }
 
@@ -516,12 +583,27 @@ document.addEventListener("DOMContentLoaded", function () {
 
   const styleSelEl = document.getElementById("map-style-select");
   const colorSelEl = document.getElementById("trace-color-select");
+  const traceStyleSelEl = document.getElementById("trace-style-select");
   const mapControlsToggle = document.getElementById("map-controls-toggle");
+  function syncTraceStyleSelect() {
+    if (traceStyleSelEl) traceStyleSelEl.value = effectiveTraceStyle();
+  }
   if (styleSelEl) {
     styleSelEl.value = selectedStyle;
     styleSelEl.addEventListener("change", (e) => setBaseStyle(e.target.value));
   }
-  if (colorSelEl) colorSelEl.addEventListener("change", (e) => { traceColor = e.target.value; updateGlow(); });
+  if (colorSelEl) {
+    colorSelEl.value = traceColor;
+    colorSelEl.addEventListener("change", (e) => { traceColor = e.target.value; updateGlow(); });
+  }
+  if (traceStyleSelEl) {
+    syncTraceStyleSelect();
+    traceStyleSelEl.addEventListener("change", (e) => {
+      traceStyleUser = e.target.value;
+      try { localStorage.setItem(TRACE_STYLE_KEY, traceStyleUser); } catch (_) {}
+      if (glowLayer) glowLayer.redraw();
+    });
+  }
   if (mapControlsToggle) mapControlsToggle.addEventListener("click", () => mapControlsEl.classList.toggle("collapsed"));
 
   // --- Hover tooltip for selected track ---

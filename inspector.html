@@ -95,8 +95,8 @@
                         <label>
                             <span>Trace color</span>
                             <select id="color-select">
-                                <option value="solid" selected>Solid</option>
-                                <option value="speed">Speed</option>
+                                <option value="solid">Solid</option>
+                                <option value="speed" selected>Speed</option>
                                 <option value="gpsspeed">GPS speed</option>
                                 <option value="pwm">PWM</option>
                                 <option value="power">Power</option>
@@ -105,6 +105,14 @@
                                 <option value="voltage">Voltage</option>
                                 <option value="temp">Temp</option>
                                 <option value="altitude">Altitude</option>
+                            </select>
+                        </label>
+                        <label>
+                            <span>Trace style</span>
+                            <select id="trace-style-select" title="How track lines are drawn. Follows the map style automatically until you pick one.">
+                                <option value="normal">Normal</option>
+                                <option value="neon">Neon</option>
+                                <option value="dark">Dark</option>
                             </select>
                         </label>
                         <label>
@@ -192,6 +200,6 @@
     </div>
 
     <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-    <script src="static/js/inspector.js?v=51"></script>
+    <script src="static/js/inspector.js?v=53"></script>
 </body>
 </html>

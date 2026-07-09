@@ -33,17 +33,17 @@
             <label>
                 <span>Map style</span>
                 <select id="map-style-select">
-                    <option value="standard" selected>Standard</option>
+                    <option value="standard">Standard</option>
                     <option value="dark">Dark</option>
-                    <option value="satellite">Satellite</option>
+                    <option value="satellite" selected>Satellite</option>
                     <option value="topo">Topo</option>
                 </select>
             </label>
             <label>
                 <span>Trace color</span>
                 <select id="trace-color-select">
-                    <option value="solid" selected>Solid</option>
-                    <option value="speed">Speed</option>
+                    <option value="solid">Solid</option>
+                    <option value="speed" selected>Speed</option>
                     <option value="gpsspeed">GPS speed</option>
                     <option value="pwm">PWM</option>
                     <option value="power">Power</option>
@@ -53,6 +53,14 @@
                     <option value="temp">Temp</option>
                     <option value="altitude">Altitude</option>
                     <option value="distance">Distance</option>
+                </select>
+            </label>
+            <label>
+                <span>Trace style</span>
+                <select id="trace-style-select" title="How track lines are drawn. Follows the map style automatically until you pick one.">
+                    <option value="normal">Normal</option>
+                    <option value="neon">Neon</option>
+                    <option value="dark">Dark</option>
                 </select>
             </label>
             <div id="color-legend" class="hidden">
@@ -131,7 +139,7 @@
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-    <script src="static/js/app.js?v=92"></script>
+    <script src="static/js/app.js?v=93"></script>
     <script src="static/js/dropbox-source.js?v=5"></script>
     <script src="static/js/source-hints.js?v=34"></script>
 </body>

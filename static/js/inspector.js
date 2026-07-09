@@ -240,22 +240,38 @@
   }
 
   // ---------- Header info ----------
-  document.getElementById("trip-name").textContent = track.date || track.name;
-  const subBits = [];
+  // Title is the trip's datetime; the raw filename (when there is one)
+  // lives in the hover tooltip instead of the headline.
+  const nameEl = document.getElementById("trip-name");
+  let tripTitle = track.date || track.name || "Trip";
+  if (track.dateStart) {
+    const d = new Date(track.dateStart);
+    if (!isNaN(d.getTime())) {
+      tripTitle = new Intl.DateTimeFormat(undefined, {
+        year: "numeric", month: "numeric", day: "numeric",
+        hour: "numeric", minute: "2-digit",
+      }).format(d);
+    }
+  }
+  nameEl.textContent = tripTitle;
+  if (track.name && track.name !== tripTitle) nameEl.title = track.name;
+
+  // Stats split over two lines: ride shape first, derived bits second.
+  const line1 = [], line2 = [];
   if (track.stats) {
-    if (track.stats.distanceKm) subBits.push(UNITS.dist(track.stats.distanceKm).toFixed(2) + " " + UNITS.distUnit);
-    if (track.stats.maxSpeed) subBits.push(UNITS.speed(track.stats.maxSpeed).toFixed(0) + " " + UNITS.speedUnit + " max");
-    // Total ride time + the overall average it implies.
+    if (track.stats.distanceKm) line1.push(UNITS.dist(track.stats.distanceKm).toFixed(2) + " " + UNITS.distUnit);
+    if (track.stats.maxSpeed) line1.push(UNITS.speed(track.stats.maxSpeed).toFixed(0) + " " + UNITS.speedUnit + " max");
     const durMin = Math.round(duration / 60);
     if (durMin > 0) {
-      subBits.push(durMin >= 60 ? Math.floor(durMin / 60) + "h " + (durMin % 60) + "m" : durMin + "m");
+      line1.push(durMin >= 60 ? Math.floor(durMin / 60) + "h " + (durMin % 60) + "m" : durMin + "m");
       if (totalKm > 0) {
-        subBits.push("avg " + UNITS.speed(totalKm / (duration / 3600)).toFixed(1) + " " + UNITS.speedUnit);
+        line2.push("avg " + UNITS.speed(totalKm / (duration / 3600)).toFixed(1) + " " + UNITS.speedUnit);
       }
     }
-    subBits.push((track.stats.rows || ts.length).toLocaleString() + " samples");
+    line2.push((track.stats.rows || ts.length).toLocaleString() + " samples");
   }
-  document.getElementById("trip-subtitle").textContent = subBits.join(" \u00b7 ");
+  document.getElementById("trip-subtitle").innerHTML =
+    line1.join(" \u00b7 ") + (line2.length ? "<br>" + line2.join(" \u00b7 ") : "");
   document.getElementById("clock-total").textContent = fmtTime(duration);
 
   function fmtTime(sec) {
@@ -394,9 +410,66 @@
   }
   let coords = [];
   let currentTheme = "satellite";
-  let currentColorMode = "solid";
+  let currentColorMode = "speed"; // falls back to solid when the trip lacks it
   let currentTraceMode = "trail-fixed"; // trail-fixed | trail-dynamic | whole
   let currentRouteIdx = 0;
+
+  // Trace style, mirroring the main viewer: "neon" = blurred glow layers,
+  // "normal" = flat lines, "dark" = dark casing so colors read on light
+  // tiles. Follows the map theme (satellite → normal, dark → neon,
+  // light → dark) until the user picks one; switching theme returns to
+  // the automatic pairing.
+  const TRACE_STYLE_KEY_3D = "eucviewer-trace-style-3d";
+  let traceStyleUser = null;
+  try {
+    const savedTs = (localStorage.getItem(TRACE_STYLE_KEY_3D) || "").toLowerCase();
+    if (savedTs === "normal" || savedTs === "neon" || savedTs === "dark") traceStyleUser = savedTs;
+  } catch (_) {}
+  function defaultTraceStyle(themeName) {
+    if (themeName === "dark") return "neon";
+    if (themeName === "light") return "dark";
+    return "normal"; // satellite
+  }
+  function effectiveTraceStyle() { return traceStyleUser || defaultTraceStyle(currentTheme); }
+  function syncTraceStyleSelect() {
+    const sel = document.getElementById("trace-style-select");
+    if (sel) sel.value = effectiveTraceStyle();
+  }
+
+  // Drives the two under-layers ("track-glow" / "traveled-glow") that give
+  // the lines their style: hidden for normal, wide + blurred for neon,
+  // slim dark casing for dark.
+  function applyTraceStyle() {
+    if (!map || !map.getLayer("track-glow") || !map.getLayer("traveled-glow")) return;
+    const mode = effectiveTraceStyle();
+    if (mode === "normal") {
+      map.setLayoutProperty("track-glow", "visibility", "none");
+      map.setLayoutProperty("traveled-glow", "visibility", "none");
+      return;
+    }
+    const traveledShown = map.getLayoutProperty("traveled-line", "visibility") !== "none";
+    map.setLayoutProperty("track-glow", "visibility", "visible");
+    map.setLayoutProperty("traveled-glow", "visibility", traveledShown ? "visible" : "none");
+    if (mode === "neon") {
+      map.setPaintProperty("track-glow", "line-color", "#00e5ff");
+      map.setPaintProperty("track-glow", "line-width", 14);
+      map.setPaintProperty("track-glow", "line-blur", 8);
+      map.setPaintProperty("track-glow", "line-opacity", 0.4);
+      map.setPaintProperty("traveled-glow", "line-color", "#ffffff");
+      map.setPaintProperty("traveled-glow", "line-width", 16);
+      map.setPaintProperty("traveled-glow", "line-blur", 9);
+      map.setPaintProperty("traveled-glow", "line-opacity", 0.5);
+    } else { // dark casing
+      map.setPaintProperty("track-glow", "line-color", "#0a0a12");
+      map.setPaintProperty("track-glow", "line-width", 8);
+      map.setPaintProperty("track-glow", "line-blur", 0);
+      map.setPaintProperty("track-glow", "line-opacity", 0.9);
+      map.setPaintProperty("traveled-glow", "line-color", "#0a0a12");
+      map.setPaintProperty("traveled-glow", "line-width", 9);
+      map.setPaintProperty("traveled-glow", "line-blur", 0);
+      map.setPaintProperty("traveled-glow", "line-opacity", 0.95);
+    }
+  }
 
   function applyTheme(name) {
     if (!map || !map.isStyleLoaded()) return;
@@ -405,9 +478,17 @@
     if (map.getLayer("basemap")) map.removeLayer("basemap");
     if (map.getSource("basemap")) map.removeSource("basemap");
     map.addSource("basemap", theme.source);
-    const before = map.getLayer("track-line") ? "track-line" : undefined;
+    // Insert beneath the lowest overlay layer (the glow casings sit under
+    // the track lines).
+    const before = map.getLayer("track-glow") ? "track-glow"
+                 : (map.getLayer("track-line") ? "track-line" : undefined);
     map.addLayer({ id: "basemap", type: "raster", source: "basemap", paint: theme.paint }, before);
     currentTheme = name;
+    // Theme change returns the trace style to the automatic pairing.
+    traceStyleUser = null;
+    try { localStorage.removeItem(TRACE_STYLE_KEY_3D); } catch (_) {}
+    syncTraceStyleSelect();
+    applyTraceStyle();
   }
 
   function metricColor(value, minV, maxV, invert) {
@@ -549,6 +630,7 @@
         map.setPaintProperty("track-line", "line-color", "#00e5ff");
         map.setPaintProperty("track-line", "line-opacity", 0.85);
       }
+      applyTraceStyle();
       return;
     }
 
@@ -563,6 +645,7 @@
         map.setPaintProperty("track-line", "line-color", "#ffffff");
       }
       updateLegend(stats);
+      applyTraceStyle();
       return;
     }
 
@@ -572,6 +655,7 @@
     map.setPaintProperty("track-line", "line-color", "#00e5ff");
     map.setPaintProperty("track-line", "line-opacity", 0.35);
     updateTraceGradient();
+    applyTraceStyle();
   }
 
   // "Trail (dynamic)" needs a metric to scale against, so it is only valid
@@ -662,6 +746,15 @@
         lineMetrics: true,
         data: { type: "Feature", geometry: { type: "LineString", coordinates: coords } }
       });
+      // Style under-layer: glow (neon) or dark casing, driven by
+      // applyTraceStyle(). Hidden in the normal style.
+      map.addLayer({
+        id: "track-glow",
+        type: "line",
+        source: "track",
+        layout: { visibility: "none" },
+        paint: { "line-color": "#00e5ff", "line-width": 14, "line-opacity": 0.4, "line-blur": 8 }
+      });
       map.addLayer({
         id: "track-line",
         type: "line",
@@ -677,6 +770,13 @@
         type: "geojson",
         lineMetrics: true,
         data: { type: "Feature", geometry: { type: "LineString", coordinates: [coords[0]] } }
+      });
+      map.addLayer({
+        id: "traveled-glow",
+        type: "line",
+        source: "traveled",
+        layout: { visibility: "none" },
+        paint: { "line-color": "#ffffff", "line-width": 16, "line-opacity": 0.5, "line-blur": 9 }
       });
       map.addLayer({
         id: "traveled-line",
@@ -729,6 +829,15 @@
         currentTraceMode = e.target.value;
         applyTrace();
       });
+      const traceStyleSel = document.getElementById("trace-style-select");
+      if (traceStyleSel) {
+        syncTraceStyleSelect();
+        traceStyleSel.addEventListener("change", (e) => {
+          traceStyleUser = e.target.value;
+          try { localStorage.setItem(TRACE_STYLE_KEY_3D, traceStyleUser); } catch (_) {}
+          applyTraceStyle();
+        });
+      }
       const followPanEl = document.getElementById("follow-pan");
       const followRotateEl = document.getElementById("follow-rotate");
       if (followPanEl) {
