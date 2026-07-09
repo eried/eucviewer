@@ -335,6 +335,10 @@
         type: "raster",
         tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
         tileSize: 256,
+        // Esri's hi-res coverage ends early outside metros and serves "Map
+        // Data Not Available" placeholder tiles (HTTP 200) beyond it. Cap
+        // the source so MapLibre overzooms the last real level instead.
+        maxzoom: 18,
         attribution: "Tiles \u00a9 Esri"
       },
       paint: {}
@@ -358,22 +362,13 @@
 
   let map = null, riderMarker = null;
   let followPan = true, followRotate = true, followZoom = true;
-  let lastFollowAt = 0;
-
-  // Smoothed zoom target. Speed≤10 km/h → ZOOM_MAX (close); ≥40 km/h → ZOOM_MIN (wide).
+  // Speed≤10 km/h → ZOOM_MAX (close); ≥50 km/h → ZOOM_MIN (wide).
   const ZOOM_MIN = 10.0, ZOOM_MAX = 15.0, SPEED_LO = 10, SPEED_HI = 50;
-  let smoothedZoom = null;
-  const ZOOM_ALPHA = 0.06;
   function targetZoomForSpeed(speed) {
     if (speed <= SPEED_LO) return ZOOM_MAX;
     if (speed >= SPEED_HI) return ZOOM_MIN;
     const t = (speed - SPEED_LO) / (SPEED_HI - SPEED_LO);
     return ZOOM_MAX + (ZOOM_MIN - ZOOM_MAX) * t;
-  }
-  function stepSmoothZoom(target) {
-    if (smoothedZoom === null) { smoothedZoom = target; return smoothedZoom; }
-    smoothedZoom = smoothedZoom + (target - smoothedZoom) * ZOOM_ALPHA;
-    return smoothedZoom;
   }
 
   // Bearing in degrees (0 = north, clockwise) from coord a→b.
@@ -397,16 +392,55 @@
     return bearingBetween(a, b);
   }
 
-  // EMA-smoothed bearing target. With ~4 ticks/sec and α=0.08 the effective
-  // time constant is ~3 s — ≈8× smoother than the previous snap-per-tick.
-  let smoothedBearing = null;
-  const BEARING_ALPHA = 0.08;
-  function stepSmoothBearing(targetDeg) {
-    if (targetDeg === null) return smoothedBearing;
-    if (smoothedBearing === null) { smoothedBearing = targetDeg; return smoothedBearing; }
-    const diff = ((targetDeg - smoothedBearing + 540) % 360) - 180;
-    smoothedBearing = (smoothedBearing + diff * BEARING_ALPHA + 360) % 360;
-    return smoothedBearing;
+  // --- Camera follow: per-frame damped glide ---------------------------
+  // The camera chases its targets every frame with exponential smoothing
+  // (frame-rate independent: k = 1 - e^(-dt/tau)) and a single jumpTo.
+  // The previous approach fired a fresh 400ms easeTo every 250ms; each
+  // restart begins at velocity zero, so pan/zoom visibly "pumped" four
+  // times a second. A continuous glide has no restarts to feel.
+  const PAN_TAU = 0.6;        // s to settle on the rider
+  const BEARING_TAU = 2.2;    // s — heading stays calm through GPS jitter
+  const ZOOM_TAU = 2.8;       // s — zoom drifts very lazily
+  const ZOOM_DEADBAND = 0.45; // ignore sub-half-level zoom wishes: fewer
+                              // tile-level crossings, less res-flickering
+  let camLastMs = 0;
+  let camBearing = null;
+  let camZoomTarget = null;
+  function followGlide(markerPos, speedNow) {
+    const now = performance.now();
+    let dt = (now - camLastMs) / 1000;
+    camLastMs = now;
+    if (!(dt > 0) || dt > 0.25) dt = 0.016; // first frame or tab was hidden
+    const k = (tau) => 1 - Math.exp(-dt / tau);
+    const cam = {};
+    if (followPan) {
+      const c = map.getCenter();
+      const dLng = markerPos[0] - c.lng, dLat = markerPos[1] - c.lat;
+      // A scrub across the trip shouldn't glide across town — snap far jumps.
+      if (Math.abs(dLng) > 0.05 || Math.abs(dLat) > 0.03) cam.center = markerPos;
+      else {
+        const a = k(PAN_TAU);
+        cam.center = [c.lng + dLng * a, c.lat + dLat * a];
+      }
+    }
+    if (followRotate) {
+      const target = computeBearingAt(currentRouteIdx);
+      if (target !== null) {
+        if (camBearing === null) camBearing = map.getBearing();
+        const diff = ((target - camBearing + 540) % 360) - 180;
+        camBearing = (camBearing + diff * k(BEARING_TAU) + 360) % 360;
+        cam.bearing = camBearing;
+      }
+    }
+    if (followZoom) {
+      const desired = targetZoomForSpeed(speedNow);
+      if (camZoomTarget === null) camZoomTarget = desired;
+      else if (Math.abs(desired - camZoomTarget) > ZOOM_DEADBAND) camZoomTarget = desired;
+      const z = map.getZoom();
+      const nz = z + (camZoomTarget - z) * k(ZOOM_TAU);
+      if (Math.abs(nz - z) > 0.0004) cam.zoom = nz;
+    }
+    if (cam.center || cam.bearing !== undefined || cam.zoom !== undefined) map.jumpTo(cam);
   }
   let coords = [];
   let currentTheme = "satellite";
@@ -732,6 +766,10 @@
       pitch: 60,
       bearing: 0,
       maxPitch: 85,
+      // Default 300ms tile crossfade keeps blending low-res parents into
+      // sharp children while the follow camera moves — a visible res
+      // "flicker". A short fade makes the swap barely perceptible.
+      fadeDuration: 100,
       attributionControl: false
     });
 
@@ -860,8 +898,8 @@
         followZoomEl.checked = followZoom;
         followZoomEl.addEventListener("change", (e) => {
           followZoom = e.target.checked;
-          // Seed smoother from current zoom so enabling doesn't jump.
-          if (followZoom) smoothedZoom = map.getZoom();
+          // Re-seed so enabling doesn't lunge toward a stale target.
+          if (followZoom) camZoomTarget = null;
         });
       }
       const toggleBtn = document.getElementById("map-controls-toggle");
@@ -1709,22 +1747,7 @@
           updateTraceGradient();
         }
         if ((followPan || followRotate || followZoom) && playing) {
-          const nowMs = performance.now();
-          if (nowMs - lastFollowAt > 250) {
-            lastFollowAt = nowMs;
-            const opts = { duration: 400, easing: (t) => t * t * (3 - 2 * t) };
-            if (followPan) opts.center = markerPos;
-            if (followRotate) {
-              const target = computeBearingAt(currentRouteIdx);
-              const sm = stepSmoothBearing(target);
-              if (sm !== null) opts.bearing = sm;
-            }
-            if (followZoom) {
-              const speedNow = sampleAt(SPD);
-              opts.zoom = stepSmoothZoom(targetZoomForSpeed(speedNow));
-            }
-            if (opts.center || opts.bearing !== undefined || opts.zoom !== undefined) map.easeTo(opts);
-          }
+          followGlide(markerPos, sampleAt(SPD));
         }
       }
     }

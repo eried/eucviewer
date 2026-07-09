@@ -1216,7 +1216,7 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
     height: 22px;
     padding: 0 6px;
     border-radius: 4px;
-    color: #666;
+    color: #00e5ff;
     font-size: 11px;
     font-weight: 500;
     text-decoration: none;
@@ -1240,7 +1240,7 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
     border-radius: 4px;
     background: none;
     border: none;
-    color: #666;
+    color: #00e5ff;
     cursor: pointer;
     transition: background 0.15s, color 0.15s;
 }

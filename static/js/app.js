@@ -76,7 +76,10 @@ document.addEventListener("DOMContentLoaded", function () {
   });
   const satelliteLayer = L.tileLayer(
     "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-    { maxZoom: 19 }
+    // Esri's hi-res coverage ends early outside metros and serves "Map Data
+    // Not Available" placeholder tiles (HTTP 200) beyond it. Capping the
+    // native level makes Leaflet upscale the last real imagery instead.
+    { maxZoom: 19, maxNativeZoom: 18 }
   );
   const topoLayer = L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", {
     maxZoom: 17,
