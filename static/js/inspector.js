@@ -363,7 +363,7 @@
   let map = null, riderMarker = null;
   let followPan = true, followRotate = true, followZoom = true;
   // Speed≤10 km/h → ZOOM_MAX (close); ≥50 km/h → ZOOM_MIN (wide).
-  const ZOOM_MIN = 10.0, ZOOM_MAX = 15.0, SPEED_LO = 10, SPEED_HI = 50;
+  const ZOOM_MIN = 12.0, ZOOM_MAX = 15.0, SPEED_LO = 10, SPEED_HI = 50;
   function targetZoomForSpeed(speed) {
     if (speed <= SPEED_LO) return ZOOM_MAX;
     if (speed >= SPEED_HI) return ZOOM_MIN;
@@ -398,9 +398,9 @@
   // The previous approach fired a fresh 400ms easeTo every 250ms; each
   // restart begins at velocity zero, so pan/zoom visibly "pumped" four
   // times a second. A continuous glide has no restarts to feel.
-  const PAN_TAU = 0.6;        // s to settle on the rider
-  const BEARING_TAU = 2.2;    // s — heading stays calm through GPS jitter
-  const ZOOM_TAU = 2.8;       // s — zoom drifts very lazily
+  const PAN_TAU = 2.0;        // s to settle on the rider
+  const BEARING_TAU = 6.5;    // s — heading stays calm through GPS jitter
+  const ZOOM_TAU = 9.0;       // s — zoom drifts very lazily
   const ZOOM_DEADBAND = 0.45; // ignore sub-half-level zoom wishes: fewer
                               // tile-level crossings, less res-flickering
   let camLastMs = 0;
