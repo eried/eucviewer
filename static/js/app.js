@@ -1322,6 +1322,47 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   }
 
+  // --- Short share links (#d-…) ---------------------------------------
+  // Compresses the one Dropbox direct-link shape our own share flow mints:
+  //   https://dl.dropboxusercontent.com/scl/fi/<fileId>/trip_YYYYMMDD_HHMMSS.csv?rlkey=<rlkey>&dl=1
+  // into a hash token:
+  //   #d-<fileId>-<base36(YYYYMMDDHHMMSS)>-<rlkey>
+  // The timestamp digits are treated as an opaque number (never parsed as a
+  // date — the filename is wall-clock local time). Anything that deviates
+  // from the template (extra params like st=, other hosts, other filenames,
+  // uppercase ids) must NOT be compressed; callers fall back to ?file=.
+  // Full grammar + rationale: SHORTLINK.md.
+  const SHORT_TOKEN_RE = /^d-([a-z0-9]{1,64})-([a-z0-9]{1,9})-([a-z0-9]{1,64})$/;
+
+  function encodeShortLink(directUrl) {
+    let u;
+    try { u = new URL(directUrl); } catch (_) { return null; }
+    if (u.protocol !== "https:" || u.hostname !== "dl.dropboxusercontent.com" || u.hash) return null;
+    const pm = /^\/scl\/fi\/([a-z0-9]{1,64})\/trip_(\d{8})_(\d{6})\.csv$/.exec(u.pathname);
+    if (!pm) return null;
+    const keys = Array.from(u.searchParams.keys());
+    if (keys.length !== 2 || u.searchParams.get("dl") !== "1") return null;
+    const rlkey = u.searchParams.get("rlkey") || "";
+    if (!/^[a-z0-9]{1,64}$/.test(rlkey)) return null;
+    return "d-" + pm[1] + "-" + Number(pm[2] + pm[3]).toString(36) + "-" + rlkey;
+  }
+
+  function decodeShortLink(token) {
+    const m = SHORT_TOKEN_RE.exec(token || "");
+    if (!m) return null;
+    const n = parseInt(m[2], 36);
+    if (!Number.isSafeInteger(n)) return null;
+    const digits = String(n).padStart(14, "0");
+    if (digits.length !== 14) return null;
+    return "https://dl.dropboxusercontent.com/scl/fi/" + m[1] +
+      "/trip_" + digits.slice(0, 8) + "_" + digits.slice(8, 14) +
+      ".csv?rlkey=" + m[3] + "&dl=1";
+  }
+
+  // Reference implementation for other link producers (see SHORTLINK.md):
+  // both return null when the input doesn't fit the template.
+  window.eucViewerShortLink = { encode: encodeShortLink, decode: decodeShortLink };
+
   function applyRoute() {
     // `?file=<encoded-url>` is the share-style entry point: EUC Planet's
     // Inspect online / Copy eucviewer link actions build it from a
@@ -1340,6 +1381,15 @@ document.addEventListener("DOMContentLoaded", function () {
     if (hash.startsWith("#trip=")) {
       const url = decodeURIComponent(hash.substring("#trip=".length));
       loadTripFromUrl(url);
+      return;
+    }
+    // `#d-…` short share token: the whole hash is a compressed Dropbox
+    // direct link. Decode + fetch exactly like ?file=. This branch covers
+    // popstate / manual hash edits; the boot path handles it in init.
+    const shortUrl = decodeShortLink(hash.slice(1));
+    if (shortUrl) {
+      history.replaceState(null, "", location.pathname);
+      loadTripFromUrl(shortUrl);
       return;
     }
     if (hash === "#view" && allTracks.length) {
@@ -1447,7 +1497,9 @@ document.addEventListener("DOMContentLoaded", function () {
     // but the panel doesn't slide in over the map.
     if (tracks.length > 0) {
       const keepPanelClosed = window.innerHeight > window.innerWidth;
-      setTimeout(() => selectTrip(0, { keepPanelClosed }), 200);
+      // Guard against a second auto-select racing this one: selectTrip on an
+      // already-selected index toggles the selection off.
+      setTimeout(() => { if (selectedIdx !== 0) selectTrip(0, { keepPanelClosed }); }, 200);
     }
   }
 
@@ -1766,7 +1818,11 @@ document.addEventListener("DOMContentLoaded", function () {
           shareBtn.innerHTML = "…";
           try {
             const direct = await window.DropboxSource.getOrCreateShareLink(t.dropboxPath);
-            const viewerUrl = location.origin + location.pathname + "?file=" + encodeURIComponent(direct);
+            // Standard-shaped Dropbox links compress to the short #d-…
+            // token; anything else keeps the verbose ?file= form.
+            const short = encodeShortLink(direct);
+            const viewerUrl = location.origin + location.pathname +
+              (short ? "#" + short : "?file=" + encodeURIComponent(direct));
             await navigator.clipboard.writeText(viewerUrl);
             flashShareStatus(shareBtn, "Link copied", false);
           } catch (err) {
@@ -3010,7 +3066,11 @@ document.addEventListener("DOMContentLoaded", function () {
       } catch (_) {}
       const file = new File([blob], name, { type: blob.type || "application/octet-stream" });
       try {
-        const clean = location.origin + location.pathname + location.hash;
+        // Drop the share payload from the address bar once consumed; keep
+        // app-route hashes (#view etc.) intact.
+        const h = location.hash;
+        const consumed = h.startsWith("#trip=") || !!decodeShortLink(h.slice(1));
+        const clean = location.origin + location.pathname + (consumed ? "" : h);
         history.replaceState(null, "", clean);
       } catch (_) {}
       // Hand off to handleFile but keep the progress bar continuous: parse
@@ -3031,9 +3091,13 @@ document.addEventListener("DOMContentLoaded", function () {
   // --- Init ---
   const initParams = new URLSearchParams(location.search);
   const sharedFileUrl = initParams.get("file");
+  // `#d-…` short share token — the compressed form of ?file= (SHORTLINK.md).
+  const shortLinkUrl = decodeShortLink(location.hash.slice(1));
   const isEmbedded = initParams.has("embedded");
   if (sharedFileUrl) {
     loadFromUrl(sharedFileUrl);
+  } else if (shortLinkUrl) {
+    loadFromUrl(shortLinkUrl);
   }
   if (isEmbedded) {
     // Android WebView's GPU compositor silently drops backdrop-filter
@@ -3059,7 +3123,13 @@ document.addEventListener("DOMContentLoaded", function () {
     }, 5000);
   } else {
     renderRecentFiles();
-    if (!location.hash) navigate("#load", true);
+    // When ?file= or a #d-… token is present, loadFromUrl() above is already
+    // fetching it and only strips the payload once the download lands.
+    // Running the route bootstrap here too would let applyRoute() see the
+    // still-present payload and start a second download + parse, whose
+    // duplicate selectTrip(0) toggled the auto-selection back off.
+    if (sharedFileUrl || shortLinkUrl) { /* handled by loadFromUrl above */ }
+    else if (!location.hash) navigate("#load", true);
     else applyRoute();
   }
 });

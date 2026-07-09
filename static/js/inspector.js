@@ -1546,6 +1546,9 @@
   const HOLD_MS = 350;
   let holdTimer = null;
   let holdFired = false;
+  // Set once the rider touches the play button; the deferred autoplay in
+  // the init block backs off instead of overriding a manual pause.
+  let autoplayCancelled = false;
   function startPlayback(snapToStart) {
     if (!playing) setPlayingState(true);
     lastFrame = performance.now();
@@ -1579,6 +1582,7 @@
     // The long-press already started playback; the click that fires on
     // pointerup should not flip the state back off.
     if (holdFired) { holdFired = false; return; }
+    autoplayCancelled = true;
     setPlayingState(!playing);
     if (playing) startPlayback(false);
   });
@@ -1998,11 +2002,29 @@
     if (initialT > 0) {
       setCurrentTime(initialT);
       setPlayingState(false);
-    } else {
-      setCurrentTime(0);
-      setPlayingState(true);
+      return;
     }
-    lastFrame = performance.now();
-    requestAnimationFrame(loop);
+    setCurrentTime(0);
+    // Don't start the clock while MapLibre is still pulling tiles: the
+    // gauges would run ahead of a blank map and the rider pops in
+    // mid-route once it finally paints. Autoplay begins on the map's
+    // first fully rendered frame ("idle"), with a cap so a stalled tile
+    // server can't hold playback hostage. A manual play/pause before
+    // that wins and the gate does nothing.
+    let autoStarted = false;
+    const beginAutoplay = () => {
+      if (autoStarted) return;
+      autoStarted = true;
+      if (autoplayCancelled || playing) return;
+      setPlayingState(true);
+      lastFrame = performance.now();
+      requestAnimationFrame(loop);
+    };
+    if (map && !map.loaded()) {
+      map.once("idle", beginAutoplay);
+      setTimeout(beginAutoplay, 4000);
+    } else {
+      beginAutoplay();
+    }
   });
 })();
