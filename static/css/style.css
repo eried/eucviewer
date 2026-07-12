@@ -1459,7 +1459,9 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
     bottom: 8px;
     left: 50%;
     transform: translateX(-50%);
-    z-index: 1100;
+    /* Below #trip-panel-clip (800): the expanded panel slides OVER this
+       badge; on phones it used to sit on top of the trip list. */
+    z-index: 700;
     display: flex;
     align-items: center;
     gap: 10px;

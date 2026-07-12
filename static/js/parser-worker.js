@@ -123,7 +123,85 @@ function parseCsvText(text, name) {
   return buildTrackFromRows(rows, name.replace(/\.csv$/i, ""));
 }
 
+// BLE glitches leave "speed islands" in real exports: rows whose value
+// leaps up from the neighborhood AND drops back with jumps no wheel can
+// physically produce (0 → 244.2 → 0 across ~2s samples, or a frozen
+// 176.8 repeated six times between 0.5 and 0). One such row used to own
+// stats.maxSpeed and poison the library-wide "top speed". Repair rule:
+// an island bounded by an impossible up-jump and an impossible down-jump
+// within MAX_RUN rows is replaced by linear interpolation between its
+// neighbors. Genuine sprints survive because a real ramp is gradual on
+// at least one side; jump limits scale with the sample gap so logging
+// pauses (parked, tunnel) never count as jumps.
+function despikeRows(rows) {
+  const n = rows.length;
+  if (n < 3) return;
+  const secs = new Array(n);
+  let t0 = null, last = 0;
+  for (let i = 0; i < n; i += 1) {
+    const d = rows[i].Date ? parseDateMs(rows[i].Date) : NaN;
+    if (!Number.isNaN(d)) {
+      if (t0 === null) t0 = d;
+      last = (d - t0) / 1000;
+    }
+    secs[i] = last;
+  }
+  const JUMP_PER_SEC = 12; // km/h of gain per second still considered real
+  const JUMP_MIN = 30;     // ignore small wobble outright
+  const MAX_RUN = 12;      // longest island we repair
+  for (const col of ["Speed", "GPS speed"]) {
+    if (rows[0][col] === undefined) continue;
+    const v = new Array(n);
+    for (let i = 0; i < n; i += 1) v[i] = safeFloat(rows[i][col]);
+    let i = 1;
+    while (i < n - 1) {
+      const dtIn = Math.max(0.5, secs[i] - secs[i - 1]);
+      const limitIn = Math.max(JUMP_MIN, JUMP_PER_SEC * dtIn);
+      if (v[i] - v[i - 1] > limitIn) {
+        const base = v[i - 1];
+        let j = i;
+        let closed = false;
+        while (j < n - 1 && j - i < MAX_RUN) {
+          const dtOut = Math.max(0.5, secs[j + 1] - secs[j]);
+          const limitOut = Math.max(JUMP_MIN, JUMP_PER_SEC * dtOut);
+          if (v[j] - v[j + 1] > limitOut && v[j + 1] < base + JUMP_MIN) {
+            closed = true;
+            break;
+          }
+          j += 1;
+        }
+        if (closed) {
+          const after = v[j + 1];
+          for (let m = i; m <= j; m += 1) {
+            const t = (m - i + 1) / (j - i + 2);
+            const fixed = roundTo(base + (after - base) * t, 1);
+            v[m] = fixed;
+            rows[m][col] = fixed;
+          }
+          i = j + 1;
+          continue;
+        }
+      }
+      i += 1;
+    }
+    // Second pass: lone samples above BOTH neighbors by an impossible
+    // jump. Catches a frozen feed that unfreezes with a catch-up burst
+    // (1.3 → 109.4 → 66.4 → …): the burst row is fake, the decay after
+    // it is real, so the island rule above never closes on it.
+    for (let s = 1; s < n - 1; s += 1) {
+      const limA = Math.max(JUMP_MIN, JUMP_PER_SEC * Math.max(0.5, secs[s] - secs[s - 1]));
+      const limB = Math.max(JUMP_MIN, JUMP_PER_SEC * Math.max(0.5, secs[s + 1] - secs[s]));
+      if (v[s] - v[s - 1] > limA && v[s] - v[s + 1] > limB) {
+        const fixed = roundTo((v[s - 1] + v[s + 1]) / 2, 1);
+        v[s] = fixed;
+        rows[s][col] = fixed;
+      }
+    }
+  }
+}
+
 function buildTrackFromRows(rows, displayName) {
+  despikeRows(rows);
   const points = [];
   let timeseries = [];
   const speeds = [];
