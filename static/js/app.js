@@ -281,10 +281,54 @@ document.addEventListener("DOMContentLoaded", function () {
       this._visible = vis;
       this._draw();
     },
+    // Batched state write with a single redraw. The individual setters
+    // each trigger a full draw; updateGlow uses this so one interaction
+    // costs one draw instead of three.
+    update(opts) {
+      if ("latLngs" in opts) this._latLngs = opts.latLngs;
+      if ("selected" in opts) this._selected = opts.selected;
+      if ("visible" in opts) this._visible = opts.visible;
+      if ("paint" in opts) this._paintData = opts.paint;
+      this._draw();
+    },
     redraw() { this._draw(); },
     _onViewChange() { this._draw(); },
+    _perf(label, t0) {
+      try {
+        if (localStorage.getItem("eucviewer-perf") === "1") {
+          console.log("[perf] " + label + " " + (performance.now() - t0).toFixed(1) + "ms");
+        }
+      } catch (_) {}
+    },
+    // Layer-point projections for every track, cached per map view.
+    // Layer coordinates are stable across pans (they only reset on zoom /
+    // viewreset), so checkbox toggles and selection changes redraw without
+    // re-projecting ~140k points; only the canvas offset (ox/oy) shifts.
+    _projectAll() {
+      const map = this._map;
+      const o = map.getPixelOrigin();
+      const key = map.getZoom() + "|" + o.x + "|" + o.y;
+      if (this._proj && this._proj.key === key && this._proj.src === this._latLngs) {
+        return this._proj.tracks;
+      }
+      const __t0 = performance.now();
+      const tracks = this._latLngs.map((lls) => {
+        const n = lls.length;
+        const xs = new Float64Array(n), ys = new Float64Array(n);
+        for (let i = 0; i < n; i++) {
+          const p = map.latLngToLayerPoint(lls[i]);
+          xs[i] = p.x;
+          ys[i] = p.y;
+        }
+        return { xs, ys, n };
+      });
+      this._proj = { key, src: this._latLngs, tracks };
+      this._perf("reproject", __t0);
+      return tracks;
+    },
     _draw() {
       if (!this._map) return;
+      const __t0 = performance.now();
       const map = this._map;
       const size = map.getSize();
       const pad = 512;
@@ -370,15 +414,13 @@ document.addEventListener("DOMContentLoaded", function () {
         heatPasses = [{ width: 3, alpha: 1, comp: "source-over" }];
       }
 
-      function drawTrack(lls) {
-        if (lls.length < 2) return;
+      const proj = this._projectAll();
+      function drawTrack(t) {
+        const tr = proj[t];
+        if (!tr || tr.n < 2) return;
         ctx.beginPath();
-        const p0 = map.latLngToLayerPoint(lls[0]);
-        ctx.moveTo(p0.x - ox, p0.y - oy);
-        for (let i = 1; i < lls.length; i++) {
-          const pt = map.latLngToLayerPoint(lls[i]);
-          ctx.lineTo(pt.x - ox, pt.y - oy);
-        }
+        ctx.moveTo(tr.xs[0] - ox, tr.ys[0] - oy);
+        for (let i = 1; i < tr.n; i++) ctx.lineTo(tr.xs[i] - ox, tr.ys[i] - oy);
         ctx.stroke();
       }
 
@@ -394,35 +436,32 @@ document.addEventListener("DOMContentLoaded", function () {
         const flatTracks = [];
         for (let t = 0; t < this._latLngs.length; t++) {
           if (vis && !vis.has(t)) continue;
-          const lls = this._latLngs[t];
-          if (lls.length < 2) continue;
-          const vals = pd.mode === "progress" ? null : (pd.perTrack ? pd.perTrack[t] : null);
-          if (pd.mode !== "progress" && !vals) { flatTracks.push(lls); continue; }
-          const n = lls.length;
-          const xs = new Float64Array(n), ys = new Float64Array(n);
-          for (let i = 0; i < n; i++) {
-            const p = map.latLngToLayerPoint(lls[i]);
-            xs[i] = p.x - ox;
-            ys[i] = p.y - oy;
-          }
+          const tr = proj[t];
+          if (!tr || tr.n < 2) continue;
+          // Metric values are read straight out of the track's points
+          // (no per-track value clones); absent-metric trips fall back
+          // to the flat base style.
+          const pts = pd.mode === "progress" ? null : pd.tracks[t].points;
+          if (pd.mode !== "progress" && pd.absent && pd.absent[t]) { flatTracks.push(t); continue; }
+          const { xs, ys, n } = tr;
           if (casingPath) {
-            casingPath.moveTo(xs[0], ys[0]);
-            for (let i = 1; i < n; i++) casingPath.lineTo(xs[i], ys[i]);
+            casingPath.moveTo(xs[0] - ox, ys[0] - oy);
+            for (let i = 1; i < n; i++) casingPath.lineTo(xs[i] - ox, ys[i] - oy);
           }
           for (let i = 1; i < n; i++) {
             let t01;
             if (pd.mode === "progress") {
               t01 = i / (n - 1);
             } else {
-              const v = vals[i];
+              const v = pts[i][pd.pointIdx];
               t01 = typeof v === "number" ? (v - pd.min) / pd.span : 0;
             }
             let b = Math.floor(t01 * BUCKETS);
             if (b < 0) b = 0; else if (b >= BUCKETS) b = BUCKETS - 1;
             let path = buckets[b];
             if (!path) path = buckets[b] = new Path2D();
-            path.moveTo(xs[i - 1], ys[i - 1]);
-            path.lineTo(xs[i], ys[i]);
+            path.moveTo(xs[i - 1] - ox, ys[i - 1] - oy);
+            path.lineTo(xs[i] - ox, ys[i] - oy);
           }
         }
         ctx.lineJoin = "round";
@@ -455,8 +494,9 @@ document.addEventListener("DOMContentLoaded", function () {
           ctx.strokeStyle = `rgba(${pass.color},${pass.alpha})`;
           ctx.lineWidth = pass.width;
           ctx.globalCompositeOperation = pass.comp;
-          for (const lls of flatTracks) drawTrack(lls);
+          for (const t of flatTracks) drawTrack(t);
         }
+        this._perf("draw(all)", __t0);
         return;
       }
 
@@ -470,20 +510,17 @@ document.addEventListener("DOMContentLoaded", function () {
         for (let t = 0; t < this._latLngs.length; t++) {
           if (t === sel) continue;
           if (vis && !vis.has(t)) continue;
-          drawTrack(this._latLngs[t]);
+          drawTrack(t);
         }
       }
 
       // Draw selected track on top
       if (sel >= 0 && sel < this._latLngs.length) {
-        const lls = this._latLngs[sel];
-        if (lls.length >= 2) {
+        const tr = proj[sel];
+        if (tr && tr.n >= 2) {
           if (this._paintData && this._paintData.trackIdx === sel) {
             const pd = this._paintData;
-            const layerPts = lls.map(ll => {
-              const p = map.latLngToLayerPoint(ll);
-              return [p.x - ox, p.y - oy];
-            });
+            const { xs, ys, n } = tr;
             if (heatCasing) {
               // Whole path once in the dark casing, colors on top.
               ctx.strokeStyle = `rgba(${heatCasing.color},${heatCasing.alpha})`;
@@ -492,8 +529,8 @@ document.addEventListener("DOMContentLoaded", function () {
               ctx.lineCap = "round";
               ctx.globalCompositeOperation = "source-over";
               ctx.beginPath();
-              ctx.moveTo(layerPts[0][0], layerPts[0][1]);
-              for (let i = 1; i < layerPts.length; i++) ctx.lineTo(layerPts[i][0], layerPts[i][1]);
+              ctx.moveTo(xs[0] - ox, ys[0] - oy);
+              for (let i = 1; i < n; i++) ctx.lineTo(xs[i] - ox, ys[i] - oy);
               ctx.stroke();
             }
             for (const pass of heatPasses) {
@@ -501,12 +538,12 @@ document.addEventListener("DOMContentLoaded", function () {
               ctx.lineJoin = "round";
               ctx.lineCap = "round";
               ctx.globalCompositeOperation = pass.comp;
-              for (let i = 1; i < layerPts.length; i++) {
+              for (let i = 1; i < n; i++) {
                 const t = pd.span ? (pd.values[i] - pd.min) / pd.span : 0.5;
                 ctx.strokeStyle = `rgba(${(pd.colorFn || heatColor)(t)},${pass.alpha})`;
                 ctx.beginPath();
-                ctx.moveTo(layerPts[i-1][0], layerPts[i-1][1]);
-                ctx.lineTo(layerPts[i][0], layerPts[i][1]);
+                ctx.moveTo(xs[i - 1] - ox, ys[i - 1] - oy);
+                ctx.lineTo(xs[i] - ox, ys[i] - oy);
                 ctx.stroke();
               }
             }
@@ -517,11 +554,12 @@ document.addEventListener("DOMContentLoaded", function () {
               ctx.lineJoin = "round";
               ctx.lineCap = "round";
               ctx.globalCompositeOperation = pass.comp;
-              drawTrack(lls);
+              drawTrack(sel);
             }
           }
         }
       }
+      this._perf("draw(base+sel)", __t0);
     },
   });
 
@@ -532,18 +570,38 @@ document.addEventListener("DOMContentLoaded", function () {
   // wheel-speed option "Wheel speed" when GPS speed is also there. With a
   // trip selected only that trip counts; with nothing selected any trip in
   // the library counts, since the colour then paints every visible track.
+  // Library-wide metric availability, cached per allTracks identity — the
+  // unselected state needs it on every updateGlow, and rescanning ~140k
+  // points for each absent metric was part of the per-click hang.
+  let libAvailCache = { for: null, byIdx: null };
+  function libraryHasMetric(idx) {
+    if (libAvailCache.for !== allTracks) {
+      libAvailCache = { for: allTracks, byIdx: {} };
+    }
+    const byIdx = libAvailCache.byIdx;
+    if (byIdx[idx] === undefined) {
+      byIdx[idx] = false;
+      outer: for (const tr of allTracks) {
+        if (!tr || !tr.points) continue;
+        for (const p of tr.points) {
+          const v = p[idx];
+          if (typeof v === "number" && v !== 0) { byIdx[idx] = true; break outer; }
+        }
+      }
+    }
+    return byIdx[idx];
+  }
+
   function updateTraceColorOptions() {
     const sel = document.getElementById("trace-color-select");
     if (!sel) return;
     const track = selectedIdx >= 0 ? allTracks[selectedIdx] : null;
-    const scan = track ? [track] : allTracks;
     const hasMetric = (idx) => {
-      for (const tr of scan) {
-        if (!tr || !tr.points) continue;
-        for (const p of tr.points) {
-          const v = p[idx];
-          if (typeof v === "number" && v !== 0) return true;
-        }
+      if (!track) return libraryHasMetric(idx);
+      if (!track.points) return false;
+      for (const p of track.points) {
+        const v = p[idx];
+        if (typeof v === "number" && v !== 0) return true;
       }
       return false;
     };
@@ -552,7 +610,7 @@ document.addEventListener("DOMContentLoaded", function () {
       if (key === "solid") { opt.disabled = false; continue; }
       let hasData = false;
       if (key === "distance") {
-        hasData = scan.some((tr) => tr && tr.points && tr.points.length);
+        hasData = (track ? [track] : allTracks).some((tr) => tr && tr.points && tr.points.length);
       } else {
         const m = PAINT_METRICS[key];
         if (m) hasData = hasMetric(m.pointIdx);
@@ -572,11 +630,32 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   }
 
+  // latLng objects for the glow layer, cached per library. Rebuilding
+  // 140k L.LatLng allocations on every interaction was a visible chunk
+  // of the old per-click hang.
+  let glowLatLngs = null, glowLatLngsFor = null;
+  function trackLatLngs() {
+    if (glowLatLngsFor !== allTracks) {
+      glowLatLngs = allTracks.map((t) => t.points.map((p) => L.latLng(p[0], p[1])));
+      glowLatLngsFor = allTracks;
+    }
+    return glowLatLngs;
+  }
+
   function updateGlow() {
+    const __t0 = performance.now();
     updateTraceColorOptions();
-    const latLngs = allTracks.map((t) => t.points.map((p) => L.latLng(p[0], p[1])));
-    glowLayer.setData(latLngs, selectedIdx);
-    glowLayer.setVisible(trackVisible);
+    glowLayer._perf("options", __t0);
+    // One batched write + one draw. The paint object is computed first;
+    // legend updates ride along with each branch.
+    const push = (paint) => {
+      const __t1 = performance.now();
+      glowLayer.update({
+        latLngs: trackLatLngs(), selected: selectedIdx, visible: trackVisible, paint,
+      });
+      glowLayer._perf("push+draw", __t1);
+      glowLayer._perf("updateGlow total", __t0);
+    };
 
     // Trace color paints the selected track — or, with nothing selected,
     // every visible track on a shared global scale so trips compare.
@@ -586,52 +665,60 @@ document.addEventListener("DOMContentLoaded", function () {
       if (metric.pointIdx === -1) {
         // Distance with no selection: colour each trip by its own progress
         // (start → end). A km legend is meaningless across trips — hide it.
-        glowLayer.setPaint({ all: true, mode: "progress", colorFn: distanceColor });
+        push({ all: true, mode: "progress", colorFn: distanceColor });
         updateTraceLegend(null);
         return;
       }
-      const perTrack = new Array(allTracks.length).fill(null);
+      // The draw reads values straight from track points (pd.tracks +
+      // pd.pointIdx); here we only need the range and an absent-flag per
+      // trip. Percentiles come from a sampled pool so the sort stays
+      // cheap; true extremes are tracked exactly.
+      const absent = new Array(allTracks.length).fill(false);
       const pool = [];
+      const stride = Math.max(1, Math.floor(allTracks.length * 500 / 40000));
+      let trueMin = Infinity, trueMax = -Infinity, seen = 0;
       for (let t = 0; t < allTracks.length; t++) {
         if (trackVisible && !trackVisible.has(t)) continue;
         const pts = allTracks[t].points;
         if (!pts || pts.length < 2) continue;
-        const vals = pts.map((p) => p[metric.pointIdx]);
         let has = false;
-        for (const v of vals) {
+        for (let i = 0; i < pts.length; i++) {
+          const v = pts[i][metric.pointIdx];
           if (typeof v !== "number" || v === 0) continue;
           has = true;
-          pool.push(v);
+          if (v < trueMin) trueMin = v;
+          if (v > trueMax) trueMax = v;
+          if (seen++ % stride === 0) pool.push(v);
         }
         // All-zero column = metric absent on this trip (legacy cache);
-        // leave it null so it renders in the flat base style instead of
-        // pretending everything happened at value zero.
-        perTrack[t] = has ? vals : null;
+        // it renders in the flat base style instead of pretending
+        // everything happened at value zero.
+        absent[t] = !has;
       }
-      if (pool.length < 2) {
-        glowLayer.setPaint(null);
+      if (pool.length < 2 || !isFinite(trueMin) || trueMin === trueMax) {
+        push(null);
         updateTraceLegend(null);
         return;
       }
-      // With ~140k pooled samples the raw min/max is an extreme-order
-      // statistic: one glitch row in one stale cached trip (parsed before
-      // the despike existed) stretches the whole ramp. Trust the true
-      // extremes when they sit near the bulk of the data; clamp them to
-      // the 0.01% percentiles only when they're glitch-far outside it,
-      // so a real 67.6 km/h record still tops the legend.
+      // The raw min/max over ~140k samples is an extreme-order statistic:
+      // one glitch row in one stale cached trip (parsed before the despike
+      // existed) stretches the whole ramp. Trust the true extremes when
+      // they sit near the bulk of the data; clamp them to the sampled
+      // 0.01% percentiles only when they're glitch-far outside it, so a
+      // real 67.6 km/h record still tops the legend.
       pool.sort((a, b) => a - b);
       const n = pool.length;
       const pLo = pool[Math.floor(n * 0.0001)];
       const pHi = pool[Math.min(n - 1, Math.floor(n * 0.9999))];
       const guard = Math.max((pHi - pLo) * 0.5, 1e-9);
-      const min = pool[0] >= pLo - guard ? pool[0] : pLo;
-      const max = pool[n - 1] <= pHi + guard ? pool[n - 1] : pHi;
-      if (!isFinite(min) || !isFinite(max) || min === max) {
-        glowLayer.setPaint(null);
+      const min = trueMin >= pLo - guard ? trueMin : pLo;
+      const max = trueMax <= pHi + guard ? trueMax : pHi;
+      if (min === max) {
+        push(null);
         updateTraceLegend(null);
         return;
       }
-      glowLayer.setPaint({ all: true, perTrack, min, max, span: max - min, colorFn: heatColor });
+      push({ all: true, tracks: allTracks, pointIdx: metric.pointIdx, absent, min, max, span: max - min, colorFn: heatColor });
       updateTraceLegend(traceColor, min, max);
       return;
     }
@@ -658,14 +745,14 @@ document.addEventListener("DOMContentLoaded", function () {
       }
       if (!isFinite(min) || !isFinite(max) || min === max) {
         // Metric absent for this trip (legacy track or an empty column).
-        glowLayer.setPaint(null);
+        push(null);
         updateTraceLegend(null);
         return;
       }
-      glowLayer.setPaint({ trackIdx: selectedIdx, values, min, max, span: max - min, colorFn });
+      push({ trackIdx: selectedIdx, values, min, max, span: max - min, colorFn });
       updateTraceLegend(traceColor, legMin, legMax);
     } else {
-      glowLayer.setPaint(null);
+      push(null);
       updateTraceLegend(null);
     }
   }
