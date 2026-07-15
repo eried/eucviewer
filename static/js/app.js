@@ -315,12 +315,17 @@ document.addEventListener("DOMContentLoaded", function () {
       const tracks = this._latLngs.map((lls) => {
         const n = lls.length;
         const xs = new Float64Array(n), ys = new Float64Array(n);
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
         for (let i = 0; i < n; i++) {
           const p = map.latLngToLayerPoint(lls[i]);
           xs[i] = p.x;
           ys[i] = p.y;
+          if (p.x < minX) minX = p.x;
+          if (p.x > maxX) maxX = p.x;
+          if (p.y < minY) minY = p.y;
+          if (p.y > maxY) maxY = p.y;
         }
-        return { xs, ys, n };
+        return { xs, ys, n, minX, minY, maxX, maxY };
       });
       this._proj = { key, src: this._latLngs, tracks };
       this._perf("reproject", __t0);
@@ -415,12 +420,29 @@ document.addEventListener("DOMContentLoaded", function () {
       }
 
       const proj = this._projectAll();
+      // Viewport culling (per-track bbox vs the padded canvas) plus
+      // sub-pixel decimation: consecutive projected points that land on
+      // the same pixel add raster cost without adding pixels. Chained
+      // from the last emitted point, so a zoomed-out 500-point trip
+      // collapses to a handful of segments; zoomed in, offscreen trips
+      // skip entirely. Both matter on software-rasterized canvases where
+      // stroke cost lands on the main thread.
+      const vMinX = ox - 30, vMinY = oy - 30, vMaxX = ox + w + 30, vMaxY = oy + h + 30;
+      const offscreen = (tr) => tr.maxX < vMinX || tr.minX > vMaxX || tr.maxY < vMinY || tr.minY > vMaxY;
+      const MIN_PX = 1.3;
       function drawTrack(t) {
         const tr = proj[t];
-        if (!tr || tr.n < 2) return;
+        if (!tr || tr.n < 2 || offscreen(tr)) return;
+        const { xs, ys, n } = tr;
         ctx.beginPath();
-        ctx.moveTo(tr.xs[0] - ox, tr.ys[0] - oy);
-        for (let i = 1; i < tr.n; i++) ctx.lineTo(tr.xs[i] - ox, tr.ys[i] - oy);
+        ctx.moveTo(xs[0] - ox, ys[0] - oy);
+        let lx = xs[0], ly = ys[0];
+        for (let i = 1; i < n; i++) {
+          const dx = xs[i] - lx, dy = ys[i] - ly;
+          if (i < n - 1 && dx < MIN_PX && dx > -MIN_PX && dy < MIN_PX && dy > -MIN_PX) continue;
+          ctx.lineTo(xs[i] - ox, ys[i] - oy);
+          lx = xs[i]; ly = ys[i];
+        }
         ctx.stroke();
       }
 
@@ -437,7 +459,7 @@ document.addEventListener("DOMContentLoaded", function () {
         for (let t = 0; t < this._latLngs.length; t++) {
           if (vis && !vis.has(t)) continue;
           const tr = proj[t];
-          if (!tr || tr.n < 2) continue;
+          if (!tr || tr.n < 2 || offscreen(tr)) continue;
           // Metric values are read straight out of the track's points
           // (no per-track value clones); absent-metric trips fall back
           // to the flat base style.
@@ -446,9 +468,18 @@ document.addEventListener("DOMContentLoaded", function () {
           const { xs, ys, n } = tr;
           if (casingPath) {
             casingPath.moveTo(xs[0] - ox, ys[0] - oy);
-            for (let i = 1; i < n; i++) casingPath.lineTo(xs[i] - ox, ys[i] - oy);
+            let cx = xs[0], cy = ys[0];
+            for (let i = 1; i < n; i++) {
+              const dx = xs[i] - cx, dy = ys[i] - cy;
+              if (i < n - 1 && dx < MIN_PX && dx > -MIN_PX && dy < MIN_PX && dy > -MIN_PX) continue;
+              casingPath.lineTo(xs[i] - ox, ys[i] - oy);
+              cx = xs[i]; cy = ys[i];
+            }
           }
+          let lx = xs[0], ly = ys[0];
           for (let i = 1; i < n; i++) {
+            const dx = xs[i] - lx, dy = ys[i] - ly;
+            if (i < n - 1 && dx < MIN_PX && dx > -MIN_PX && dy < MIN_PX && dy > -MIN_PX) continue;
             let t01;
             if (pd.mode === "progress") {
               t01 = i / (n - 1);
@@ -460,8 +491,9 @@ document.addEventListener("DOMContentLoaded", function () {
             if (b < 0) b = 0; else if (b >= BUCKETS) b = BUCKETS - 1;
             let path = buckets[b];
             if (!path) path = buckets[b] = new Path2D();
-            path.moveTo(xs[i - 1] - ox, ys[i - 1] - oy);
+            path.moveTo(lx - ox, ly - oy);
             path.lineTo(xs[i] - ox, ys[i] - oy);
+            lx = xs[i]; ly = ys[i];
           }
         }
         ctx.lineJoin = "round";
@@ -538,13 +570,17 @@ document.addEventListener("DOMContentLoaded", function () {
               ctx.lineJoin = "round";
               ctx.lineCap = "round";
               ctx.globalCompositeOperation = pass.comp;
+              let lx = xs[0], ly = ys[0];
               for (let i = 1; i < n; i++) {
+                const dx = xs[i] - lx, dy = ys[i] - ly;
+                if (i < n - 1 && dx < MIN_PX && dx > -MIN_PX && dy < MIN_PX && dy > -MIN_PX) continue;
                 const t = pd.span ? (pd.values[i] - pd.min) / pd.span : 0.5;
                 ctx.strokeStyle = `rgba(${(pd.colorFn || heatColor)(t)},${pass.alpha})`;
                 ctx.beginPath();
-                ctx.moveTo(xs[i - 1] - ox, ys[i - 1] - oy);
+                ctx.moveTo(lx - ox, ly - oy);
                 ctx.lineTo(xs[i] - ox, ys[i] - oy);
                 ctx.stroke();
+                lx = xs[i]; ly = ys[i];
               }
             }
           } else {
