@@ -707,55 +707,68 @@ document.addEventListener("DOMContentLoaded", function () {
       }
       // The draw reads values straight from track points (pd.tracks +
       // pd.pointIdx); here we only need the range and an absent-flag per
-      // trip. Percentiles come from a sampled pool so the sort stays
-      // cheap; true extremes are tracked exactly.
-      const absent = new Array(allTracks.length).fill(false);
-      const pool = [];
-      const stride = Math.max(1, Math.floor(allTracks.length * 500 / 40000));
-      let trueMin = Infinity, trueMax = -Infinity, seen = 0;
-      for (let t = 0; t < allTracks.length; t++) {
-        if (trackVisible && !trackVisible.has(t)) continue;
-        const pts = allTracks[t].points;
-        if (!pts || pts.length < 2) continue;
-        let has = false;
-        for (let i = 0; i < pts.length; i++) {
-          const v = pts[i][metric.pointIdx];
-          if (typeof v !== "number" || v === 0) continue;
-          has = true;
-          if (v < trueMin) trueMin = v;
-          if (v > trueMax) trueMax = v;
-          if (seen++ % stride === 0) pool.push(v);
+      // trip. A Dropbox-loaded library holds full-resolution tracks
+      // (~1.4M points total), so the scan result is cached per
+      // (metric, library, visible-set) — selection toggles and repeat
+      // draws reuse it, and only checkbox changes rescan.
+      let sig = traceColor + "|" + (trackVisible ? trackVisible.size : -1);
+      if (trackVisible) {
+        let h = 0;
+        for (const i of trackVisible) h = (h + (i + 1) * 2654435761) | 0;
+        sig += "|" + h;
+      }
+      let sc = updateGlow._scaleCache;
+      if (!sc || sc.tracks !== allTracks || sc.sig !== sig) {
+        const absent = new Array(allTracks.length).fill(false);
+        const pool = [];
+        const stride = 7; // percentile sampling; extremes tracked exactly
+        let trueMin = Infinity, trueMax = -Infinity, seen = 0;
+        for (let t = 0; t < allTracks.length; t++) {
+          if (trackVisible && !trackVisible.has(t)) continue;
+          const pts = allTracks[t].points;
+          if (!pts || pts.length < 2) continue;
+          let has = false;
+          for (let i = 0; i < pts.length; i++) {
+            const v = pts[i][metric.pointIdx];
+            if (!v) continue; // 0 / undefined / NaN → no sample
+            has = true;
+            if (v < trueMin) trueMin = v;
+            if (v > trueMax) trueMax = v;
+            if (seen++ % stride === 0) pool.push(v);
+          }
+          // All-zero column = metric absent on this trip (legacy cache);
+          // it renders in the flat base style instead of pretending
+          // everything happened at value zero.
+          absent[t] = !has;
         }
-        // All-zero column = metric absent on this trip (legacy cache);
-        // it renders in the flat base style instead of pretending
-        // everything happened at value zero.
-        absent[t] = !has;
+        let valid = pool.length >= 2 && isFinite(trueMin) && trueMin !== trueMax;
+        let min = 0, max = 0;
+        if (valid) {
+          // The raw min/max over huge sample counts is an extreme-order
+          // statistic: one glitch row in one stale cached trip (parsed
+          // before the despike existed) stretches the whole ramp. Trust
+          // the true extremes when they sit near the bulk of the data;
+          // clamp them to the sampled 0.01% percentiles only when they're
+          // glitch-far outside it, so a real 67.6 km/h record still tops
+          // the legend.
+          pool.sort((a, b) => a - b);
+          const n = pool.length;
+          const pLo = pool[Math.floor(n * 0.0001)];
+          const pHi = pool[Math.min(n - 1, Math.floor(n * 0.9999))];
+          const guard = Math.max((pHi - pLo) * 0.5, 1e-9);
+          min = trueMin >= pLo - guard ? trueMin : pLo;
+          max = trueMax <= pHi + guard ? trueMax : pHi;
+          valid = min !== max;
+        }
+        sc = updateGlow._scaleCache = { tracks: allTracks, sig, absent, min, max, valid };
       }
-      if (pool.length < 2 || !isFinite(trueMin) || trueMin === trueMax) {
+      if (!sc.valid) {
         push(null);
         updateTraceLegend(null);
         return;
       }
-      // The raw min/max over ~140k samples is an extreme-order statistic:
-      // one glitch row in one stale cached trip (parsed before the despike
-      // existed) stretches the whole ramp. Trust the true extremes when
-      // they sit near the bulk of the data; clamp them to the sampled
-      // 0.01% percentiles only when they're glitch-far outside it, so a
-      // real 67.6 km/h record still tops the legend.
-      pool.sort((a, b) => a - b);
-      const n = pool.length;
-      const pLo = pool[Math.floor(n * 0.0001)];
-      const pHi = pool[Math.min(n - 1, Math.floor(n * 0.9999))];
-      const guard = Math.max((pHi - pLo) * 0.5, 1e-9);
-      const min = trueMin >= pLo - guard ? trueMin : pLo;
-      const max = trueMax <= pHi + guard ? trueMax : pHi;
-      if (min === max) {
-        push(null);
-        updateTraceLegend(null);
-        return;
-      }
-      push({ all: true, tracks: allTracks, pointIdx: metric.pointIdx, absent, min, max, span: max - min, colorFn: heatColor });
-      updateTraceLegend(traceColor, min, max);
+      push({ all: true, tracks: allTracks, pointIdx: metric.pointIdx, absent: sc.absent, min: sc.min, max: sc.max, span: sc.max - sc.min, colorFn: heatColor });
+      updateTraceLegend(traceColor, sc.min, sc.max);
       return;
     }
     if (metric && track && track.points.length >= 2) {
