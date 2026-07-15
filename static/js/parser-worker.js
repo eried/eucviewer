@@ -184,17 +184,29 @@ function despikeRows(rows) {
       }
       i += 1;
     }
-    // Second pass: lone samples above BOTH neighbors by an impossible
-    // jump. Catches a frozen feed that unfreezes with a catch-up burst
-    // (1.3 → 109.4 → 66.4 → …): the burst row is fake, the decay after
-    // it is real, so the island rule above never closes on it.
+    // Second pass: lone samples an impossible jump away from BOTH
+    // neighbors, in either direction. Catches a frozen feed that
+    // unfreezes with a catch-up burst (1.3 → 109.4 → 66.4 → …): the
+    // burst row is fake, the decay after it is real, so the island rule
+    // above never closes on it.
     for (let s = 1; s < n - 1; s += 1) {
       const limA = Math.max(JUMP_MIN, JUMP_PER_SEC * Math.max(0.5, secs[s] - secs[s - 1]));
       const limB = Math.max(JUMP_MIN, JUMP_PER_SEC * Math.max(0.5, secs[s + 1] - secs[s]));
-      if (v[s] - v[s - 1] > limA && v[s] - v[s + 1] > limB) {
+      if ((v[s] - v[s - 1] > limA && v[s] - v[s + 1] > limB) ||
+          (v[s - 1] - v[s] > limA && v[s + 1] - v[s] > limB)) {
         const fixed = roundTo((v[s - 1] + v[s + 1]) / 2, 1);
         v[s] = fixed;
         rows[s][col] = fixed;
+      }
+    }
+    // Final sanity: nobody rides an EUC backwards at 30+ km/h. Deeply
+    // negative speeds are frozen-feed garbage (seen: a decaying
+    // −48 → −95 → −78 → −58 run) that survives the island rule because
+    // it recovers gradually. Zero is the honest "unknown" here.
+    for (let s = 0; s < n; s += 1) {
+      if (v[s] < -30) {
+        v[s] = 0;
+        rows[s][col] = 0;
       }
     }
   }
@@ -224,7 +236,11 @@ function buildTrackFromRows(rows, displayName) {
     const alt = safeFloat(row.Altitude);
     const pwm = safeFloat(row.PWM);
     const current = safeFloat(row.Current);
-    const power = safeFloat(row.Power);
+    // EUC Planet exports often leave Power empty while logging Voltage and
+    // Current; electrical power is their product (sign follows the current,
+    // so regen stays negative).
+    let power = safeFloat(row.Power);
+    if (power === 0 && volt !== 0 && current !== 0) power = volt * current;
     // Optional columns — absent on most wheels / older exports (safeFloat → 0).
     // "Ext GPS speed" is deliberately ignored: it has been folded into "GPS speed".
     const gpsSpeed = safeFloat(row["GPS speed"]);
