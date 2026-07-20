@@ -2436,17 +2436,58 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   // --- Export ---
+  // When the viewer is set to Imperial, CSV/XLSX exports append three
+  // derived columns at the END so they can't interfere: every parser in
+  // the ecosystem (this viewer, EUC Planet's importer, DarknessBot) reads
+  // columns by header name and ignores trailing extras, and on re-import
+  // the derived columns are simply dropped and regenerated on the next
+  // export, so they never compound. Metric exports stay byte-identical
+  // to before.
+  const IMPERIAL_COLS = ["Speed (mph)", "Trip distance (mi)", "Temperature (F)"];
+  function imperialVals(speedKmh, tripKm, tempC) {
+    return [
+      ((speedKmh || 0) * 0.621371).toFixed(1),
+      ((tripKm || 0) * 0.621371).toFixed(3),
+      ((tempC || 0) * 9 / 5 + 32).toFixed(1),
+    ];
+  }
+  // Trip-distance source for the imperial column: the recorded mileage
+  // delta when the odometer actually moves; many wheels repeat a stale
+  // total for the whole ride, so fall back to cumulative GPS distance.
+  function exportCumKm(track) {
+    const ts = track.timeseries;
+    for (const r of ts) if (r[8] > 0.001) return ts.map((r2) => r2[8] || 0);
+    const cum = getCumDistTs(track);
+    // Straight lines between downsampled rows cut corners, so the GPS sum
+    // lands short of the trip's true length; rescale so the last value
+    // matches the full-resolution distance shown everywhere else.
+    const last = cum[cum.length - 1] || 0;
+    const total = (track.stats && track.stats.distanceKm) || 0;
+    if (last > 0 && total > 0) {
+      const k = total / last;
+      return Array.from(cum, (v) => v * k);
+    }
+    return cum;
+  }
+
   function trackToCSV(track) {
-    const header = "Date,Speed,Voltage,PWM,Current,Power,Battery level,Total mileage,Temperature,Pitch,Roll,Latitude,Longitude,Altitude\n";
+    const imp = UNITS.imperial;
+    const header = "Date,Speed,Voltage,PWM,Current,Power,Battery level,Total mileage,Temperature,Pitch,Roll,Latitude,Longitude,Altitude"
+      + (imp ? "," + IMPERIAL_COLS.join(",") : "") + "\n";
     let csv = header;
     const t0 = track.dateStart ? new Date(track.dateStart).getTime() : 0;
-    for (const row of track.timeseries) {
+    const cum = imp ? exportCumKm(track) : null;
+    const ts = track.timeseries;
+    for (let i = 0; i < ts.length; i++) {
+      const row = ts[i];
       let dateStr = "";
       if (t0) {
         const d = new Date(t0 + row[0] * 1000);
         dateStr = d.toISOString().replace("Z", "");
       }
-      csv += [dateStr, row[1], row[2], "", "", "", row[4], "", row[3], "", "", row[6], row[7], row[5]].join(",") + "\n";
+      const cols = [dateStr, row[1], row[2], "", "", "", row[4], "", row[3], "", "", row[6], row[7], row[5]];
+      if (imp) cols.push(...imperialVals(row[1], cum[i], row[3]));
+      csv += cols.join(",") + "\n";
     }
     return csv;
   }
@@ -2498,15 +2539,23 @@ document.addEventListener("DOMContentLoaded", function () {
   async function trackToXlsxBlob(track) {
     const XLSXLib = await loadXlsxLib();
     const t0 = track.dateStart ? new Date(track.dateStart).getTime() : 0;
-    const rows = [["Date", "Speed", "Voltage", "PWM", "Current", "Power", "Battery level",
-                   "Total mileage", "Temperature", "Latitude", "Longitude", "Altitude", "GPS speed"]];
-    for (const r of track.timeseries) {
-      rows.push([
+    const imp = UNITS.imperial;
+    const headerRow = ["Date", "Speed", "Voltage", "PWM", "Current", "Power", "Battery level",
+                       "Total mileage", "Temperature", "Latitude", "Longitude", "Altitude", "GPS speed"];
+    if (imp) headerRow.push(...IMPERIAL_COLS);
+    const rows = [headerRow];
+    const cum = imp ? exportCumKm(track) : null;
+    const ts = track.timeseries;
+    for (let i = 0; i < ts.length; i++) {
+      const r = ts[i];
+      const cols = [
         t0 ? new Date(t0 + r[0] * 1000).toISOString().replace("Z", "") : "",
         r[1] || "", r[2] || "", r[9] || "", r[10] || "", r[11] || "",
         r[4] || "", r[8] || "", r[3] || "", r[6] || "", r[7] || "", r[5] || "",
         r[12] || "",
-      ]);
+      ];
+      if (imp) cols.push(...imperialVals(r[1], cum[i], r[3]));
+      rows.push(cols);
     }
     const ws = XLSXLib.utils.aoa_to_sheet(rows);
     const wb = XLSXLib.utils.book_new();
