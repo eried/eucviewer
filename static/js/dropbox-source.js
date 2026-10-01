@@ -150,7 +150,12 @@
     return res.json();
   }
 
-  async function listTripFiles() {
+  async function listTripFiles() { return listFolderFiles(TRIPS_PATH); }
+  // Archived trips live one level down, out of the /trips listing EUC Planet
+  // reads, so they survive but stop coming back on a full load. Same shape as
+  // the trip listing so the sync dialog can offer them back.
+  async function listArchiveFiles() { return listFolderFiles(TRIPS_PATH + "/archive"); }
+  async function listFolderFiles(folder) {
     const out = [];
     let cursor = null;
     try {
@@ -158,7 +163,7 @@
         const data = cursor
           ? await rpc("/2/files/list_folder/continue", { cursor })
           : await rpc("/2/files/list_folder", {
-              path: TRIPS_PATH, recursive: false, include_deleted: false,
+              path: folder, recursive: false, include_deleted: false,
             });
         for (const ent of (data.entries || [])) {
           if (ent[".tag"] === "file" && ALLOWED_EXT.test(ent.name)) {
@@ -177,8 +182,8 @@
     } catch (e) {
       const msg = String(e.message || e);
       // 409 from list_folder is a path-shape problem (not_found, not_folder,
-      // restricted, malformed). The user just hasn't written to /trips yet;
-      // surface as "no trips found" rather than a scary fetch error.
+      // restricted, malformed). The user just hasn't written to the folder
+      // yet; surface as "nothing there" rather than a scary fetch error.
       if (/\b409\b/.test(msg) || /not_found|not_folder|path\//i.test(msg)) return [];
       throw e;
     }
@@ -388,6 +393,7 @@
     accountName,
     startOAuth,
     listTripFiles,
+    listArchiveFiles,
     downloadBlob,
     uploadFile,
     moveFile,

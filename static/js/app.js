@@ -2328,6 +2328,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const target = document.getElementById("tm-wheel-target");
     const applyBtn = document.getElementById("tm-apply-wheel");
     const delBtn = document.getElementById("tm-delete");
+    const archBtn = document.getElementById("tm-archive");
     const countEl = document.getElementById("tm-count");
     const groups = computeWheelGroups();
 
@@ -2335,7 +2336,7 @@ document.addEventListener("DOMContentLoaded", function () {
       // Multi-wheel trips (mid-ride switch) show every wheel they carry.
       const label = wheelIdsOf(t).map(labelOfWheel).filter(Boolean).join(" + ") || null;
       const km = t.stats ? UNITS.dist(t.stats.distanceKm).toFixed(1) + " " + UNITS.distUnit : "";
-      return `<label class="tm-row"><input type="checkbox" data-idx="${i}"${preChecked.has(i) ? " checked" : ""}>` +
+      return `<label class="tm-row${t._archive ? " tm-archived" : ""}"><input type="checkbox" data-idx="${i}"${preChecked.has(i) ? " checked" : ""}>` +
         `<span class="tm-date">${formatTripLabel(t)}</span>` +
         `<span class="tm-km">${km}</span>` +
         `<span class="tm-wheel${label ? "" : " tm-unknown"}">${label || "Generic wheel"}</span></label>`;
@@ -2361,6 +2362,11 @@ document.addEventListener("DOMContentLoaded", function () {
       countEl.textContent = n ? n + " selected" : allTracks.length + " trips";
       applyBtn.disabled = !n;
       delBtn.disabled = !n;
+      if (archBtn) {
+        archBtn.disabled = !n;
+        const idxs = checkedIdx();
+        archBtn.textContent = (n && idxs.every((i) => allTracks[i]._archive)) ? "Unarchive" : "Archive";
+      }
       selAll.checked = n === allTracks.length;
     };
     list.addEventListener("change", refresh);
@@ -2375,6 +2381,25 @@ document.addEventListener("DOMContentLoaded", function () {
       list.querySelectorAll("input").forEach((c) => { c.checked = wanted.has(parseInt(c.dataset.idx)); });
       selWheel.value = "";
       refresh();
+    };
+    // Archive marks the whole selection at once, the same flag the per-trip
+    // menu sets. It toggles: if everything selected is already marked, this
+    // unmarks it, so a wrong selection is one click back. Nothing moves on
+    // Dropbox until the sync dialog runs.
+    archBtn.onclick = () => {
+      const idxs = checkedIdx();
+      if (!idxs.length) return;
+      const allMarked = idxs.every((i) => allTracks[i]._archive);
+      for (const i of idxs) {
+        if (allMarked) delete allTracks[i]._archive;
+        else allTracks[i]._archive = true;
+      }
+      saveTracks(allTracks);
+      buildTripList();
+      appToast(allMarked
+        ? "Archive mark removed from " + idxs.length + "."
+        : idxs.length + " marked for archive. Run the Dropbox sync to move them.");
+      renderTripManager(new Set(idxs));
     };
     applyBtn.onclick = () => {
       const idxs = checkedIdx();
@@ -2770,6 +2795,9 @@ document.addEventListener("DOMContentLoaded", function () {
   async function gatherSyncState() {
     const DS = window.DropboxSource;
     const remote = await DS.listTripFiles().catch(() => []);
+    // Archived trips are listed too, so archiving stays reversible from here
+    // instead of needing a trip to the Dropbox app.
+    const archived = DS.listArchiveFiles ? await DS.listArchiveFiles().catch(() => []) : [];
     const totalBytes = remote.reduce((s, f) => s + (f.size || 0), 0);
     let cacheStats = { count: 0, bytes: 0 };
     try { if (DS.cache && DS.cache.stats) cacheStats = await DS.cache.stats(); } catch (_) {}
@@ -2791,9 +2819,12 @@ document.addEventListener("DOMContentLoaded", function () {
       if (localPaths.has(String(f.path).toLowerCase())) continue;
       rows.push({ kind: "remote", cat: "remote", file: f, label: f.name });
     }
-    const order = { archive: 0, edited: 1, new: 2, remote: 3, synced: 4 };
+    for (const f of archived) {
+      rows.push({ kind: "archived", cat: "archived", file: f, label: f.name });
+    }
+    const order = { archive: 0, edited: 1, new: 2, remote: 3, synced: 4, archived: 5 };
     rows.sort((a, b) => (order[a.cat] - order[b.cat]) || String(a.label).localeCompare(String(b.label)));
-    return { rows, account: DS.accountName(), totalBytes, cacheStats };
+    return { rows, account: DS.accountName(), totalBytes, cacheStats, archivedCount: archived.length };
   }
 
   // Round icon per row, matching the load dialog's cached/remote tags.
@@ -2804,7 +2835,8 @@ document.addEventListener("DOMContentLoaded", function () {
     remote: '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 11.5h6a3 3 0 0 0 .3-5.97A4.5 4.5 0 0 0 2.5 7.7a2.7 2.7 0 0 0 2 3.8z"/><path d="M8 8v4"/><path d="M6 10l2 2 2-2"/></svg>',
     archive: '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4.5" width="12" height="9" rx="1"/><path d="M1.5 4.5 3 2h10l1.5 2.5"/><path d="M6.3 8h3.4"/></svg>',
   };
-  const DBX_TAG_TIP = { new: "Not on Dropbox yet", edited: "Changed, its file will be updated", synced: "In sync", remote: "On Dropbox, not loaded here", archive: "Superseded; moves to /trips/archive and leaves here" };
+  DBX_TAG_ICONS.archived = DBX_TAG_ICONS.archive;
+  const DBX_TAG_TIP = { new: "Not on Dropbox yet", edited: "Changed, its file will be updated", synced: "In sync", remote: "On Dropbox, not loaded here", archive: "Superseded; moves to /trips/archive and leaves here", archived: "In /trips/archive; Restore puts it back in /trips" };
   // Local status shows in the meta text; the in-sync state is carried by its
   // (disabled) button instead, so it isn't said twice.
   const DBX_META = { new: "New", edited: "Changed", archive: "Archive" };
@@ -2826,7 +2858,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const uploadTracks = state.rows.filter((r) => r.kind === "local" && (r.cat === "new" || r.cat === "edited")).map((r) => r.track);
     const archiveTracks = state.rows.filter((r) => r.kind === "local" && r.cat === "archive").map((r) => r.track);
     const remoteFiles = state.rows.filter((r) => r.kind === "remote").map((r) => r.file);
-    const nTrips = state.rows.length;
+    const nTrips = state.rows.filter((r) => r.kind !== "archived").length;
     // Upstream (send to Dropbox) is one control: a Synchronize button that does
     // upload + archive together, with a caret for the individual actions when
     // both apply. Downstream (Load) stays its own button.
@@ -2839,13 +2871,15 @@ document.addEventListener("DOMContentLoaded", function () {
       (subParts.length ? `<span class="dbx-sync-sub">(${subParts.join(", ")})</span>` : "");
 
     const rowsHtml = state.rows.map((r, i) => {
-      const meta = r.kind === "remote"
+      const meta = (r.kind === "remote" || r.kind === "archived")
         ? [String(r.file.modified || "").slice(0, 10), dbxFmtBytes(r.file.size || 0)].filter(Boolean).join(" · ")
         : DBX_META[r.cat];
       // Remote rows load into the viewer; new/changed local rows upload just
       // themselves; in-sync rows need no action.
       const rowBtn = r.kind === "remote"
         ? `<button type="button" class="dbx-row-open" data-i="${i}">Load</button>`
+        : r.kind === "archived"
+          ? `<button type="button" class="dbx-row-restore" data-i="${i}" title="Move back into /trips">Restore</button>`
         : r.cat === "archive"
           ? `<button type="button" class="dbx-row-arch" data-i="${i}">Archive</button>`
           : (r.cat === "new" || r.cat === "edited")
@@ -2858,7 +2892,9 @@ document.addEventListener("DOMContentLoaded", function () {
         : r.cat === "archive"
           ? `<button type="button" class="dbx-row-tag dbx-row-unarchive" data-i="${i}" title="Keep this trip (cancel archive)">${DBX_TAG_ICONS.archive}</button>`
           : `<span class="dbx-row-tag" title="${DBX_TAG_TIP[r.cat]}">${DBX_TAG_ICONS[r.cat]}</span>`;
-      const dataPath = r.kind === "remote" ? ` data-path="${escapeHtml(r.file.path)}"` : ` data-key="${escapeHtml(dbxTrackKey(r.track))}"`;
+      const dataPath = (r.kind === "remote" || r.kind === "archived")
+        ? ` data-path="${escapeHtml(r.file.path)}"`
+        : ` data-key="${escapeHtml(dbxTrackKey(r.track))}"`;
       return `<li class="dbx-row cat-${r.cat}"${dataPath}>` +
         `<span class="dbx-row-name" title="${escapeHtml(r.label)}">${escapeHtml(r.label)}</span>` +
         `<span class="dbx-row-meta">${escapeHtml(meta || "")}</span>` +
@@ -2943,6 +2979,28 @@ document.addEventListener("DOMContentLoaded", function () {
         saveTracks(allTracks);
         const s = await gatherSyncState().catch(() => null);
         if (s) renderSyncState(s, ui.main);
+      });
+    });
+    // Restore: put an archived file back in /trips. It then shows up as a
+    // normal remote row with a Load button, so getting a trip back is two
+    // clicks rather than a trip to the Dropbox app.
+    main.querySelectorAll(".dbx-row-restore").forEach((btn) => {
+      const r = state.rows[parseInt(btn.dataset.i)];
+      if (!r || !r.file) return;
+      btn.addEventListener("click", async () => {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="dbx-spinner sm"></span>';
+        try {
+          await DS.moveFile(r.file.path, DS.TRIPS_PATH + "/" + (String(r.file.path).split("/").pop() || r.file.name));
+        } catch (e) {
+          btn.disabled = false;
+          btn.textContent = "Restore";
+          const st = main.querySelector(".dbx-status");
+          if (st) { st.classList.add("dbx-err"); st.textContent = "Couldn't restore: " + (e.message || e); }
+          return;
+        }
+        const s2 = await gatherSyncState().catch(() => null);
+        if (s2) renderSyncState(s2, ui.main);
       });
     });
     const loadBtn = main.querySelector("#dbx-load-remote");
@@ -3090,18 +3148,25 @@ document.addEventListener("DOMContentLoaded", function () {
     main.querySelectorAll(".src-action-row button").forEach((b) => { b.disabled = true; });
     const removed = new Set();
     let err = null;
-    try {
-      for (const t of archiveTracks) {
-        const li = main.querySelector(`.dbx-row[data-key="${String(keyOf.get(t)).replace(/["\\]/g, "\\$&")}"]`);
-        if (li) li.scrollIntoView({ block: "nearest" });
+    for (const t of archiveTracks) {
+      const li = main.querySelector(`.dbx-row[data-key="${String(keyOf.get(t)).replace(/["\\]/g, "\\$&")}"]`);
+      if (li) li.scrollIntoView({ block: "nearest" });
+      try {
         if (t.dropboxPath) {
           const base = String(t.dropboxPath).split("/").pop() || "trip.csv";
           await DS.moveFile(t.dropboxPath, DS.TRIPS_PATH + "/archive/" + base);
         }
-        removed.add(t);
-        const b = rowArchBtn(keyOf.get(t)); if (b) b.innerHTML = "✓";
+      } catch (e) {
+        // Another browser (or another tab) got there first: the source is
+        // already out of /trips, which is the state we were after, so count
+        // it done instead of stopping. Anything else is a real error and it
+        // costs only that trip, because the rest of the batch still runs.
+        const msg = String((e && e.message) || e);
+        if (!/not_found|from_lookup/i.test(msg)) { err = err || e; continue; }
       }
-    } catch (e) { err = e; }
+      removed.add(t);
+      const b = rowArchBtn(keyOf.get(t)); if (b) b.innerHTML = "✓";
+    }
     // Apply whatever succeeded (partial failure keeps the un-moved ones).
     if (removed.size) {
       // New array so the reference-keyed geometry/scale caches recompute.
