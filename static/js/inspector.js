@@ -28,6 +28,37 @@
     } catch (_) {}
     return "metric";
   }
+
+  // Date order follows where the rider is, not what language the computer is
+  // set to. navigator.language reports the UI language, so Windows set to
+  // English in Norway says en-US, and the US is just about the only place on
+  // earth that writes the month first: 08/06 then silently means August 6th
+  // on a screen that should read 8 June. The timezone is the location signal
+  // (the same one the metric guess uses above), so a month-first language
+  // outside a US zone keeps its language and borrows a day-first region.
+  const MDY_TZ_RE = new RegExp("^(?:" +
+    "America/(?:Adak|Anchorage|Boise|Chicago|Denver|Detroit|Indiana/[^/]+|Juneau|Kentucky/[^/]+|Los_Angeles|Menominee|Metlakatla|New_York|Nome|North_Dakota/[^/]+|Phoenix|Sitka|Yakutat)" +
+    "|Pacific/(?:Honolulu|Midway|Pago_Pago|Guam|Saipan|Wake)" +
+    ")$");
+  function detectDateLocale() {
+    try {
+      const force = new URLSearchParams(location.search).get("dates");
+      if (force) return force;
+    } catch (_) {}
+    const sys = (navigator.languages && navigator.languages[0]) || navigator.language || undefined;
+    try {
+      const parts = new Intl.DateTimeFormat(sys, { year: "numeric", month: "numeric", day: "numeric" })
+        .formatToParts(new Date(2020, 0, 2));
+      const iM = parts.findIndex((p) => p.type === "month");
+      const iD = parts.findIndex((p) => p.type === "day");
+      if (iM < 0 || iD < 0 || iM > iD) return sys;   // already day-first, leave it alone
+      const tz = (Intl.DateTimeFormat().resolvedOptions().timeZone || "").trim();
+      if (MDY_TZ_RE.test(tz)) return sys;            // month-first and actually in the US
+      return new Intl.Locale(sys, { region: "GB" }).toString();
+    } catch (_) {}
+    return sys;
+  }
+  const DATE_LOCALE = detectDateLocale();
   const UNITS = (() => {
     const imperial = detectUnits() === "imperial";
     return imperial
@@ -349,7 +380,7 @@
   if (track.dateStart) {
     const d = new Date(track.dateStart);
     if (!isNaN(d.getTime())) {
-      dateTitle = new Intl.DateTimeFormat(undefined, {
+      dateTitle = new Intl.DateTimeFormat(DATE_LOCALE, {
         year: "numeric", month: "numeric", day: "numeric",
         hour: "numeric", minute: "2-digit",
       }).format(d);

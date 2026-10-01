@@ -45,6 +45,37 @@ document.addEventListener("DOMContentLoaded", function () {
     } catch (_) {}
     return "metric";
   }
+
+  // Date order follows where the rider is, not what language the computer is
+  // set to. navigator.language reports the UI language, so Windows set to
+  // English in Norway says en-US, and the US is just about the only place on
+  // earth that writes the month first: 08/06 then silently means August 6th
+  // on a screen that should read 8 June. The timezone is the location signal
+  // (the same one the metric guess uses above), so a month-first language
+  // outside a US zone keeps its language and borrows a day-first region.
+  const MDY_TZ_RE = new RegExp("^(?:" +
+    "America/(?:Adak|Anchorage|Boise|Chicago|Denver|Detroit|Indiana/[^/]+|Juneau|Kentucky/[^/]+|Los_Angeles|Menominee|Metlakatla|New_York|Nome|North_Dakota/[^/]+|Phoenix|Sitka|Yakutat)" +
+    "|Pacific/(?:Honolulu|Midway|Pago_Pago|Guam|Saipan|Wake)" +
+    ")$");
+  function detectDateLocale() {
+    try {
+      const force = new URLSearchParams(location.search).get("dates");
+      if (force) return force;
+    } catch (_) {}
+    const sys = (navigator.languages && navigator.languages[0]) || navigator.language || undefined;
+    try {
+      const parts = new Intl.DateTimeFormat(sys, { year: "numeric", month: "numeric", day: "numeric" })
+        .formatToParts(new Date(2020, 0, 2));
+      const iM = parts.findIndex((p) => p.type === "month");
+      const iD = parts.findIndex((p) => p.type === "day");
+      if (iM < 0 || iD < 0 || iM > iD) return sys;   // already day-first, leave it alone
+      const tz = (Intl.DateTimeFormat().resolvedOptions().timeZone || "").trim();
+      if (MDY_TZ_RE.test(tz)) return sys;            // month-first and actually in the US
+      return new Intl.Locale(sys, { region: "GB" }).toString();
+    } catch (_) {}
+    return sys;
+  }
+  const DATE_LOCALE = detectDateLocale();
   const UNITS = (() => {
     const imperial = detectUnits() === "imperial";
     return imperial
@@ -219,10 +250,10 @@ document.addEventListener("DOMContentLoaded", function () {
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   }
 
-  // Compact trip label for the list. Uses the browser's locale so US users see
-  // "11/5/2025, 7:08 PM" while NO/DE/UK users see "05.11.2025, 19:08" etc.
+  // Compact trip label for the list, in the rider's own date order (see
+  // detectDateLocale: the timezone decides, not the UI language).
   // Falls back to the filename-derived date or raw name if dateStart is bad.
-  const TRIP_LABEL_FMT = new Intl.DateTimeFormat(undefined, {
+  const TRIP_LABEL_FMT = new Intl.DateTimeFormat(DATE_LOCALE, {
     year: "numeric", month: "numeric", day: "numeric",
     hour: "numeric", minute: "2-digit",
   });
@@ -1787,7 +1818,7 @@ document.addEventListener("DOMContentLoaded", function () {
   function formatRecentTime(isoString) {
     const dt = new Date(isoString);
     if (Number.isNaN(dt.getTime())) return "";
-    return dt.toLocaleString(undefined, {
+    return dt.toLocaleString(DATE_LOCALE, {
       year: "numeric",
       month: "short",
       day: "numeric",
@@ -2362,9 +2393,16 @@ document.addEventListener("DOMContentLoaded", function () {
       for (const i of idxs) {
         // Manual assignment is a uniform identity: it also drops any
         // multi-wheel list the parser attached.
-        if (wheel) allTracks[i].wheel = { ...wheel };
-        else delete allTracks[i].wheel;
-        delete allTracks[i].wheels;
+        const t = allTracks[i];
+        // Same bookkeeping the single-trip menu does. Without it the wheel
+        // only ever existed in this browser: the sync dialog read every trip
+        // as in-sync and offered nothing to upload, which is the whole point
+        // of assigning wheels in bulk.
+        if (!t._dirty) t._preEdit = { customName: t.customName, wheel: t.wheel, wheels: t.wheels };
+        if (wheel) t.wheel = { ...wheel };
+        else delete t.wheel;
+        delete t.wheels;
+        t._dirty = true;
       }
       saveTracks(allTracks);
       buildTripList();
