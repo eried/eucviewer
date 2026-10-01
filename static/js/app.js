@@ -2914,7 +2914,7 @@ document.addEventListener("DOMContentLoaded", function () {
         `</summary>` +
         `<div class="dbx-conn-body">` +
           `<div class="dbx-conn-row"><span class="dbx-conn-key">Folder</span><code>Apps/EUC Planet/trips/</code></div>` +
-          `<div class="dbx-conn-row"><span class="dbx-conn-key">Cache</span><span>${cache.count} file${cache.count === 1 ? "" : "s"} · ${dbxFmtBytes(cache.bytes) || "0 KB"}</span></div>` +
+          `<div class="dbx-conn-row" title="Trip files already downloaded from Dropbox, kept so loading them again costs no download. A file edited anywhere is fetched fresh. Clearing it only means the next load downloads again; it does not touch Dropbox or the trips loaded here."><span class="dbx-conn-key">Cache</span><span>${cache.count} file${cache.count === 1 ? "" : "s"} · ${dbxFmtBytes(cache.bytes) || "0 KB"}</span></div>` +
           `<div class="dbx-conn-actions">` +
             (cache.count ? `<button type="button" class="src-link-btn" id="dbx-clear-cache">Clear cache</button>` : "") +
             `<button type="button" class="src-link-btn dbx-signout">Sign out of Dropbox</button>` +
@@ -3215,7 +3215,24 @@ document.addEventListener("DOMContentLoaded", function () {
         // smooth: rapid successive smooth scrolls cancel each other and never
         // advance.
         if (li) li.scrollIntoView({ block: "nearest" });
-        const blob = await DS.downloadBlob(f.path);
+        // Serve from the file cache when Dropbox reports the same content
+        // hash, so re-loading a library you already pulled costs no download.
+        // A file edited anywhere (here, the phone, another browser) gets a new
+        // hash and is fetched again, so a stale copy cannot be served.
+        let blob = null;
+        if (DS.cache && f.contentHash) {
+          const hit = await DS.cache.get(f.path).catch(() => null);
+          if (hit && hit.blob && hit.contentHash === f.contentHash) blob = hit.blob;
+        }
+        if (!blob) {
+          blob = await DS.downloadBlob(f.path);
+          if (DS.cache && f.contentHash) {
+            await DS.cache.put(f.path, {
+              blob, contentHash: f.contentHash, size: f.size,
+              name: f.name, modified: f.modified, cachedAt: Date.now(),
+            }).catch(() => {});
+          }
+        }
         const b = li && li.querySelector(".dbx-row-open"); if (b) b.innerHTML = "✓"; // this one landed
         let name = f.name;
         if (used.has(name)) {
