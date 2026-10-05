@@ -2858,6 +2858,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const uploadTracks = state.rows.filter((r) => r.kind === "local" && (r.cat === "new" || r.cat === "edited")).map((r) => r.track);
     const archiveTracks = state.rows.filter((r) => r.kind === "local" && r.cat === "archive").map((r) => r.track);
     const remoteFiles = state.rows.filter((r) => r.kind === "remote").map((r) => r.file);
+    const allLocal = state.rows.filter((r) => r.kind === "local" && r.cat !== "archive").map((r) => r.track);
     const nTrips = state.rows.filter((r) => r.kind !== "archived").length;
     // Upstream (send to Dropbox) is one control: a Synchronize button that does
     // upload + archive together, with a caret for the individual actions when
@@ -2917,6 +2918,7 @@ document.addEventListener("DOMContentLoaded", function () {
           `<div class="dbx-conn-row" title="Trip files already downloaded from Dropbox, kept so loading them again costs no download. A file edited anywhere is fetched fresh. Clearing it only means the next load downloads again; it does not touch Dropbox or the trips loaded here."><span class="dbx-conn-key">Cache</span><span>${cache.count} file${cache.count === 1 ? "" : "s"} · ${dbxFmtBytes(cache.bytes) || "0 KB"}</span></div>` +
           `<div class="dbx-conn-actions">` +
             (cache.count ? `<button type="button" class="src-link-btn" id="dbx-clear-cache">Clear cache</button>` : "") +
+            (allLocal.length ? `<button type="button" class="src-link-btn" id="dbx-upload-all" title="Rewrite every trip's file on Dropbox from the copy loaded here, in-sync ones included">Re-upload all ${allLocal.length}</button>` : "") +
             `<button type="button" class="src-link-btn dbx-signout">Sign out of Dropbox</button>` +
           `</div>` +
         `</div>` +
@@ -2947,6 +2949,22 @@ document.addEventListener("DOMContentLoaded", function () {
       try { if (DS.cache && DS.cache.clear) await DS.cache.clear(); } catch (_) {}
       const s2 = await gatherSyncState().catch(() => null);
       if (s2) renderSyncState(s2, ui.main);
+    });
+    // Re-upload everything, in-sync rows included. The Changed flag is set at
+    // the moment of an edit, so edits made before the flag existed (or on a
+    // build that did not set it) leave the library looking in sync while the
+    // Dropbox copies are stale. This is the way out of that, and it lives in
+    // the connection panel rather than next to Synchronize because it rewrites
+    // every file whether or not anything changed.
+    const forceBtn = main.querySelector("#dbx-upload-all");
+    if (forceBtn) forceBtn.addEventListener("click", () => {
+      const n = allLocal.length;
+      if (!n) return;
+      if (!window.confirm("Re-upload all " + n + " trips to Dropbox?\n\n"
+        + "Every trip's file is rewritten from the copy loaded here, including "
+        + "the ones already in sync. Use this when local wheels or names never "
+        + "got flagged as changed.")) return;
+      runSync(allLocal, ui);
     });
     main.querySelectorAll(".dbx-row-open").forEach((btn) => {
       const r = state.rows[parseInt(btn.dataset.i)];
@@ -3076,9 +3094,14 @@ document.addEventListener("DOMContentLoaded", function () {
     // Lock the dialog (no resizing status line) and spinner each row as it
     // uploads, matching the fetch behaviour.
     main.classList.add("dbx-locked");
+    // Find a row by key, and whatever action button it carries. An in-sync row
+    // being re-uploaded on purpose has a disabled "Loaded" button rather than
+    // an Upload one, and it should still spinner and tick like the rest.
+    const rowLi = (key) => main.querySelector(
+      `.dbx-row[data-key="${String(key).replace(/["\\]/g, "\\$&")}"]`);
     const rowSyncBtn = (key) => {
-      const li = main.querySelector(`.dbx-row[data-key="${String(key).replace(/["\\]/g, "\\$&")}"]`);
-      return li ? li.querySelector(".dbx-row-sync") : null;
+      const li = rowLi(key);
+      return li ? li.querySelector(".dbx-row-sync, .dbx-row-done") : null;
     };
     const keyOf = new Map();
     uploadTracks.forEach((t) => {
@@ -3088,6 +3111,10 @@ document.addEventListener("DOMContentLoaded", function () {
     main.querySelectorAll(".src-action-row button").forEach((b) => { b.disabled = true; });
     try {
       for (const t of uploadTracks) {
+        // Scroll the row being written into view so a long run shows what it
+        // is doing; the dialog is locked, so this is the only way to follow it.
+        const li = rowLi(keyOf.get(t));
+        if (li) li.scrollIntoView({ block: "nearest" });
         const isNew = !t.dropboxPath;
         const blob = new Blob([trackToCSV(t)], { type: "text/csv" });
         let path, mode;
