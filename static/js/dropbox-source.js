@@ -125,6 +125,23 @@
     return tok;
   }
 
+  // With several trips in flight at once Dropbox will sometimes answer 429
+  // (too many calls), and the odd 5xx under load. Both are worth waiting out
+  // rather than failing the trip: Retry-After says how long when it is given,
+  // otherwise back off. Only the final response is read, so no body is lost.
+  const RETRY_STATUS = new Set([429, 500, 502, 503, 504]);
+  async function withRetry(send, attempts) {
+    const max = attempts || 4;
+    let wait = 500;
+    for (let i = 1; ; i++) {
+      const res = await send();
+      if (!RETRY_STATUS.has(res.status) || i >= max) return res;
+      const after = parseFloat(res.headers.get("Retry-After") || "");
+      await new Promise((r) => setTimeout(r, Number.isFinite(after) ? after * 1000 : wait));
+      wait = Math.min(wait * 2, 8000);
+    }
+  }
+
   async function rpc(endpoint, body) {
     const token = await ensureToken();
     if (!token) throw new Error("not signed in");
@@ -134,9 +151,9 @@
       headers["Content-Type"] = "application/json";
       payload = JSON.stringify(body);
     }
-    const res = await fetch("https://api.dropboxapi.com" + endpoint, {
+    const res = await withRetry(() => fetch("https://api.dropboxapi.com" + endpoint, {
       method: "POST", headers, body: payload,
-    });
+    }));
     if (res.status === 401) {
       const text = await res.text();
       // A missing scope (e.g. files.content.write not granted yet) also comes
@@ -199,7 +216,7 @@
   async function downloadBlob(path) {
     const meta = await rpc("/2/files/get_temporary_link", { path });
     if (!meta || !meta.link) throw new Error("no temporary link for " + path);
-    const res = await fetch(meta.link);
+    const res = await withRetry(() => fetch(meta.link));
     if (!res.ok) throw new Error("download " + path + " " + res.status);
     return await res.blob();
   }
@@ -214,11 +231,11 @@
     const commit_info = { path, mode: m, autorename: m !== "overwrite", mute: true };
     const meta = await rpc("/2/files/get_temporary_upload_link", { commit_info });
     if (!meta || !meta.link) throw new Error("no upload link for " + path);
-    const res = await fetch(meta.link, {
+    const res = await withRetry(() => fetch(meta.link, {
       method: "POST",
       headers: { "Content-Type": "application/octet-stream" },
       body: blob,
-    });
+    }));
     if (!res.ok) throw new Error("upload " + path + " " + res.status + ": " + (await res.text()));
     return res.json().catch(() => ({}));
   }
@@ -229,9 +246,15 @@
   // existing folder answers 409, which we ignore). autorename guards against
   // ever overwriting an already-archived file that shares the name.
   // Needs the files.content.write scope, same as uploadFile.
+  const ensuredFolders = new Set();
   async function moveFile(fromPath, toPath) {
     const parent = toPath.replace(/\/[^/]*$/, "");
-    if (parent) { try { await rpc("/2/files/create_folder_v2", { path: parent }); } catch (_) {} }
+    // Once per session, not once per file: archiving fifty trips was sending
+    // fifty create_folder calls, forty-nine of them answered "already exists".
+    if (parent && !ensuredFolders.has(parent)) {
+      ensuredFolders.add(parent);
+      try { await rpc("/2/files/create_folder_v2", { path: parent }); } catch (_) {}
+    }
     return rpc("/2/files/move_v2", { from_path: fromPath, to_path: toPath, autorename: true });
   }
 

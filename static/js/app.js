@@ -3083,6 +3083,29 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // One-pass upstream sync: upload first (so a combined trip is safely on
   // Dropbox before its sources leave), then archive the superseded ones.
+  // Trips go to and from Dropbox a few at a time rather than one after
+  // another. Each one costs two round trips (ask for a presigned link, then
+  // move the bytes), so a library of a couple of hundred spent most of its
+  // time waiting. Six at once is the sweet spot: well inside what Dropbox
+  // tolerates, and the retry in dropbox-source waits out a 429 if we do push
+  // too hard. Every item is awaited before the first error is rethrown, so
+  // nothing is left running behind a failure.
+  const DBX_PARALLEL = 6;
+  async function mapLimit(items, limit, fn) {
+    let next = 0, firstErr = null;
+    const worker = async () => {
+      for (;;) {
+        const i = next++;
+        if (i >= items.length) return;
+        try { await fn(items[i], i); }
+        catch (e) { if (!firstErr) firstErr = e; }
+      }
+    };
+    const lanes = Math.max(1, Math.min(limit, items.length));
+    await Promise.all(Array.from({ length: lanes }, worker));
+    if (firstErr) throw firstErr;
+  }
+
   async function runSyncAndArchive(uploadTracks, archiveTracks, ui) {
     if (uploadTracks && uploadTracks.length) await runSync(uploadTracks, ui);
     if (archiveTracks && archiveTracks.length) await runArchive(archiveTracks, ui);
@@ -3110,11 +3133,12 @@ document.addEventListener("DOMContentLoaded", function () {
     });
     main.querySelectorAll(".src-action-row button").forEach((b) => { b.disabled = true; });
     try {
-      for (const t of uploadTracks) {
-        // Scroll the row being written into view so a long run shows what it
-        // is doing; the dialog is locked, so this is the only way to follow it.
+      // Scrolling follows the furthest row started, so with several in flight
+      // the list still moves forward instead of jumping back and forth.
+      let furthest = -1;
+      await mapLimit(uploadTracks, DBX_PARALLEL, async (t, i) => {
         const li = rowLi(keyOf.get(t));
-        if (li) li.scrollIntoView({ block: "nearest" });
+        if (li && i > furthest) { furthest = i; li.scrollIntoView({ block: "nearest" }); }
         const isNew = !t.dropboxPath;
         const blob = new Blob([trackToCSV(t)], { type: "text/csv" });
         let path, mode;
@@ -3131,7 +3155,7 @@ document.addEventListener("DOMContentLoaded", function () {
         t._dirty = false;
         delete t._preEdit; // synced: current state is the new baseline
         const b = rowSyncBtn(keyOf.get(t)); if (b) b.innerHTML = "✓";
-      }
+      });
       saveTracks(allTracks);
       buildTripList();
       const s = await gatherSyncState();
@@ -3234,14 +3258,26 @@ document.addEventListener("DOMContentLoaded", function () {
       const zip = new window.JSZip();
       const used = new Set();
       const map = {};
-      for (let i = 0; i < files.length; i++) {
-        const f = files[i];
+      // Names are settled before anything is fetched, so the bundle is the
+      // same whatever order the downloads finish in.
+      const names = files.map((f, i) => {
+        let name = f.name;
+        if (used.has(name)) {
+          const d = name.lastIndexOf(".");
+          name = (d > 0 ? name.slice(0, d) : name) + "_" + (i + 1) + (d > 0 ? name.slice(d) : "");
+        }
+        used.add(name);
+        return name;
+      });
+      const blobs = new Array(files.length);
+      // Follow the loading down the list so the pending rows scroll into view
+      // page by page, even though the form is locked. Instant, not smooth:
+      // rapid successive smooth scrolls cancel each other and never advance.
+      // With several in flight, follow the furthest one started.
+      let furthest = -1;
+      await mapLimit(files, DBX_PARALLEL, async (f, i) => {
         const li = rowEl(f.path);
-        // Follow the loading down the list so the pending rows scroll into
-        // view page by page, even though the form is locked. Instant, not
-        // smooth: rapid successive smooth scrolls cancel each other and never
-        // advance.
-        if (li) li.scrollIntoView({ block: "nearest" });
+        if (li && i > furthest) { furthest = i; li.scrollIntoView({ block: "nearest" }); }
         // Serve from the file cache when Dropbox reports the same content
         // hash, so re-loading a library you already pulled costs no download.
         // A file edited anywhere (here, the phone, another browser) gets a new
@@ -3260,16 +3296,13 @@ document.addEventListener("DOMContentLoaded", function () {
             }).catch(() => {});
           }
         }
+        blobs[i] = blob;
         const b = li && li.querySelector(".dbx-row-open"); if (b) b.innerHTML = "✓"; // this one landed
-        let name = f.name;
-        if (used.has(name)) {
-          const d = name.lastIndexOf(".");
-          name = (d > 0 ? name.slice(0, d) : name) + "_" + (i + 1) + (d > 0 ? name.slice(d) : "");
-        }
-        used.add(name);
-        zip.file(name, blob);
-        map[name] = f.path;
-      }
+      });
+      files.forEach((f, i) => {
+        zip.file(names[i], blobs[i]);
+        map[names[i]] = f.path;
+      });
       const out = await zip.generateAsync({ type: "blob", compression: "STORE" });
       closeSyncModal();
       if (typeof window.eucViewerLoadFile === "function") {
