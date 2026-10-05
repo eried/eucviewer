@@ -3162,6 +3162,13 @@ document.addEventListener("DOMContentLoaded", function () {
       main.classList.remove("dbx-locked");
       renderSyncState(s, main);
     } catch (e) {
+      // Keep whatever did land. Every upload is attempted before the first
+      // error is raised, so by here several trips may already be on Dropbox
+      // with their path and cleared Changed flag held only in memory; without
+      // this they would come back as Changed on the next load and be sent a
+      // second time. Mirrors the archive run applying its partial success.
+      saveTracks(allTracks);
+      buildTripList();
       main.classList.remove("dbx-locked");
       const s = await gatherSyncState().catch(() => null);
       if (s) renderSyncState(s, main);
@@ -3313,6 +3320,17 @@ document.addEventListener("DOMContentLoaded", function () {
       main.classList.remove("dbx-locked");
       const s = await gatherSyncState().catch(() => null);
       if (s) renderSyncState(s, main);
+      // Say so. This used to re-render and leave the rider staring at a list
+      // that had just silently given up. Whatever did come down is in the
+      // cache, so pressing Load again only re-fetches what is missing.
+      const st = main.querySelector(".dbx-status");
+      const msg = String((e && e.message) || e);
+      if (st) {
+        st.classList.add("dbx-err");
+        st.textContent = /missing_scope/.test(msg)
+          ? "Enable files.content.read in your Dropbox App Console, then reconnect."
+          : "Couldn't load from Dropbox: " + msg;
+      }
     }
   }
   function toggleToolsMenu(btn, i) {
