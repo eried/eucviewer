@@ -1790,6 +1790,11 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
     #panel-body { background: rgba(10, 10, 15, 0.97); }
     #panel-tab { background: rgba(10, 10, 15, 0.94); }
 }
+/* The build badge doubles as the way in to the storage explorer. It stays
+   looking like a label rather than a link: the tool behind it is for digging
+   into a problem, not somewhere to send people by accident. */
+#page-footer a#page-version { color: inherit; text-decoration: none; }
+#page-footer a#page-version:hover { color: #bfeef7; }
 #page-footer a {
     display: inline-flex;
     align-items: center;
