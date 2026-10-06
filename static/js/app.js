@@ -3083,14 +3083,17 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // One-pass upstream sync: upload first (so a combined trip is safely on
   // Dropbox before its sources leave), then archive the superseded ones.
-  // Trips go to and from Dropbox a few at a time rather than one after
+  // Trips go to and from Dropbox several at a time rather than one after
   // another. Each one costs two round trips (ask for a presigned link, then
-  // move the bytes), so a library of a couple of hundred spent most of its
-  // time waiting. Six at once is the sweet spot: well inside what Dropbox
-  // tolerates, and the retry in dropbox-source waits out a 429 if we do push
-  // too hard. Every item is awaited before the first error is rethrown, so
-  // nothing is left running behind a failure.
-  const DBX_PARALLEL = 6;
+  // move the bytes), so a library of a few hundred spent nearly all of its
+  // time waiting on latency rather than on bandwidth. Twelve is as high as is
+  // worth going: past that the gain flattens, because the two calls per trip
+  // are serialised against each other anyway, while the odds of Dropbox
+  // answering 429 climb. A 429 is not fatal (dropbox-source waits it out and
+  // retries, honouring Retry-After) but it is wasted time. Every item is
+  // awaited before the first error is rethrown, so nothing is left running
+  // behind a failure.
+  const DBX_PARALLEL = 12;
   async function mapLimit(items, limit, fn) {
     let next = 0, firstErr = null;
     const worker = async () => {
