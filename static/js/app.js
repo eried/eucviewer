@@ -3144,10 +3144,15 @@ document.addEventListener("DOMContentLoaded", function () {
   const ETA_WARMUP_SECONDS = 3;
   const ETA_WARMUP_ITEMS = 10;
   const ETA_SMOOTHING = 0.3;    // weight of the newest reading
+  // A countdown in seconds is no use at the tail, where the honest thing to
+  // say is just that it is nearly over. The last two rungs are states rather
+  // than times, and "Almost ready" is the wording the parser already uses when
+  // it is finishing a load.
   function etaPhrase(sec) {
-    if (sec < 60) return "Under a minute left";
-    const mins = Math.round(sec / 60);
-    return mins <= 1 ? "About a minute left" : "About " + mins + " minutes left";
+    if (sec < 20) return "Almost ready";
+    if (sec < 45) return "Nearly done";
+    if (sec < 90) return "About a minute left";
+    return "About " + Math.round(sec / 60) + " minutes left";
   }
   function makeEtaNotice(main, total) {
     const host = (main && main.querySelector(".src-action")) || main;
