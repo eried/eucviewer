@@ -3122,11 +3122,14 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // One-pass upstream sync: upload first (so a combined trip is safely on
   // Dropbox before its sources leave), then archive the superseded ones.
-  // Long transfers get a "About 2 minutes left" pill above the action row.
+  // Long transfers get an "About 2 minutes left" pill above the action row.
   // Two guards keep it from being noise: nothing is shown until a few trips
   // have gone by, because the first response sets a wildly wrong rate, and
   // nothing is shown unless the estimate is over ETA_MIN_SECONDS, so a quick
-  // transfer never raises one at all. Clicking it puts it away for the run.
+  // transfer never raises one at all. It is not dismissable and takes no
+  // clicks: there is no way to cancel a transfer, so a control that only
+  // hides the one piece of news would be pretending to offer something.
+  // It leaves by itself when the run ends.
   const ETA_MIN_SECONDS = 10;
   const ETA_SETTLE = 4;
   function etaPhrase(sec) {
@@ -3137,29 +3140,27 @@ document.addEventListener("DOMContentLoaded", function () {
   function makeEtaNotice(main, total) {
     const host = (main && main.querySelector(".src-action")) || main;
     const started = performance.now();
-    let el = null, dismissed = false;
+    let el = null, stopped = false;
     const drop = () => { if (el) { el.remove(); el = null; } };
     return {
       // `done` is how many have finished, counted by the caller so it works
       // the same whether the transfers run one at a time or ten at once.
       tick(done) {
-        if (dismissed || !host || done < ETA_SETTLE || done >= total) return;
+        if (stopped || !host || done < ETA_SETTLE || done >= total) return;
         const perTrip = ((performance.now() - started) / 1000) / done;
         const left = (total - done) * perTrip;
         if (left <= ETA_MIN_SECONDS) { drop(); return; }
         if (!el) {
           el = document.createElement("div");
           el.className = "dbx-eta";
-          el.title = "Click to hide";
           el.innerHTML = '<span class="dbx-eta-dots"><i></i><i></i><i></i></span>'
             + '<span class="dbx-eta-text"></span>';
-          el.addEventListener("click", () => { dismissed = true; drop(); });
           host.appendChild(el);
           requestAnimationFrame(() => { if (el) el.classList.add("on"); });
         }
         el.querySelector(".dbx-eta-text").textContent = etaPhrase(left);
       },
-      finish() { dismissed = true; drop(); },
+      finish() { stopped = true; drop(); },
     };
   }
 

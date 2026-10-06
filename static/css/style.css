@@ -1603,7 +1603,8 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
 /* "About 2 minutes left" during a long transfer. A pill just above the action
    row, which is where the eye already is while the rows tick along. Only
    raised once the estimate is past the threshold, so a quick transfer never
-   shows one, and clicking it puts it away for the rest of the run. */
+   shows one, and it leaves by itself when the run ends. It takes no clicks,
+   so it stays inert with the rest of the locked dialog. */
 #dbx-sync-modal .src-action { position: relative; }
 #dbx-sync-modal .dbx-eta {
     position: absolute; right: 0; bottom: 100%; margin-bottom: 9px; z-index: 6;
@@ -1611,10 +1612,7 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
     padding: 7px 13px 7px 11px; border-radius: 999px;
     background: rgba(26, 34, 48, 0.97); border: 1px solid rgba(255, 255, 255, 0.14);
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
-    font-size: 0.77rem; white-space: nowrap; cursor: pointer;
-    /* the dialog turns pointer events off while it works; this still takes a
-       click, because dismissing it is the only control it has */
-    pointer-events: auto;
+    font-size: 0.77rem; white-space: nowrap;
     opacity: 0; transform: translateY(8px) scale(0.96);
     transition: opacity 0.4s ease, transform 0.4s cubic-bezier(0.2, 0.8, 0.3, 1);
 }
