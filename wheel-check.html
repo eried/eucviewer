@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Wheel sync check</title>
+<style>
+:root { --ink: rgba(224,232,240,0.9); --dim: rgba(224,232,240,0.55); --blue: #4aa3ff; --line: rgba(255,255,255,0.1); }
+* { box-sizing: border-box; }
+body {
+    margin: 0; padding: 22px 18px 60px; background: #0b0f16; color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 0.88rem; line-height: 1.5;
+}
+h1 { font-size: 1.05rem; margin: 0 0 4px; }
+.sub { color: var(--dim); font-size: 0.82rem; margin: 0 0 18px; max-width: 70ch; }
+section { border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; background: #141a26; }
+h2 { font-size: 0.78rem; margin: 0 0 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--blue); }
+table { border-collapse: collapse; width: 100%; font-size: 0.82rem; }
+td, th { text-align: left; padding: 4px 10px 4px 0; vertical-align: top; }
+th { color: var(--dim); font-weight: 500; }
+td.n { font-variant-numeric: tabular-nums; }
+code { background: rgba(0,0,0,0.35); padding: 1px 5px; border-radius: 4px; font-size: 0.8rem; }
+.ok { color: #5fd38d; } .bad { color: #ff9a9a; } .warn { color: #ffd166; }
+.verdict { font-size: 0.92rem; padding: 12px 14px; border-radius: 9px; margin-bottom: 14px; border: 1px solid var(--line); }
+.verdict.ok { background: rgba(95,211,141,0.1); border-color: rgba(95,211,141,0.35); }
+.verdict.bad { background: rgba(255,154,154,0.1); border-color: rgba(255,154,154,0.35); }
+.verdict.warn { background: rgba(255,209,102,0.1); border-color: rgba(255,209,102,0.35); }
+button { background: var(--blue); border: none; color: #04101c; font-weight: 600; border-radius: 7px; padding: 8px 14px; cursor: pointer; font-family: inherit; font-size: 0.84rem; }
+.muted { color: var(--dim); font-size: 0.8rem; }
+</style>
+</head>
+<body>
+<h1>Wheel sync check</h1>
+<p class="sub">
+  Read only. Nothing here changes a trip, a file or Dropbox. It compares the wheel on each trip
+  in three places, so you can see which one is out of step: the library open in the viewer, the
+  snapshot behind each Recents row, and the file sitting on Dropbox.
+</p>
+<div id="out"><p class="muted">Reading…</p></div>
+<script src="static/js/dropbox-source.js"></script>
+<script>
+const out = document.getElementById("out");
+const esc = (s) => String(s == null ? "" : s).replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]));
+
+function idb(store, fn) {
+  return new Promise((resolve) => {
+    const req = indexedDB.open("eucplanet-trip-viewer", 3);
+    req.onsuccess = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(store)) { db.close(); resolve(null); return; }
+      const r = fn(db.transaction(store, "readonly").objectStore(store));
+      r.onsuccess = () => { db.close(); resolve(r.result); };
+      r.onerror = () => { db.close(); resolve(null); };
+    };
+    req.onerror = () => resolve(null);
+  });
+}
+const wheelName = (t) => (t.wheel && (t.wheel.name || t.wheel.model || t.wheel.mac)) || "(none)";
+function histogram(tracks) {
+  const m = new Map();
+  for (const t of tracks) m.set(wheelName(t), (m.get(wheelName(t)) || 0) + 1);
+  return [...m.entries()].sort((a, b) => b[1] - a[1]);
+}
+function histTable(h, total) {
+  return '<table><tr><th>wheel</th><th>trips</th></tr>' + h.map(([w, n]) =>
+    `<tr><td>${esc(w)}</td><td class="n">${n}</td></tr>`).join("") +
+    `<tr><td class="muted">total</td><td class="n muted">${total}</td></tr></table>`;
+}
+
+(async () => {
+  const html = [];
+  const live = (await idb("currentSession", (s) => s.get("tracks"))) || [];
+  const recents = (await idb("recentFiles", (s) => s.getAll())) || [];
+
+  const withPath = live.filter((t) => t.dropboxPath).length;
+  const dirty = live.filter((t) => t._dirty).length;
+
+  html.push(`<section><h2>1. The library open in the viewer</h2>` +
+    histTable(histogram(live), live.length) +
+    `<p class="muted" style="margin:10px 0 0">` +
+    `${withPath} of ${live.length} know which Dropbox file they came from. ` +
+    `${dirty} are marked Changed, i.e. edited here and not yet uploaded.</p></section>`);
+
+  html.push(`<section><h2>2. The snapshots behind the Recents rows</h2>` +
+    (recents.length
+      ? recents.map((r) => {
+          const ts = r.tracks || [];
+          return `<div style="margin-bottom:12px"><b>${esc(r.fileName)}</b> ` +
+            `<span class="muted">${ts.length} trips, saved ${esc(String(r.loadedAt || "").slice(0, 16).replace("T", " "))}</span>` +
+            histTable(histogram(ts), ts.length) + `</div>`;
+        }).join("")
+      : '<p class="muted">No Recents rows.</p>') +
+    `<p class="muted">Opening one of these replaces the library with that snapshot.</p></section>`);
+
+  // 3. what is actually on Dropbox, read through the session already signed in here
+  const DS = window.DropboxSource;
+  let dbxHtml = "";
+  let dropboxWheels = null;
+  if (!DS || !DS.isAuthenticated || !DS.isAuthenticated()) {
+    dbxHtml = '<p class="muted">Not signed in to Dropbox in this browser, so the files cannot be read. ' +
+      'Sign in on the viewer first, then open this page again.</p>';
+  } else {
+    const sample = live.filter((t) => t.dropboxPath).slice(0, 8);
+    if (!sample.length) {
+      dbxHtml = '<p class="muted">No loaded trip knows its Dropbox file, so there is nothing to compare.</p>';
+    } else {
+      const rows = [];
+      dropboxWheels = [];
+      for (const t of sample) {
+        let fileWheel = "(could not read)";
+        try {
+          const blob = await DS.downloadBlob(t.dropboxPath);
+          const text = (await blob.text()).split("\n").slice(0, 40).join("\n");
+          const hit = text.match(/wheel\.(name|model|mac)=([^,\r\n]+)/);
+          fileWheel = hit ? hit[2].trim() : "(no wheel in the file)";
+        } catch (e) { fileWheel = "(error: " + (e.message || e) + ")"; }
+        dropboxWheels.push({ here: wheelName(t), there: fileWheel });
+        const same = wheelName(t) === fileWheel;
+        rows.push(`<tr><td>${esc(String(t.dropboxPath).split("/").pop())}</td>` +
+          `<td>${esc(wheelName(t))}</td><td>${esc(fileWheel)}</td>` +
+          `<td class="${same ? "ok" : "bad"}">${same ? "match" : "differs"}</td></tr>`);
+      }
+      dbxHtml = '<table><tr><th>file</th><th>wheel here</th><th>wheel on Dropbox</th><th></th></tr>' +
+        rows.join("") + '</table><p class="muted" style="margin-top:8px">First 8 trips, downloaded fresh.</p>';
+    }
+  }
+  html.push(`<section><h2>3. The files on Dropbox</h2>${dbxHtml}</section>`);
+
+  // verdict
+  let verdict = "";
+  if (dropboxWheels && dropboxWheels.length) {
+    const mismatched = dropboxWheels.filter((r) => r.here !== r.there).length;
+    if (mismatched === 0) {
+      const staleRecent = recents.find((r) => {
+        const h = histogram(r.tracks || []).map(([w]) => w).join("|");
+        return h !== histogram(live).map(([w]) => w).join("|");
+      });
+      verdict = staleRecent
+        ? `<div class="verdict warn"><b>Dropbox is right, a Recents row is not.</b> The files carry the same ` +
+          `wheels as the library, so the upload worked. But the snapshot behind ` +
+          `<code>${esc(staleRecent.fileName)}</code> holds different wheels, and opening that row would put ` +
+          `them back. Use <b>Load from Dropbox</b> rather than that row, once; it is rewritten after that.</div>`
+        : `<div class="verdict ok"><b>All three agree.</b> The wheels in the viewer, in the Recents snapshots ` +
+          `and in the files on Dropbox are the same.</div>`;
+    } else {
+      verdict = `<div class="verdict bad"><b>${mismatched} of the sampled files on Dropbox still carry a different ` +
+        `wheel.</b> The edit has not been uploaded. In the Dropbox dialog those trips should be showing as ` +
+        `<b>Changed</b>; press Synchronize, or use <b>Re-upload all</b> in the connection panel if they are ` +
+        `showing as in sync.</div>`;
+    }
+  }
+  out.innerHTML = verdict + html.join("");
+})();
+</script>
+</body>
+</html>
