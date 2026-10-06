@@ -3277,6 +3277,22 @@ document.addEventListener("DOMContentLoaded", function () {
           mode = "overwrite";
         }
         const res = await DS.uploadFile(path, blob, mode);
+        // The cached copy of this file is now the version before the edit, and
+        // it would be served again on the next load if Dropbox ever reported a
+        // hash we already hold. Replace it with what was just written when the
+        // response carries the new hash, and drop it outright when it does not,
+        // so the pre-edit copy cannot come back.
+        if (DS.cache) {
+          if (res && res.content_hash) {
+            await DS.cache.put(path, {
+              blob, contentHash: res.content_hash, size: blob.size,
+              name: String(path).split("/").pop(), modified: (res && res.server_modified) || "",
+              cachedAt: Date.now(),
+            }).catch(() => {});
+          } else if (DS.cache.remove) {
+            await DS.cache.remove(path).catch(() => {});
+          }
+        }
         if (isNew) t.dropboxPath = (res && (res.path_lower || res.path_display)) || path.toLowerCase();
         t._dirty = false;
         delete t._preEdit; // synced: current state is the new baseline

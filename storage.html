@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Storage explorer</title>
+<style>
+:root { --ink: rgba(224,232,240,0.9); --dim: rgba(224,232,240,0.5); --blue: #4aa3ff; --line: rgba(255,255,255,0.1); --panel: #141a26; }
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+    margin: 0; background: #0b0f16; color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 0.86rem;
+    display: flex; flex-direction: column;
+}
+header {
+    padding: 11px 16px; border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+}
+header h1 { font-size: 0.95rem; margin: 0; font-weight: 600; }
+header .hint { color: var(--dim); font-size: 0.78rem; }
+#filter {
+    margin-left: auto; background: #0f141d; border: 1px solid var(--line); color: var(--ink);
+    border-radius: 7px; padding: 6px 11px; font-size: 0.82rem; font-family: inherit; min-width: 190px;
+}
+#filter:focus { outline: none; border-color: var(--blue); }
+main { flex: 1; display: grid; grid-template-columns: minmax(240px, 32%) 1fr; min-height: 0; }
+#tree { overflow: auto; border-right: 1px solid var(--line); padding: 8px 0 24px; }
+.group { padding: 9px 16px 4px; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--blue); }
+.group .count { color: var(--dim); text-transform: none; letter-spacing: 0; }
+.item {
+    display: block; width: 100%; text-align: left; background: none; border: none; color: var(--ink);
+    font-family: inherit; font-size: 0.8rem; padding: 5px 16px; cursor: pointer;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.item:hover { background: rgba(255,255,255,0.05); }
+.item.sel { background: rgba(74,163,255,0.18); color: #fff; }
+.item .sz { color: var(--dim); font-size: 0.73rem; margin-left: 6px; }
+#pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+#paneHead {
+    padding: 10px 16px; border-bottom: 1px solid var(--line); display: flex; gap: 12px;
+    align-items: baseline; flex-wrap: wrap; background: var(--panel);
+}
+#paneTitle { font-weight: 600; font-size: 0.84rem; word-break: break-all; }
+#paneMeta { color: var(--dim); font-size: 0.76rem; }
+#paneActions { margin-left: auto; display: flex; gap: 8px; }
+#paneActions button {
+    background: rgba(255,255,255,0.06); border: 1px solid var(--line); color: var(--ink);
+    border-radius: 6px; padding: 4px 10px; font-size: 0.76rem; cursor: pointer; font-family: inherit;
+}
+#paneActions button:hover { border-color: var(--blue); }
+#body {
+    flex: 1; margin: 0; padding: 14px 16px 40px; overflow: auto; white-space: pre;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.78rem;
+    line-height: 1.5; tab-size: 2; color: rgba(224,232,240,0.82);
+}
+#body.wrap { white-space: pre-wrap; word-break: break-word; }
+.empty { color: var(--dim); padding: 24px 16px; }
+@media (max-width: 760px) {
+    main { grid-template-columns: 1fr; grid-template-rows: 38vh 1fr; }
+    #tree { border-right: none; border-bottom: 1px solid var(--line); }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>Storage explorer</h1>
+  <span class="hint">read only &middot; everything this site has stored in this browser</span>
+  <input id="filter" type="search" placeholder="Filter keys" autocomplete="off" />
+</header>
+<main>
+  <div id="tree"><p class="empty">Reading…</p></div>
+  <div id="pane">
+    <div id="paneHead">
+      <span id="paneTitle">Nothing selected</span>
+      <span id="paneMeta"></span>
+      <span id="paneActions">
+        <button id="wrapBtn">Wrap</button>
+        <button id="copyBtn">Copy</button>
+      </span>
+    </div>
+    <pre id="body" class="empty">Pick something on the left.</pre>
+  </div>
+</main>
+<script>
+const treeEl = document.getElementById("tree");
+const bodyEl = document.getElementById("body");
+const titleEl = document.getElementById("paneTitle");
+const metaEl = document.getElementById("paneMeta");
+let entries = [];      // { group, key, label, size, load() }
+let selected = null;
+
+const fmtBytes = (n) => {
+  if (!n && n !== 0) return "";
+  const u = ["B", "KB", "MB", "GB"]; let i = 0, v = n;
+  while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+  return v.toFixed(v >= 100 || i === 0 ? 0 : 1) + " " + u[i];
+};
+const roughSize = (v) => {
+  try {
+    if (v instanceof Blob) return v.size;
+    if (typeof v === "string") return v.length;
+    return JSON.stringify(v).length;
+  } catch (_) { return 0; }
+};
+
+function openDb(name, version) {
+  return new Promise((resolve) => {
+    let req;
+    try { req = version ? indexedDB.open(name, version) : indexedDB.open(name); }
+    catch (_) { resolve(null); return; }
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => resolve(null);
+    req.onblocked = () => resolve(null);
+  });
+}
+function all(store, method) {
+  return new Promise((resolve) => {
+    const r = store[method]();
+    r.onsuccess = () => resolve(r.result);
+    r.onerror = () => resolve([]);
+  });
+}
+
+// Values are rendered rather than dumped: a Blob becomes its text when it is
+// text, a track array becomes a readable summary before the raw JSON, so the
+// pane is useful without scrolling through a megabyte of numbers.
+async function render(value, key) {
+  if (value instanceof Blob) {
+    const head = `Blob, ${fmtBytes(value.size)}, type ${value.type || "(none)"}\n${"-".repeat(50)}\n`;
+    if (value.size > 4 * 1024 * 1024) return head + "(too large to show)";
+    const text = await value.text();
+    return head + text;
+  }
+  if (value && typeof value === "object" && value.blob instanceof Blob) {
+    const meta = Object.keys(value).filter((k) => k !== "blob")
+      .map((k) => `${k}: ${JSON.stringify(value[k])}`).join("\n");
+    const text = value.blob.size > 4 * 1024 * 1024 ? "(too large to show)" : await value.blob.text();
+    return meta + `\nblob: ${fmtBytes(value.blob.size)}\n${"-".repeat(50)}\n` + text;
+  }
+  const tracks = Array.isArray(value) ? value
+    : (value && Array.isArray(value.tracks) ? value.tracks : null);
+  if (tracks && tracks.length && tracks[0] && (tracks[0].timeseries || tracks[0].points)) {
+    const lines = [`${tracks.length} trips`, "-".repeat(50)];
+    tracks.forEach((t, i) => {
+      const w = t.wheel ? (t.wheel.name || t.wheel.model || t.wheel.mac || "?") : "(no wheel)";
+      lines.push(
+        String(i).padStart(4) + "  " + (t.customName || t.name || "(unnamed)").slice(0, 34).padEnd(36) +
+        w.padEnd(22) +
+        (t._dirty ? "CHANGED " : "        ") +
+        (t._archive ? "ARCHIVE " : "        ") +
+        (t.dropboxPath || "(no dropbox path)")
+      );
+    });
+    lines.push("", "-".repeat(50), "raw JSON below", "-".repeat(50), "");
+    let raw;
+    try { raw = JSON.stringify(value, null, 1); } catch (_) { raw = "(could not serialise)"; }
+    if (raw.length > 400000) raw = raw.slice(0, 400000) + "\n… truncated";
+    return lines.join("\n") + raw;
+  }
+  if (typeof value === "string") {
+    try { return JSON.stringify(JSON.parse(value), null, 1); } catch (_) { return value; }
+  }
+  try {
+    let raw = JSON.stringify(value, null, 1);
+    if (raw.length > 400000) raw = raw.slice(0, 400000) + "\n… truncated";
+    return raw;
+  } catch (_) { return String(value); }
+}
+
+async function collect() {
+  const found = [];
+
+  // --- IndexedDB: the viewer's own database ---
+  const main = await openDb("eucplanet-trip-viewer");
+  if (main) {
+    for (const storeName of Array.from(main.objectStoreNames)) {
+      let keys = [], vals = [];
+      try {
+        const st = main.transaction(storeName, "readonly").objectStore(storeName);
+        keys = await all(st, "getAllKeys");
+        const st2 = main.transaction(storeName, "readonly").objectStore(storeName);
+        vals = await all(st2, "getAll");
+      } catch (_) {}
+      keys.forEach((k, i) => {
+        const v = vals[i];
+        const extra = v && v.fileName ? ` (${v.fileName})` : "";
+        found.push({
+          group: "IndexedDB · eucplanet-trip-viewer · " + storeName,
+          label: String(k) + extra, size: roughSize(v), value: v,
+        });
+      });
+    }
+    main.close();
+  }
+
+  // --- IndexedDB: the Dropbox file cache ---
+  const cache = await openDb("eucplanet-dropbox-cache");
+  if (cache) {
+    for (const storeName of Array.from(cache.objectStoreNames)) {
+      let keys = [], vals = [];
+      try {
+        const st = cache.transaction(storeName, "readonly").objectStore(storeName);
+        keys = await all(st, "getAllKeys");
+        const st2 = cache.transaction(storeName, "readonly").objectStore(storeName);
+        vals = await all(st2, "getAll");
+      } catch (_) {}
+      keys.forEach((k, i) => found.push({
+        group: "IndexedDB · eucplanet-dropbox-cache · " + storeName,
+        label: String(k), size: roughSize(vals[i]), value: vals[i],
+      }));
+    }
+    cache.close();
+  }
+
+  // --- the simple stores ---
+  for (const [name, store] of [["localStorage", localStorage], ["sessionStorage", sessionStorage]]) {
+    try {
+      for (let i = 0; i < store.length; i++) {
+        const k = store.key(i);
+        found.push({ group: name, label: k, size: (store.getItem(k) || "").length, value: store.getItem(k) });
+      }
+    } catch (_) {}
+  }
+  return found;
+}
+
+function draw() {
+  const q = document.getElementById("filter").value.trim().toLowerCase();
+  const shown = q ? entries.filter((e) => (e.group + " " + e.label).toLowerCase().includes(q)) : entries;
+  if (!shown.length) { treeEl.innerHTML = '<p class="empty">Nothing stored' + (q ? " matches that." : ".") + '</p>'; return; }
+  const groups = new Map();
+  shown.forEach((e) => { if (!groups.has(e.group)) groups.set(e.group, []); groups.get(e.group).push(e); });
+  const html = [];
+  for (const [g, list] of groups) {
+    const bytes = list.reduce((s, e) => s + (e.size || 0), 0);
+    html.push(`<div class="group">${g} <span class="count">${list.length} · ${fmtBytes(bytes)}</span></div>`);
+    list.forEach((e) => {
+      html.push(`<button class="item" data-i="${entries.indexOf(e)}">${
+        e.label.replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]))
+      }<span class="sz">${fmtBytes(e.size)}</span></button>`);
+    });
+  }
+  treeEl.innerHTML = html.join("");
+  treeEl.querySelectorAll(".item").forEach((b) => {
+    b.addEventListener("click", () => show(entries[+b.dataset.i], b));
+  });
+}
+
+async function show(entry, btn) {
+  treeEl.querySelectorAll(".item.sel").forEach((e) => e.classList.remove("sel"));
+  if (btn) btn.classList.add("sel");
+  selected = entry;
+  titleEl.textContent = entry.label;
+  metaEl.textContent = entry.group + " · " + fmtBytes(entry.size);
+  bodyEl.classList.remove("empty");
+  bodyEl.textContent = "Reading…";
+  bodyEl.textContent = await render(entry.value, entry.label);
+}
+
+document.getElementById("filter").addEventListener("input", draw);
+document.getElementById("wrapBtn").addEventListener("click", () => bodyEl.classList.toggle("wrap"));
+document.getElementById("copyBtn").addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText(bodyEl.textContent); document.getElementById("copyBtn").textContent = "Copied"; }
+  catch (_) { document.getElementById("copyBtn").textContent = "Copy failed"; }
+  setTimeout(() => { document.getElementById("copyBtn").textContent = "Copy"; }, 1400);
+});
+
+collect().then((found) => { entries = found; draw(); });
+</script>
+</body>
+</html>

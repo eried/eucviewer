@@ -355,6 +355,14 @@
         await pr(tx(db, "readwrite").put(value, path));
       } catch (_) { /* quota or storage error: caching is best-effort */ }
     },
+    // Drop one path, for when its file has just been rewritten and the copy
+    // held here is the version before the edit.
+    async remove(path) {
+      try {
+        const db = await openCacheDb();
+        await pr(tx(db, "readwrite").delete(path));
+      } catch (_) {}
+    },
     async clear() {
       try {
         const db = await openCacheDb();
