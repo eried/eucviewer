@@ -3123,15 +3123,27 @@ document.addEventListener("DOMContentLoaded", function () {
   // One-pass upstream sync: upload first (so a combined trip is safely on
   // Dropbox before its sources leave), then archive the superseded ones.
   // Long transfers get an "About 2 minutes left" pill above the action row.
-  // Two guards keep it from being noise: nothing is shown until a few trips
-  // have gone by, because the first response sets a wildly wrong rate, and
-  // nothing is shown unless the estimate is over ETA_MIN_SECONDS, so a quick
-  // transfer never raises one at all. It is not dismissable and takes no
-  // clicks: there is no way to cancel a transfer, so a control that only
-  // hides the one piece of news would be pretending to offer something.
-  // It leaves by itself when the run ends.
+  //
+  // Getting the number honest took some care, because trips run DBX_PARALLEL
+  // at a time. Dividing elapsed time by the number finished counts the time
+  // spent filling the pipeline, when ten transfers are in flight and none has
+  // landed yet, as if it were the cost of the few that have. That reads high
+  // and then decays, which is how you get "About 2 minutes left" turning into
+  // "Under a minute left" inside ten seconds: every number along the way was
+  // wrong, in the same direction.
+  //
+  // So the rate is measured only after the first wave has landed. From that
+  // point, trips per second is (finished since then) / (seconds since then),
+  // which is the steady rate of the pipeline with the fill excluded, and it
+  // is right the first time rather than converging from above. On top of that
+  // the answer is eased, nothing is said until the measurement has run for
+  // ETA_WARMUP_SECONDS, and nothing is said at all unless the result is over
+  // ETA_MIN_SECONDS, so a quick transfer never raises one. It takes no clicks,
+  // since there is no way to cancel a transfer, and it goes when the run ends.
   const ETA_MIN_SECONDS = 10;
-  const ETA_SETTLE = 4;
+  const ETA_WARMUP_SECONDS = 3;
+  const ETA_WARMUP_ITEMS = 10;
+  const ETA_SMOOTHING = 0.3;    // weight of the newest reading
   function etaPhrase(sec) {
     if (sec < 60) return "Under a minute left";
     const mins = Math.round(sec / 60);
@@ -3139,17 +3151,40 @@ document.addEventListener("DOMContentLoaded", function () {
   }
   function makeEtaNotice(main, total) {
     const host = (main && main.querySelector(".src-action")) || main;
-    const started = performance.now();
-    let el = null, stopped = false;
+    let el = null, stopped = false, smoothed = null, shown = null;
+    let rampAt = null, rampDone = 0;
     const drop = () => { if (el) { el.remove(); el = null; } };
     return {
-      // `done` is how many have finished, counted by the caller so it works
-      // the same whether the transfers run one at a time or ten at once.
+      // `done` is how many have finished, counted by the caller, and this runs
+      // on each completion so the clock reading is always at a landing.
       tick(done) {
-        if (stopped || !host || done < ETA_SETTLE || done >= total) return;
-        const perTrip = ((performance.now() - started) / 1000) / done;
-        const left = (total - done) * perTrip;
-        if (left <= ETA_MIN_SECONDS) { drop(); return; }
+        if (stopped || !host || done >= total) return;
+        const now = performance.now();
+        if (rampAt === null) {
+          // Still filling the pipeline: note where the first wave landed and
+          // start the measurement from there.
+          if (done < DBX_PARALLEL) return;
+          rampAt = now; rampDone = done;
+          return;
+        }
+        const span = (now - rampAt) / 1000;
+        const moved = done - rampDone;
+        if (span < ETA_WARMUP_SECONDS || moved < ETA_WARMUP_ITEMS) return;
+        const left = (total - done) / (moved / span);
+        smoothed = smoothed === null ? left : smoothed + (left - smoothed) * ETA_SMOOTHING;
+        // Time left only counts down. Transfers arrive in waves, so between
+        // two waves the measured rate sags and the estimate creeps back up;
+        // around a rounding boundary that alone was enough to flip the words
+        // from a minute to two minutes and back. Taking the lowest reading so
+        // far costs nothing when the link is steady, and when it genuinely
+        // slows the number simply holds until the truth catches up with it,
+        // which reads far better than a figure that wanders in both
+        // directions.
+        shown = shown === null ? smoothed : Math.min(shown, smoothed);
+        // Once it is up it stays up to the end: hiding it again the moment the
+        // estimate dips under the threshold would just make it blink.
+        if (!el && shown <= ETA_MIN_SECONDS) return;
+        if (shown <= 2) { drop(); return; }
         if (!el) {
           el = document.createElement("div");
           el.className = "dbx-eta";
@@ -3158,7 +3193,7 @@ document.addEventListener("DOMContentLoaded", function () {
           host.appendChild(el);
           requestAnimationFrame(() => { if (el) el.classList.add("on"); });
         }
-        el.querySelector(".dbx-eta-text").textContent = etaPhrase(left);
+        el.querySelector(".dbx-eta-text").textContent = etaPhrase(shown);
       },
       finish() { stopped = true; drop(); },
     };
