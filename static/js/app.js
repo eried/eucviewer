@@ -1719,6 +1719,40 @@ document.addEventListener("DOMContentLoaded", function () {
     return item || null;
   }
 
+  // The Recents row that the loaded library came from. Its entry holds a full
+  // copy of the tracks as they were parsed, and reopening it replaces the
+  // library with that copy. Without keeping it current, every wheel rename or
+  // archive mark made since the load was silently undone by one click on the
+  // row, which looked for all the world like Dropbox had not been written.
+  let currentRecentId = null;
+  let recentSyncTimer = null;
+  function refreshCurrentRecentEntry(tracks) {
+    if (!currentRecentId) return;
+    // Debounced: an edit calls saveTracks, and rewriting a few hundred trips
+    // on every keystroke of a rename would be felt.
+    if (recentSyncTimer) clearTimeout(recentSyncTimer);
+    const snapshot = tracks;
+    recentSyncTimer = setTimeout(async () => {
+      recentSyncTimer = null;
+      try {
+        const db = await openRecentDb();
+        if (!db) return;
+        const tx = db.transaction(RECENT_STORE_NAME, "readwrite");
+        const store = tx.objectStore(RECENT_STORE_NAME);
+        const req = store.get(currentRecentId);
+        req.onsuccess = () => {
+          const entry = req.result;
+          if (!entry) return;             // pruned out of the list meanwhile
+          entry.tracks = snapshot;
+          entry.tripCount = snapshot.length;
+          entry.totalKm = Number(snapshot.reduce((sum, t) => sum + ((t.stats && t.stats.distanceKm) || 0), 0).toFixed(1));
+          store.put(entry);
+        };
+        await transactionDone(tx);
+      } catch (e) { console.warn("Couldn't refresh the recent entry:", e); }
+    }, 1200);
+  }
+
   async function saveRecentFile(fileName, tracks, source) {
     if (!tracks || !tracks.length) return;
     const db = await openRecentDb();
@@ -1736,6 +1770,7 @@ document.addEventListener("DOMContentLoaded", function () {
       source: source || null,
     };
 
+    currentRecentId = entry.id;   // edits from here on refresh this row
     const tx = db.transaction(RECENT_STORE_NAME, "readwrite");
     const store = tx.objectStore(RECENT_STORE_NAME);
     store.put(entry);
@@ -1807,6 +1842,9 @@ document.addEventListener("DOMContentLoaded", function () {
         }
         return;
       }
+      // Edits from here belong to the row that was just opened, so they
+      // refresh it rather than whichever row happened to be current before.
+      currentRecentId = entry.id;
       saveTracks(entry.tracks);
       loadTracks(entry.tracks);
     } finally {
@@ -1906,6 +1944,7 @@ document.addEventListener("DOMContentLoaded", function () {
     pendingSessionWrite = saveSessionTracks(tracks).catch((err) => {
       console.warn("Failed to write session tracks:", err);
     });
+    refreshCurrentRecentEntry(tracks);
   }
 
   async function saveSessionTracks(tracks) {
@@ -3090,10 +3129,11 @@ document.addEventListener("DOMContentLoaded", function () {
   // worth going: past that the gain flattens, because the two calls per trip
   // are serialised against each other anyway, while the odds of Dropbox
   // answering 429 climb. A 429 is not fatal (dropbox-source waits it out and
-  // retries, honouring Retry-After) but it is wasted time. Every item is
+  // retries, honouring Retry-After) but it is wasted time. Ten keeps nearly
+  // all of the gain with more headroom. Every item is
   // awaited before the first error is rethrown, so nothing is left running
   // behind a failure.
-  const DBX_PARALLEL = 12;
+  const DBX_PARALLEL = 10;
   async function mapLimit(items, limit, fn) {
     let next = 0, firstErr = null;
     const worker = async () => {
