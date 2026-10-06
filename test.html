@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Slow transfer notice</title>
+<style>
+:root {
+    --card: linear-gradient(180deg, #1c2330, #141a26);
+    --line: rgba(255, 255, 255, 0.1);
+    --ink: rgba(224, 232, 240, 0.88);
+    --dim: rgba(224, 232, 240, 0.55);
+    --blue: #4aa3ff;
+    --dbx: #0061fe;
+}
+* { box-sizing: border-box; }
+body {
+    margin: 0; padding: 22px 18px 60px;
+    background: #0b0f16; color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+h1 { font-size: 1.05rem; margin: 0 0 4px; font-weight: 600; letter-spacing: 0.01em; }
+.sub { color: var(--dim); font-size: 0.82rem; margin: 0 0 20px; line-height: 1.5; max-width: 62ch; }
+.controls {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    margin-bottom: 22px; padding-bottom: 18px; border-bottom: 1px solid var(--line);
+}
+.controls button {
+    background: rgba(255, 255, 255, 0.05); border: 1px solid var(--line); color: var(--ink);
+    border-radius: 7px; padding: 7px 13px; font-size: 0.82rem; cursor: pointer;
+    font-family: inherit; transition: background 0.15s, border-color 0.15s;
+}
+.controls button:hover { background: rgba(255, 255, 255, 0.1); border-color: rgba(74, 163, 255, 0.4); }
+.controls button.go { background: var(--dbx); border-color: var(--dbx); color: #fff; font-weight: 600; }
+.controls label { font-size: 0.8rem; color: var(--dim); display: flex; align-items: center; gap: 6px; }
+.controls input[type=range] { width: 130px; accent-color: var(--blue); }
+
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 18px; }
+.variant { display: flex; flex-direction: column; gap: 9px; }
+.variant > h2 {
+    font-size: 0.78rem; margin: 0; font-weight: 600; letter-spacing: 0.04em;
+    text-transform: uppercase; color: var(--blue);
+}
+.variant > p { margin: 0; font-size: 0.76rem; color: var(--dim); line-height: 1.45; min-height: 2.1em; }
+.pick {
+    align-self: flex-start; margin-top: 2px; background: none; border: 1px solid var(--line);
+    color: var(--dim); border-radius: 6px; padding: 4px 10px; font-size: 0.74rem;
+    cursor: pointer; font-family: inherit;
+}
+.pick:hover { color: var(--ink); border-color: rgba(74, 163, 255, 0.5); }
+.pick.chosen { color: #fff; background: rgba(74, 163, 255, 0.25); border-color: var(--blue); }
+
+/* ---- the mock sync dialog each variant is shown inside ---- */
+.card {
+    position: relative; overflow: hidden;
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+}
+.card-head {
+    display: flex; align-items: center; gap: 9px;
+    padding: 12px 14px; border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    font-weight: 600; font-size: 0.86rem;
+}
+.card-head svg { color: var(--dbx); flex: none; }
+.rows { list-style: none; margin: 0; padding: 4px 10px; height: 168px; overflow: hidden; }
+.row {
+    display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 10px;
+    padding: 7px 4px; border-bottom: 1px solid rgba(255, 255, 255, 0.04); font-size: 0.78rem;
+}
+.row:last-child { border-bottom: none; }
+.row .nm { color: rgba(224, 232, 240, 0.8); font-variant-numeric: tabular-nums; }
+.row .mt { color: var(--dim); font-size: 0.72rem; font-variant-numeric: tabular-nums; }
+.tick { width: 15px; height: 15px; }
+.tick.done { color: #5fd38d; }
+.tick.wait { color: rgba(255, 255, 255, 0.2); }
+.card-foot { padding: 11px 14px; border-top: 1px solid rgba(255, 255, 255, 0.06); }
+.primary {
+    background: var(--dbx); border: none; color: #fff; border-radius: 8px;
+    padding: 8px 15px; font-size: 0.82rem; font-weight: 600; font-family: inherit;
+    opacity: 0.45; pointer-events: none;
+}
+
+/* ---- shared spinners ---- */
+@keyframes spin { to { transform: rotate(360deg); } }
+.ring {
+    display: inline-block; box-sizing: border-box; width: 20px; height: 20px;
+    border: 2px solid rgba(255, 255, 255, 0.18); border-top-color: var(--blue);
+    border-radius: 50%; animation: spin 0.7s linear infinite; flex: none;
+}
+.ring.sm { width: 14px; height: 14px; border-width: 1.6px; }
+
+@keyframes dots { 0%, 80%, 100% { opacity: 0.2; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }
+.dots { display: inline-flex; gap: 4px; align-items: center; flex: none; }
+.dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--blue); animation: dots 1.2s ease-in-out infinite; }
+.dots i:nth-child(2) { animation-delay: 0.16s; }
+.dots i:nth-child(3) { animation-delay: 0.32s; }
+
+@keyframes sweep { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
+.bar { position: relative; height: 2px; background: rgba(255, 255, 255, 0.1); overflow: hidden; border-radius: 2px; }
+.bar::after {
+    content: ""; position: absolute; inset: 0 auto 0 0; width: 33%;
+    background: linear-gradient(90deg, transparent, var(--blue), transparent);
+    animation: sweep 1.3s ease-in-out infinite;
+}
+
+@keyframes pulse-ring { 0% { transform: scale(0.85); opacity: 0.8; } 70% { transform: scale(1.35); opacity: 0; } 100% { opacity: 0; } }
+.pulse { position: relative; width: 20px; height: 20px; flex: none; }
+.pulse::before, .pulse::after {
+    content: ""; position: absolute; inset: 0; border-radius: 50%;
+    border: 1.6px solid var(--blue); animation: pulse-ring 1.6s ease-out infinite;
+}
+.pulse::after { animation-delay: 0.8s; }
+.pulse i { position: absolute; inset: 6px; border-radius: 50%; background: var(--blue); }
+
+/* ---- A: centred overlay card ---- */
+.ov-a {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: rgba(10, 14, 20, 0.62); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+    opacity: 0; pointer-events: none; transition: opacity 0.45s ease; cursor: pointer; z-index: 5;
+}
+.ov-a.on { opacity: 1; pointer-events: auto; }
+.ov-a .box {
+    display: flex; flex-direction: column; align-items: center; gap: 11px;
+    padding: 20px 26px; border-radius: 12px;
+    background: rgba(22, 28, 40, 0.96); border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    transform: translateY(7px) scale(0.98); transition: transform 0.45s cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+.ov-a.on .box { transform: none; }
+.ov-a .eta { font-size: 0.88rem; font-weight: 600; }
+.ov-a .hint { font-size: 0.72rem; color: var(--dim); }
+
+/* ---- B: banner sliding under the title ---- */
+.ov-b {
+    position: absolute; left: 0; right: 0; top: 43px; z-index: 5;
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px; cursor: pointer;
+    background: rgba(26, 34, 48, 0.97); border-bottom: 1px solid rgba(74, 163, 255, 0.28);
+    transform: translateY(-110%); transition: transform 0.4s cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+.ov-b.on { transform: none; }
+.ov-b .eta { font-size: 0.8rem; font-weight: 600; flex: 1; }
+.ov-b .x { color: var(--dim); font-size: 1rem; line-height: 1; }
+
+/* ---- C: inline strip above the button ---- */
+.ov-c {
+    display: flex; align-items: center; gap: 10px; cursor: pointer;
+    max-height: 0; opacity: 0; overflow: hidden;
+    transition: max-height 0.4s ease, opacity 0.35s ease, margin 0.4s ease;
+    margin-bottom: 0;
+}
+.ov-c.on { max-height: 48px; opacity: 1; margin-bottom: 10px; }
+.ov-c .eta { font-size: 0.79rem; flex: 1; }
+.ov-c .eta b { font-weight: 600; }
+
+/* ---- D: determinate ring with the time inside ---- */
+.ov-d {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: rgba(10, 14, 20, 0.66); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+    opacity: 0; pointer-events: none; transition: opacity 0.45s ease; cursor: pointer; z-index: 5;
+}
+.ov-d.on { opacity: 1; pointer-events: auto; }
+.ov-d .dial { position: relative; width: 92px; height: 92px; }
+.ov-d svg { transform: rotate(-90deg); display: block; }
+.ov-d .track { stroke: rgba(255, 255, 255, 0.1); }
+.ov-d .fill { stroke: var(--blue); stroke-linecap: round; transition: stroke-dashoffset 0.4s linear; }
+.ov-d .mid {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 1px;
+}
+.ov-d .big { font-size: 0.96rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.ov-d .small { font-size: 0.64rem; color: var(--dim); text-transform: uppercase; letter-spacing: 0.06em; }
+
+/* ---- E: corner pill ---- */
+.ov-e {
+    position: absolute; right: 12px; bottom: 66px; z-index: 5;
+    display: flex; align-items: center; gap: 8px; cursor: pointer;
+    padding: 7px 13px 7px 11px; border-radius: 999px;
+    background: rgba(26, 34, 48, 0.97); border: 1px solid rgba(255, 255, 255, 0.14);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+    font-size: 0.77rem; white-space: nowrap;
+    opacity: 0; transform: translateY(8px) scale(0.96); pointer-events: none;
+    transition: opacity 0.4s ease, transform 0.4s cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+.ov-e.on { opacity: 1; transform: none; pointer-events: auto; }
+
+.note {
+    margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--line);
+    font-size: 0.78rem; color: var(--dim); line-height: 1.6; max-width: 72ch;
+}
+.note code { background: rgba(0, 0, 0, 0.35); padding: 1px 5px; border-radius: 4px; }
+#chosen { color: var(--blue); font-weight: 600; }
+</style>
+</head>
+<body>
+
+<h1>Slow transfer notice</h1>
+<p class="sub">
+  Five ways to say how long a Dropbox load or sync has left. Each one only appears once the
+  estimate passes the threshold, counts down from a running average of the trips done so far,
+  can be dismissed by clicking it, and leaves on its own when the transfer ends. Pick one.
+</p>
+
+<div class="controls">
+  <button class="go" id="run">Run a slow transfer</button>
+  <button id="runfast">Run a fast one (notice should never show)</button>
+  <button id="reset">Reset</button>
+  <label>per trip <input type="range" id="speed" min="30" max="1500" value="900" /> <span id="speedv">900 ms</span></label>
+  <label>threshold <input type="range" id="thresh" min="2" max="30" value="10" /> <span id="threshv">10 s</span></label>
+  <span style="margin-left:auto;font-size:0.8rem;color:var(--dim)">chosen: <span id="chosen">none</span></span>
+</div>
+
+<div class="grid" id="grid"></div>
+
+<p class="note">
+  How the estimate works: the first few trips are ignored while the rate settles, then
+  remaining time is <code>trips left x average seconds per trip</code>, smoothed so the number
+  does not jitter. The notice is only raised when that figure is over the threshold, so a quick
+  transfer never shows one. Wording goes
+  <code>About 2 minutes left</code> / <code>About a minute left</code> / <code>Under a minute left</code>.
+</p>
+
+<script>
+const VARIANTS = [
+  { id: "a", name: "A. Centred card",
+    desc: "Covers the list, so the moving rows stop competing for attention. The most noticeable, and the most interrupting." },
+  { id: "b", name: "B. Banner under the title",
+    desc: "Slides down from the header. Stays out of the way and the rows keep showing progress underneath." },
+  { id: "c", name: "C. Inline strip",
+    desc: "Grows above the button, pushing nothing off screen. Quietest of the five; easy to miss." },
+  { id: "d", name: "D. Dial",
+    desc: "Overlay with a real progress ring and the time in the middle. Most informative, most work to read." },
+  { id: "e", name: "E. Corner pill",
+    desc: "Floats over the bottom corner. Small, dismissable, leaves the whole list visible." },
+];
+
+const TRIPS = 120;
+let chosen = null;
+
+function tickSvg(done) {
+  return done
+    ? '<svg class="tick done" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8.5l4 4 8-9"/></svg>'
+    : '<svg class="tick wait" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="6"/></svg>';
+}
+
+function overlayHtml(id) {
+  if (id === "a") return `
+    <div class="ov-a" data-ov>
+      <div class="box">
+        <span class="ring"></span>
+        <span class="eta" data-eta>About 2 minutes left</span>
+        <span class="hint">Click to dismiss</span>
+      </div>
+    </div>`;
+  if (id === "b") return `
+    <div class="ov-b" data-ov>
+      <span class="ring sm"></span>
+      <span class="eta" data-eta>About 2 minutes left</span>
+      <span class="x">&times;</span>
+    </div>`;
+  if (id === "d") return `
+    <div class="ov-d" data-ov>
+      <div class="dial">
+        <svg width="92" height="92" viewBox="0 0 92 92">
+          <circle class="track" cx="46" cy="46" r="40" fill="none" stroke-width="5"/>
+          <circle class="fill" data-arc cx="46" cy="46" r="40" fill="none" stroke-width="5"
+                  stroke-dasharray="251.3" stroke-dashoffset="251.3"/>
+        </svg>
+        <div class="mid">
+          <span class="big" data-eta>2 min</span>
+          <span class="small">left</span>
+        </div>
+      </div>
+    </div>`;
+  if (id === "e") return `
+    <div class="ov-e" data-ov>
+      <span class="dots"><i></i><i></i><i></i></span>
+      <span data-eta>About 2 minutes left</span>
+    </div>`;
+  return "";
+}
+
+function cardHtml(v) {
+  const rows = Array.from({ length: 5 }, (_, i) =>
+    `<li class="row"><span class="nm">0${i + 1}/06/2026, 1${i}:4${i}</span><span class="mt">118 KB</span>${tickSvg(false)}</li>`
+  ).join("");
+  const inline = v.id === "c" ? `
+      <div class="ov-c" data-ov>
+        <span class="ring sm"></span>
+        <span class="eta"><b data-eta>About 2 minutes left</b></span>
+        <span style="color:var(--dim);font-size:0.95rem;line-height:1">&times;</span>
+      </div>` : "";
+  return `
+  <section class="variant">
+    <h2>${v.name}</h2>
+    <p>${v.desc}</p>
+    <div class="card" data-card="${v.id}">
+      <div class="card-head">
+        <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path fill="currentColor" d="M6 2 0 6l6 4 6-4-6-4zm12 0-6 4 6 4 6-4-6-4zM0 14l6 4 6-4-6-4-6 4zm18-4-6 4 6 4 6-4-6-4zM6 19l6 4 6-4-6-4-6 4z"/></svg>
+        Sync with Dropbox
+      </div>
+      <ul class="rows" data-rows>${rows}</ul>
+      <div class="card-foot">
+        ${inline}
+        <button class="primary">Load ${TRIPS} from Dropbox</button>
+      </div>
+      ${overlayHtml(v.id)}
+    </div>
+    <button class="pick" data-pick="${v.id}">Choose ${v.id.toUpperCase()}</button>
+  </section>`;
+}
+
+document.getElementById("grid").innerHTML = VARIANTS.map(cardHtml).join("");
+
+// ---- the estimator, exactly as it would behave in the app ----
+function phrase(sec) {
+  if (sec < 60) return "Under a minute left";
+  const m = Math.round(sec / 60);
+  if (m <= 1) return "About a minute left";
+  return "About " + m + " minutes left";
+}
+function shortPhrase(sec) {
+  if (sec < 60) return "<1 min";
+  return Math.round(sec / 60) + " min";
+}
+
+let runToken = 0;
+function reset() {
+  runToken++;
+  document.querySelectorAll("[data-ov]").forEach((o) => o.classList.remove("on"));
+  document.querySelectorAll("[data-rows]").forEach((ul) => {
+    ul.querySelectorAll(".row").forEach((r) => {
+      r.lastElementChild.outerHTML = tickSvg(false);
+    });
+  });
+  document.querySelectorAll("[data-arc]").forEach((a) => { a.style.strokeDashoffset = 251.3; });
+}
+
+async function run(msPerTrip) {
+  reset();
+  const token = ++runToken;
+  const threshold = +document.getElementById("thresh").value;
+  const started = performance.now();
+  const dismissed = new Set();
+  document.querySelectorAll("[data-ov]").forEach((o) => {
+    o.onclick = () => { o.classList.remove("on"); dismissed.add(o.closest("[data-card]").dataset.card); };
+  });
+
+  for (let done = 1; done <= TRIPS; done++) {
+    if (token !== runToken) return;
+    await new Promise((r) => setTimeout(r, msPerTrip));
+    if (token !== runToken) return;
+
+    const elapsed = (performance.now() - started) / 1000;
+    const perTrip = elapsed / done;
+    const remaining = (TRIPS - done) * perTrip;
+    // ignore the first few while the rate settles
+    const trustworthy = done >= 4;
+
+    document.querySelectorAll("[data-card]").forEach((card) => {
+      const id = card.dataset.card;
+      // rows tick along, five at a time, like the real list scrolling
+      const rows = card.querySelectorAll(".row");
+      const span = Math.ceil(TRIPS / rows.length);
+      rows.forEach((row, i) => {
+        const isDone = done >= (i + 1) * span;
+        const want = tickSvg(isDone);
+        if (row.lastElementChild.outerHTML !== want) row.lastElementChild.outerHTML = want;
+      });
+      const ov = card.querySelector("[data-ov]");
+      if (!ov) return;
+      const show = trustworthy && remaining > threshold && !dismissed.has(id);
+      ov.classList.toggle("on", show);
+      const eta = ov.querySelector("[data-eta]");
+      if (eta) eta.textContent = (id === "d") ? shortPhrase(remaining) : phrase(remaining);
+      const arc = ov.querySelector("[data-arc]");
+      if (arc) arc.style.strokeDashoffset = 251.3 * (1 - done / TRIPS);
+    });
+  }
+  // finished: everything lets itself out
+  document.querySelectorAll("[data-ov]").forEach((o) => o.classList.remove("on"));
+}
+
+document.getElementById("run").onclick = () => run(+document.getElementById("speed").value);
+document.getElementById("runfast").onclick = () => run(12);
+document.getElementById("reset").onclick = reset;
+document.getElementById("speed").oninput = (e) => {
+  document.getElementById("speedv").textContent = e.target.value + " ms";
+};
+document.getElementById("thresh").oninput = (e) => {
+  document.getElementById("threshv").textContent = e.target.value + " s";
+};
+document.querySelectorAll("[data-pick]").forEach((b) => {
+  b.onclick = () => {
+    document.querySelectorAll("[data-pick]").forEach((o) => o.classList.remove("chosen"));
+    b.classList.add("chosen");
+    chosen = b.dataset.pick.toUpperCase();
+    document.getElementById("chosen").textContent = chosen;
+  };
+});
+</script>
+</body>
+</html>

@@ -3122,6 +3122,47 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // One-pass upstream sync: upload first (so a combined trip is safely on
   // Dropbox before its sources leave), then archive the superseded ones.
+  // Long transfers get a "About 2 minutes left" pill above the action row.
+  // Two guards keep it from being noise: nothing is shown until a few trips
+  // have gone by, because the first response sets a wildly wrong rate, and
+  // nothing is shown unless the estimate is over ETA_MIN_SECONDS, so a quick
+  // transfer never raises one at all. Clicking it puts it away for the run.
+  const ETA_MIN_SECONDS = 10;
+  const ETA_SETTLE = 4;
+  function etaPhrase(sec) {
+    if (sec < 60) return "Under a minute left";
+    const mins = Math.round(sec / 60);
+    return mins <= 1 ? "About a minute left" : "About " + mins + " minutes left";
+  }
+  function makeEtaNotice(main, total) {
+    const host = (main && main.querySelector(".src-action")) || main;
+    const started = performance.now();
+    let el = null, dismissed = false;
+    const drop = () => { if (el) { el.remove(); el = null; } };
+    return {
+      // `done` is how many have finished, counted by the caller so it works
+      // the same whether the transfers run one at a time or ten at once.
+      tick(done) {
+        if (dismissed || !host || done < ETA_SETTLE || done >= total) return;
+        const perTrip = ((performance.now() - started) / 1000) / done;
+        const left = (total - done) * perTrip;
+        if (left <= ETA_MIN_SECONDS) { drop(); return; }
+        if (!el) {
+          el = document.createElement("div");
+          el.className = "dbx-eta";
+          el.title = "Click to hide";
+          el.innerHTML = '<span class="dbx-eta-dots"><i></i><i></i><i></i></span>'
+            + '<span class="dbx-eta-text"></span>';
+          el.addEventListener("click", () => { dismissed = true; drop(); });
+          host.appendChild(el);
+          requestAnimationFrame(() => { if (el) el.classList.add("on"); });
+        }
+        el.querySelector(".dbx-eta-text").textContent = etaPhrase(left);
+      },
+      finish() { dismissed = true; drop(); },
+    };
+  }
+
   // Trips go to and from Dropbox several at a time rather than one after
   // another. Each one costs two round trips (ask for a presigned link, then
   // move the bytes), so a library of a few hundred spent nearly all of its
@@ -3175,10 +3216,11 @@ document.addEventListener("DOMContentLoaded", function () {
       const b = rowSyncBtn(k); if (b) { b.disabled = true; b.innerHTML = '<span class="dbx-spinner sm"></span>'; }
     });
     main.querySelectorAll(".src-action-row button").forEach((b) => { b.disabled = true; });
+    const eta = makeEtaNotice(main, uploadTracks.length);
     try {
       // Scrolling follows the furthest row started, so with several in flight
       // the list still moves forward instead of jumping back and forth.
-      let furthest = -1;
+      let furthest = -1, finished = 0;
       await mapLimit(uploadTracks, DBX_PARALLEL, async (t, i) => {
         const li = rowLi(keyOf.get(t));
         if (li && i > furthest) { furthest = i; li.scrollIntoView({ block: "nearest" }); }
@@ -3198,13 +3240,16 @@ document.addEventListener("DOMContentLoaded", function () {
         t._dirty = false;
         delete t._preEdit; // synced: current state is the new baseline
         const b = rowSyncBtn(keyOf.get(t)); if (b) b.innerHTML = "✓";
+        eta.tick(++finished);
       });
+      eta.finish();
       saveTracks(allTracks);
       buildTripList();
       const s = await gatherSyncState();
       main.classList.remove("dbx-locked");
       renderSyncState(s, main);
     } catch (e) {
+      eta.finish();
       // Keep whatever did land. Every upload is attempted before the first
       // error is raised, so by here several trips may already be on Dropbox
       // with their path and cleared Changed flag held only in memory; without
@@ -3304,6 +3349,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const rowEl = (path) => main.querySelector(`.dbx-row[data-path="${String(path || "").replace(/["\\]/g, "\\$&")}"]`);
     files.forEach((f) => { const li = rowEl(f.path); const b = li && li.querySelector(".dbx-row-open"); if (b) { b.disabled = true; b.innerHTML = '<span class="dbx-spinner sm"></span>'; } });
     main.querySelectorAll(".src-action-row button").forEach((b) => { b.disabled = true; });
+    const eta = makeEtaNotice(main, files.length);
     try {
       const zip = new window.JSZip();
       const used = new Set();
@@ -3320,6 +3366,7 @@ document.addEventListener("DOMContentLoaded", function () {
         return name;
       });
       const blobs = new Array(files.length);
+      let finished = 0;
       // Follow the loading down the list so the pending rows scroll into view
       // page by page, even though the form is locked. Instant, not smooth:
       // rapid successive smooth scrolls cancel each other and never advance.
@@ -3348,7 +3395,9 @@ document.addEventListener("DOMContentLoaded", function () {
         }
         blobs[i] = blob;
         const b = li && li.querySelector(".dbx-row-open"); if (b) b.innerHTML = "✓"; // this one landed
+        eta.tick(++finished);
       });
+      eta.finish();
       files.forEach((f, i) => {
         zip.file(names[i], blobs[i]);
         map[names[i]] = f.path;
@@ -3360,6 +3409,7 @@ document.addEventListener("DOMContentLoaded", function () {
           { append: true, dropboxMap: map, source: "dropbox" });
       }
     } catch (e) {
+      eta.finish();
       main.classList.remove("dbx-locked");
       const s = await gatherSyncState().catch(() => null);
       if (s) renderSyncState(s, main);
