@@ -1617,6 +1617,7 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
     transition: opacity 0.4s ease, transform 0.4s cubic-bezier(0.2, 0.8, 0.3, 1);
 }
 #dbx-sync-modal .dbx-eta.on { opacity: 1; transform: translate(-50%, 0) scale(1); }
+#dbx-sync-modal .dbx-eta-text { transition: opacity 0.16s ease; }
 #dbx-sync-modal .dbx-eta-dots { display: inline-flex; gap: 4px; align-items: center; }
 #dbx-sync-modal .dbx-eta-dots i {
     width: 5px; height: 5px; border-radius: 50%; background: #4aa3ff;

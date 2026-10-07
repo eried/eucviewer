@@ -3165,11 +3165,61 @@ document.addEventListener("DOMContentLoaded", function () {
     if (sec < 90) return "About a minute left";
     return "About " + Math.round(sec / 60) + " minutes left";
   }
+  // A couple of minutes staring at one unchanging line is a waste of the only
+  // attention the sync ever gets, so the pill alternates the time with a short
+  // thing worth knowing. Shuffled rather than cycled, so it does not read the
+  // same way twice, and the whole list is used before any of it comes round
+  // again. Every line here is something the code or the phone app actually
+  // does; none of it is filler.
+  const ETA_TIPS = [
+    "Trips live in Apps/EUC Planet/trips",
+    "EUC Planet uploads a ride as soon as it is saved",
+    "It sweeps again on a timer, 15 minutes at least",
+    "Wheel and trip names ride inside the CSV itself",
+    "Edits reach Dropbox only when you Synchronize",
+    "A trip changed elsewhere is no longer overwritten",
+    "Files already cached cost no download next time",
+    "Archive moves a trip aside, it does not delete it",
+    "The build badge opens the storage explorer",
+  ];
+  const ETA_SWAP_MS = 5000;
+  function makeTipPicker() {
+    let bag = [];
+    let last = null;
+    return () => {
+      if (!bag.length) {
+        bag = ETA_TIPS.slice();
+        for (let i = bag.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [bag[i], bag[j]] = [bag[j], bag[i]];
+        }
+        // Refilling must not hand back the line that was just on screen.
+        if (bag.length > 1 && bag[bag.length - 1] === last) {
+          [bag[0], bag[bag.length - 1]] = [bag[bag.length - 1], bag[0]];
+        }
+      }
+      last = bag.pop();
+      return last;
+    };
+  }
+
   function makeEtaNotice(main, total) {
     const host = (main && main.querySelector(".src-action")) || main;
     let el = null, stopped = false, smoothed = null, shown = null;
     let rampAt = null, rampDone = 0;
-    const drop = () => { if (el) { el.remove(); el = null; } };
+    let phrase = "", onTip = false, swap = null;
+    const nextTip = makeTipPicker();
+    const paint = (text) => {
+      const node = el && el.querySelector(".dbx-eta-text");
+      if (!node || node.textContent === text) return;
+      // Fade through, so the line changes rather than snapping.
+      node.style.opacity = "0";
+      setTimeout(() => { if (node.isConnected) { node.textContent = text; node.style.opacity = "1"; } }, 160);
+    };
+    const drop = () => {
+      if (swap) { clearInterval(swap); swap = null; }
+      if (el) { el.remove(); el = null; }
+    };
     return {
       // `done` is how many have finished, counted by the caller, and this runs
       // on each completion so the clock reading is always at a landing.
@@ -3201,15 +3251,24 @@ document.addEventListener("DOMContentLoaded", function () {
         // estimate dips under the threshold would just make it blink.
         if (!el && shown <= ETA_MIN_SECONDS) return;
         if (shown <= 2) { drop(); return; }
+        phrase = etaPhrase(shown);
         if (!el) {
           el = document.createElement("div");
           el.className = "dbx-eta";
           el.innerHTML = '<span class="dbx-eta-dots"><i></i><i></i><i></i></span>'
-            + '<span class="dbx-eta-text"></span>';
+            + '<span class="dbx-eta-text">' + phrase + '</span>';
           host.appendChild(el);
           requestAnimationFrame(() => { if (el) el.classList.add("on"); });
+          // The time goes up first; the alternating starts after it has been
+          // read once.
+          swap = setInterval(() => {
+            if (!el) return;
+            onTip = !onTip;
+            paint(onTip ? nextTip() : phrase);
+          }, ETA_SWAP_MS);
+          return;
         }
-        el.querySelector(".dbx-eta-text").textContent = etaPhrase(shown);
+        if (!onTip) paint(phrase);
       },
       finish() { stopped = true; drop(); },
     };
