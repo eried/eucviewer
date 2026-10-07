@@ -125,21 +125,43 @@
     return tok;
   }
 
-  // With several trips in flight at once Dropbox will sometimes answer 429
-  // (too many calls), and the odd 5xx under load. Both are worth waiting out
-  // rather than failing the trip: Retry-After says how long when it is given,
-  // otherwise back off. Only the final response is read, so no body is lost.
+  // Worth waiting out rather than failing the trip. 429 and the odd 5xx are
+  // the obvious ones, but the one that actually bites here is a 409: Dropbox
+  // reports contention on a folder's write lock as too_many_write_operations
+  // with the tag in the body, not as a rate-limit status, and ten uploads
+  // into one folder at once run into it routinely. It clears on its own, so
+  // it is backed off and retried like the rest. Retry-After is honoured when
+  // sent. Only the final response is read, so no body is lost.
   const RETRY_STATUS = new Set([429, 500, 502, 503, 504]);
+  const RETRY_BODY_RE = /too_many_write_operations|too_many_requests|rate_?limit/i;
   async function withRetry(send, attempts) {
-    const max = attempts || 4;
-    let wait = 500;
+    const max = attempts || 7;
+    let wait = 600;
     for (let i = 1; ; i++) {
       const res = await send();
-      if (!RETRY_STATUS.has(res.status) || i >= max) return res;
+      let again = RETRY_STATUS.has(res.status);
+      if (!again && res.status === 409) {
+        try { again = RETRY_BODY_RE.test(await res.clone().text()); } catch (_) {}
+      }
+      if (!again || i >= max) return res;
       const after = parseFloat(res.headers.get("Retry-After") || "");
       await new Promise((r) => setTimeout(r, Number.isFinite(after) ? after * 1000 : wait));
-      wait = Math.min(wait * 2, 8000);
+      wait = Math.min(wait * 2, 10000);
     }
+  }
+
+  // Dropbox answers with a JSON blob that is no use on screen. Pull out the
+  // tag that matters and say it in a line; the whole thing stays on the error
+  // for anyone reading the console.
+  function dbxFriendlyError(status, body) {
+    const b = String(body || "");
+    if (RETRY_BODY_RE.test(b)) return "Dropbox is limiting writes just now. It kept retrying and gave up; try again in a minute.";
+    if (/insufficient_space/.test(b)) return "No space left in the Dropbox account.";
+    if (/missing_scope/.test(b)) return "missing_scope: " + b;
+    if (/not_found/.test(b)) return "Dropbox could not find that file.";
+    const m = b.match(/"\.tag"\s*:\s*"([a-z_]+)"/i);
+    if (m) return "Dropbox said " + m[1].replace(/_/g, " ") + " (" + status + ").";
+    return "Dropbox returned " + status + ".";
   }
 
   async function rpc(endpoint, body) {
@@ -163,7 +185,12 @@
       signOut();
       throw new Error("session expired, sign in again");
     }
-    if (!res.ok) throw new Error(endpoint + " " + res.status + ": " + (await res.text()));
+    if (!res.ok) {
+      const body = await res.text();
+      const e = new Error(dbxFriendlyError(res.status, body));
+      e.detail = endpoint + " " + res.status + ": " + body;
+      throw e;
+    }
     return res.json();
   }
 
@@ -236,7 +263,12 @@
       headers: { "Content-Type": "application/octet-stream" },
       body: blob,
     }));
-    if (!res.ok) throw new Error("upload " + path + " " + res.status + ": " + (await res.text()));
+    if (!res.ok) {
+      const body = await res.text();
+      const e = new Error(dbxFriendlyError(res.status, body));
+      e.detail = "upload " + path + " " + res.status + ": " + body;
+      throw e;
+    }
     return res.json().catch(() => ({}));
   }
 

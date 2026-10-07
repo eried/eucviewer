@@ -3337,7 +3337,8 @@ document.addEventListener("DOMContentLoaded", function () {
           const sb = main.querySelector("#dbx-do-sync");
           if (sb) { sb.disabled = false; sb.textContent = "Reconnect"; sb.onclick = () => connectDropbox(); }
         } else {
-          st.textContent = "Upload failed: " + msg;
+          st.textContent = msg;
+          st.title = (e && e.detail) || msg;
         }
       }
     }
@@ -3505,7 +3506,8 @@ document.addEventListener("DOMContentLoaded", function () {
         st.classList.add("dbx-err");
         st.textContent = /missing_scope/.test(msg)
           ? "Enable files.content.read in your Dropbox App Console, then reconnect."
-          : "Couldn't load from Dropbox: " + msg;
+          : msg;
+        st.title = (e && e.detail) || msg;
       }
     }
   }
