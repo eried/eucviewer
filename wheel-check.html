@@ -21,6 +21,7 @@ th { color: var(--dim); font-weight: 500; }
 td.n { font-variant-numeric: tabular-nums; }
 code { background: rgba(0,0,0,0.35); padding: 1px 5px; border-radius: 4px; font-size: 0.8rem; }
 .ok { color: #5fd38d; } .bad { color: #ff9a9a; } .warn { color: #ffd166; }
+p.ok, p.bad, p.warn { margin: 0; }
 .verdict { font-size: 0.92rem; padding: 12px 14px; border-radius: 9px; margin-bottom: 14px; border: 1px solid var(--line); }
 .verdict.ok { background: rgba(95,211,141,0.1); border-color: rgba(95,211,141,0.35); }
 .verdict.bad { background: rgba(255,154,154,0.1); border-color: rgba(255,154,154,0.35); }
@@ -125,6 +126,46 @@ function histTable(h, total) {
     }
   }
   html.push(`<section><h2>3. The files on Dropbox</h2>${dbxHtml}</section>`);
+
+  // Remember Dropbox's timestamp for every trip file, so a second visit can
+  // say which files were rewritten in between. That is the way to catch
+  // another tool, the phone app above all, putting its own copy back over an
+  // edit made here: run this, go and open the app, run it again.
+  const WATCH_KEY = "eucviewer-dbx-seen";
+  let watchHtml = "";
+  if (DS && DS.isAuthenticated && DS.isAuthenticated()) {
+    let seen = {};
+    try { seen = JSON.parse(localStorage.getItem(WATCH_KEY) || "{}"); } catch (_) {}
+    const listing = await DS.listTripFiles().catch(() => []);
+    const now = {};
+    const moved = [];
+    for (const f of listing) {
+      now[f.path] = f.modified || "";
+      const was = seen[f.path];
+      if (was && was !== now[f.path]) moved.push({ path: f.path, was, is: now[f.path] });
+    }
+    const first = !Object.keys(seen).length;
+    try { localStorage.setItem(WATCH_KEY, JSON.stringify(now)); } catch (_) {}
+    if (first) {
+      watchHtml = `<p class="muted">Noted the Dropbox timestamp of ${listing.length} files. ` +
+        `Open EUC Planet on the phone, let it sync, then load this page again: anything the app ` +
+        `rewrote will be listed here.</p>`;
+    } else if (!moved.length) {
+      watchHtml = `<p class="ok">None of the ${listing.length} files has been rewritten since this page ` +
+        `last looked. Nothing else is putting its own copy back.</p>`;
+    } else {
+      watchHtml = `<p class="bad">${moved.length} file${moved.length === 1 ? " has" : "s have"} been ` +
+        `rewritten on Dropbox since this page last looked. If you did not sync from the viewer in ` +
+        `between, something else did, and an edit made here would have been overwritten.</p>` +
+        '<table><tr><th>file</th><th>was</th><th>now</th></tr>' +
+        moved.slice(0, 40).map((m) => `<tr><td>${esc(m.path.split("/").pop())}</td>` +
+          `<td>${esc(m.was.slice(0, 19).replace("T", " "))}</td>` +
+          `<td>${esc(m.is.slice(0, 19).replace("T", " "))}</td></tr>`).join("") + "</table>";
+    }
+  } else {
+    watchHtml = '<p class="muted">Needs the Dropbox session to read the timestamps.</p>';
+  }
+  html.push(`<section><h2>4. Rewritten by anything else?</h2>${watchHtml}</section>`);
 
   // verdict
   let verdict = "";
