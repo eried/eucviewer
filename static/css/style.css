@@ -1681,6 +1681,15 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
     display: flex; justify-content: center; padding: 40px 0;
     opacity: 0; animation: dbx-fadein 0.25s ease 0.25s forwards;
 }
+/* The gap between the last file landing and the trips appearing on the map.
+   The dialog holds this instead of closing, so the page is never sitting
+   there looking idle and clickable while the worker is still parsing. */
+#dbx-sync-modal .dbx-opening {
+    display: flex; flex-direction: column; align-items: center; gap: 13px;
+    padding: 46px 0 52px;
+    opacity: 0; animation: dbx-fadein 0.25s ease forwards;
+}
+#dbx-sync-modal .dbx-opening-text { font-size: 0.84rem; color: rgba(224, 232, 240, 0.7); }
 #dbx-sync-modal .dbx-status { margin: 0 1.4rem 1.1rem; min-height: 1.1rem; font-size: 0.8rem; color: rgba(224, 232, 240, 0.6); }
 #dbx-sync-modal .dbx-status:empty { display: none; }
 #dbx-sync-modal .dbx-status code { background: rgba(0, 0, 0, 0.3); padding: 1px 6px; border-radius: 4px; font-size: 0.78rem; }

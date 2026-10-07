@@ -2420,6 +2420,17 @@ document.addEventListener("DOMContentLoaded", function () {
       list.querySelectorAll("input").forEach((c) => { c.checked = wanted.has(parseInt(c.dataset.idx)); });
       selWheel.value = "";
       refresh();
+      // Take the list to the first trip that was picked. Choosing a wheel from
+      // a library of a few hundred otherwise leaves you looking at whatever
+      // part of the list you happened to be on, with no sign of what got
+      // selected. Picking every trip lands on the first row, which reads as
+      // jumping to the top.
+      const first = list.querySelector("input:checked");
+      const row = first && first.closest(".tm-row");
+      if (row) {
+        const smooth = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        row.scrollIntoView({ block: "nearest", behavior: smooth ? "smooth" : "auto" });
+      }
     };
     // Archive marks the whole selection at once, the same flag the per-trip
     // menu sets. It toggles: if everything selected is already marked, this
@@ -3460,10 +3471,25 @@ document.addEventListener("DOMContentLoaded", function () {
         map[names[i]] = f.path;
       });
       const out = await zip.generateAsync({ type: "blob", compression: "STORE" });
-      closeSyncModal();
+      // Parsing a few hundred trips takes seconds, and the dialog used to shut
+      // the instant the last file came down, handing back a page that looked
+      // finished and took clicks while the worker was still going. The dialog
+      // stays up over that gap, saying what it is doing, and leaves once the
+      // trips are actually on the map.
+      main.innerHTML = '<div class="dbx-opening">'
+        + '<span class="dbx-spinner"></span>'
+        + '<span class="dbx-opening-text">Opening ' + files.length
+        + (files.length === 1 ? ' trip' : ' trips') + '\u2026</span>'
+        + '</div>';
       if (typeof window.eucViewerLoadFile === "function") {
-        window.eucViewerLoadFile(new File([out], "dropbox_new.zip", { type: "application/zip" }),
-          { append: true, dropboxMap: map, source: "dropbox" });
+        try {
+          await window.eucViewerLoadFile(new File([out], "dropbox_new.zip", { type: "application/zip" }),
+            { append: true, dropboxMap: map, source: "dropbox" });
+        } finally {
+          closeSyncModal();
+        }
+      } else {
+        closeSyncModal();
       }
     } catch (e) {
       eta.finish();
