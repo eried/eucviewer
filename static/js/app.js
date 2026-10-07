@@ -3538,21 +3538,37 @@ document.addEventListener("DOMContentLoaded", function () {
         // would bury someone else's edit.
         map[names[i]] = { path: f.path, rev: f.rev || "" };
       });
-      const out = await zip.generateAsync({ type: "blob", compression: "STORE" });
-      // Parsing a few hundred trips takes seconds, and the dialog used to shut
-      // the instant the last file came down, handing back a page that looked
-      // finished and took clicks while the worker was still going. The dialog
-      // stays up over that gap, saying what it is doing, and leaves once the
-      // trips are actually on the map.
+      // Bundling a few hundred files takes a moment of its own, so the notice
+      // goes up before it. Otherwise the dialog sits there showing a list with
+      // every row ticked and nothing happening, which reads as finished and
+      // stuck.
       main.innerHTML = '<div class="dbx-opening">'
         + '<span class="dbx-spinner"></span>'
         + '<span class="dbx-opening-text">Opening ' + files.length
         + (files.length === 1 ? ' trip' : ' trips') + '\u2026</span>'
         + '</div>';
+      await new Promise((r) => requestAnimationFrame(r));   // let it paint
+      const out = await zip.generateAsync({ type: "blob", compression: "STORE" });
       if (typeof window.eucViewerLoadFile === "function") {
         try {
-          await window.eucViewerLoadFile(new File([out], "dropbox_new.zip", { type: "application/zip" }),
+          // The dialog must not depend on this promise alone. Parsing resolves
+          // on a message from a shared worker, and a message that never comes
+          // would leave this up for ever with every trip already downloaded.
+          // So it closes on whichever happens first: the load finishing, the
+          // trips appearing on screen, or a last-resort timeout.
+          const loaded = window.eucViewerLoadFile(
+            new File([out], "dropbox_new.zip", { type: "application/zip" }),
             { append: true, dropboxMap: map, source: "dropbox" });
+          await Promise.race([
+            Promise.resolve(loaded).catch(() => {}),
+            new Promise((r) => {
+              const started = Date.now();
+              const poll = setInterval(() => {
+                const onScreen = document.querySelector("#trip-list .trip-item, #trip-list .trip-header");
+                if (onScreen || Date.now() - started > 60000) { clearInterval(poll); r(); }
+              }, 400);
+            }),
+          ]);
         } finally {
           closeSyncModal();
         }
