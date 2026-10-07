@@ -3155,13 +3155,15 @@ document.addEventListener("DOMContentLoaded", function () {
   const ETA_WARMUP_SECONDS = 3;
   const ETA_WARMUP_ITEMS = 10;
   const ETA_SMOOTHING = 0.3;    // weight of the newest reading
-  // A countdown in seconds is no use at the tail, where the honest thing to
-  // say is just that it is nearly over. The last two rungs are states rather
-  // than times, and "Almost ready" is the wording the parser already uses when
-  // it is finishing a load.
+  // The soft wordings have to mean what they say. "Nearly done" with half a
+  // minute to go is a small lie that the next half minute exposes, so they are
+  // kept for the last few seconds, and the stretch between is given a real
+  // figure rounded to ten seconds rather than a vague one. "Almost ready" is
+  // the wording the parser already uses while it finishes a load.
   function etaPhrase(sec) {
-    if (sec < 20) return "Almost ready";
-    if (sec < 45) return "Nearly done";
+    if (sec < 10) return "Almost ready";
+    if (sec < 20) return "Nearly done";
+    if (sec < 45) return "About " + (Math.round(sec / 10) * 10) + " seconds left";
     if (sec < 90) return "About a minute left";
     return "About " + Math.round(sec / 60) + " minutes left";
   }
@@ -3171,15 +3173,18 @@ document.addEventListener("DOMContentLoaded", function () {
   // same way twice, and the whole list is used before any of it comes round
   // again. Every line here is something the code or the phone app actually
   // does; none of it is filler.
+  // Each line stands on its own. They appear between readings of the clock,
+  // never next to each other, so one that opens with "it" has nothing to
+  // refer back to and reads as a fragment. Every line names its subject.
   const ETA_TIPS = [
-    "Trips live in Apps/EUC Planet/trips",
+    "Your trips live in Apps/EUC Planet/trips",
     "EUC Planet uploads a ride as soon as it is saved",
-    "It sweeps again on a timer, 15 minutes at least",
-    "Wheel and trip names ride inside the CSV itself",
-    "Edits reach Dropbox only when you Synchronize",
-    "A trip changed elsewhere is no longer overwritten",
-    "Files already cached cost no download next time",
-    "Archive moves a trip aside, it does not delete it",
+    "EUC Planet re-checks Dropbox every 15 min by default",
+    "Wheel and trip names are stored inside the CSV",
+    "Edits here reach Dropbox only when you Synchronize",
+    "A trip changed on Dropbox will not be overwritten",
+    "Trips already cached cost no download next time",
+    "Archive moves a trip aside, it is not deleted",
     "The build badge opens the storage explorer",
   ];
   const ETA_SWAP_MS = 5000;
