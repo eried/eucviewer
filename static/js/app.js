@@ -3007,11 +3007,14 @@ document.addEventListener("DOMContentLoaded", function () {
               `</div>` +
             `</div>`
           : `<button type="button" class="src-primary-btn dbx-sync-main" id="dbx-do-all">${syncMainLabel}</button>`)
-          // Nothing to send: say so where the button would be. An empty space
-          // leaves it ambiguous whether the viewer looked and found nothing or
-          // never looked, and that is the whole question when an edit seems to
-          // have gone missing.
-          : `<button type="button" class="src-primary-btn dbx-sync-idle" disabled title="Every trip loaded here matches its copy on Dropbox">Nothing to sync</button>`) +
+          // Nothing to send, and nothing to pull either: say so, because a
+          // dialog with no buttons at all leaves it ambiguous whether the
+          // viewer looked and found nothing or never looked, and that is the
+          // question being asked when an edit seems to have gone missing.
+          // With a Load button present there is already something to do, and
+          // a disabled one beside it would only be in the way.
+          : (remoteFiles.length ? ""
+            : `<button type="button" class="src-primary-btn dbx-sync-idle" disabled title="Every trip loaded here matches its copy on Dropbox">Nothing to sync</button>`)) +
         (remoteFiles.length ? `<button type="button" class="${upstream ? "src-secondary-btn" : "src-primary-btn"}" id="dbx-load-remote">Load ${remoteFiles.length} from Dropbox</button>` : "") +
       `</div></div>` +
       `<div class="dbx-status"></div>`;
