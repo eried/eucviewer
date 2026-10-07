@@ -1538,12 +1538,12 @@ document.addEventListener("DOMContentLoaded", function () {
         const m = pendingDropboxMap;
         pendingDropboxMap = null;
         for (const t of parsedTracks) {
-          const direct = m[t.name];
-          const fromCsv = m[t.name + ".csv"];
-          const fromXlsx = m[t.name + ".xlsx"];
-          const fromGpx = m[t.name + ".gpx"];
-          const path = direct || fromCsv || fromXlsx || fromGpx;
-          if (path) t.dropboxPath = path;
+          const hit = m[t.name] || m[t.name + ".csv"] || m[t.name + ".xlsx"] || m[t.name + ".gpx"];
+          if (!hit) continue;
+          // Older callers passed the path as a bare string.
+          if (typeof hit === "string") { t.dropboxPath = hit; continue; }
+          t.dropboxPath = hit.path;
+          if (hit.rev) t.dropboxRev = hit.rev;
         }
       }
 
@@ -3285,7 +3285,10 @@ document.addEventListener("DOMContentLoaded", function () {
           mode = "add";
         } else {
           path = t.dropboxPath; // rewrite the existing file in place
-          mode = "overwrite";
+          // Quote the version this copy came from when we know it, so Dropbox
+          // turns the write down if the file has been rewritten since. Without
+          // one there is nothing to compare, so it is a plain overwrite.
+          mode = t.dropboxRev ? { update: t.dropboxRev } : "overwrite";
         }
         const res = await DS.uploadFile(path, blob, mode);
         // The cached copy of this file is now the version before the edit, and
@@ -3305,6 +3308,8 @@ document.addEventListener("DOMContentLoaded", function () {
           }
         }
         if (isNew) t.dropboxPath = (res && (res.path_lower || res.path_display)) || path.toLowerCase();
+        // The copy here is now that version, so the next edit quotes this one.
+        if (res && res.rev) t.dropboxRev = res.rev;
         t._dirty = false;
         delete t._preEdit; // synced: current state is the new baseline
         const b = rowSyncBtn(keyOf.get(t)); if (b) b.innerHTML = "✓";
@@ -3469,7 +3474,10 @@ document.addEventListener("DOMContentLoaded", function () {
       eta.finish();
       files.forEach((f, i) => {
         zip.file(names[i], blobs[i]);
-        map[names[i]] = f.path;
+        // The rev travels with the path: it is the version this copy was taken
+        // from, and uploading quotes it back so Dropbox can refuse a write that
+        // would bury someone else's edit.
+        map[names[i]] = { path: f.path, rev: f.rev || "" };
       });
       const out = await zip.generateAsync({ type: "blob", compression: "STORE" });
       // Parsing a few hundred trips takes seconds, and the dialog used to shut

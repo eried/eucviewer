@@ -155,6 +155,7 @@
   // for anyone reading the console.
   function dbxFriendlyError(status, body) {
     const b = String(body || "");
+    if (/conflict/.test(b)) return "That trip changed on Dropbox after it was loaded here, so it was left alone. Load it again to pick up the newer copy.";
     if (RETRY_BODY_RE.test(b)) return "Dropbox is limiting writes just now. It kept retrying and gave up; try again in a minute.";
     if (/insufficient_space/.test(b)) return "No space left in the Dropbox account.";
     if (/missing_scope/.test(b)) return "missing_scope: " + b;
@@ -216,6 +217,13 @@
               name: ent.name,
               size: ent.size || 0,
               modified: ent.client_modified || ent.server_modified || "",
+              // When Dropbox itself last wrote the file. Nobody sends a
+              // client_modified, so the two normally agree, but only this one
+              // is guaranteed to move when something rewrites the file.
+              serverModified: ent.server_modified || "",
+              // The version this copy is. Handed back on upload so Dropbox can
+              // refuse the write if the file moved on in the meantime.
+              rev: ent.rev || "",
               contentHash: ent.content_hash || "",
             });
           }
@@ -253,9 +261,18 @@
   // presigned URL we POST the bytes straight to, so no Dropbox-API-Arg header
   // on content.dropboxapi.com (which some browsers/extensions block).
   // Needs the files.content.write scope; surfaces "missing_scope" if absent.
+  // `mode` is "add", "overwrite", or { update: rev } to mean "overwrite only
+  // if the file is still the version I started from". The last one is how
+  // Dropbox is told to settle a race itself: pass the rev the copy here was
+  // based on and it refuses the write when anything has rewritten the file
+  // since, rather than quietly dropping the other edit on the floor.
   async function uploadFile(path, blob, mode) {
     const m = mode || "add";
-    const commit_info = { path, mode: m, autorename: m !== "overwrite", mute: true };
+    const writeMode = (m && m.update)
+      ? { ".tag": "update", update: m.update }
+      : m;
+    const overwrites = m === "overwrite" || !!(m && m.update);
+    const commit_info = { path, mode: writeMode, autorename: !overwrites, mute: true };
     const meta = await rpc("/2/files/get_temporary_upload_link", { commit_info });
     if (!meta || !meta.link) throw new Error("no upload link for " + path);
     const res = await withRetry(() => fetch(meta.link, {
