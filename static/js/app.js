@@ -2764,6 +2764,26 @@ document.addEventListener("DOMContentLoaded", function () {
     });
     return dbxSyncRoot;
   }
+  // A bare spinner over the whole page, for the moments where something is
+  // working and no part of the page can say so. No text: these waits are a
+  // few seconds, and a label would only invite reading it.
+  let pageSpinnerEl = null;
+  function showPageSpinner() {
+    if (pageSpinnerEl) return;
+    pageSpinnerEl = document.createElement("div");
+    pageSpinnerEl.id = "page-spinner";
+    pageSpinnerEl.innerHTML = "<i></i>";
+    document.body.appendChild(pageSpinnerEl);
+    requestAnimationFrame(() => { if (pageSpinnerEl) pageSpinnerEl.classList.add("on"); });
+  }
+  function hidePageSpinner() {
+    if (!pageSpinnerEl) return;
+    const el = pageSpinnerEl;
+    pageSpinnerEl = null;
+    el.classList.remove("on");
+    setTimeout(() => el.remove(), 220);
+  }
+
   function closeSyncModal() { if (dbxSyncRoot) dbxSyncRoot.classList.add("hidden"); }
 
   // Connect from the sync dialog. Dropbox's OAuth redirect can't carry our
@@ -3543,24 +3563,20 @@ document.addEventListener("DOMContentLoaded", function () {
         // would bury someone else's edit.
         map[names[i]] = { path: f.path, rev: f.rev || "" };
       });
-      // Bundling a few hundred files takes a moment of its own, so the notice
-      // goes up before it. Otherwise the dialog sits there showing a list with
-      // every row ticked and nothing happening, which reads as finished and
-      // stuck.
-      main.innerHTML = '<div class="dbx-opening">'
-        + '<span class="dbx-spinner"></span>'
-        + '<span class="dbx-opening-text">Opening ' + files.length
-        + (files.length === 1 ? ' trip' : ' trips') + '\u2026</span>'
-        + '</div>';
+      // Hand over to a bare spinner across the page. Bundling and parsing take
+      // a few seconds and a Dropbox load appends, so the progress bar never
+      // comes up and the page would otherwise sit there looking idle. Keeping
+      // the dialog for it only made a second, differently sized window that
+      // did nothing.
+      closeSyncModal();
+      showPageSpinner();
       await new Promise((r) => requestAnimationFrame(r));   // let it paint
-      const out = await zip.generateAsync({ type: "blob", compression: "STORE" });
-      if (typeof window.eucViewerLoadFile === "function") {
-        try {
-          // The dialog must not depend on this promise alone. Parsing resolves
-          // on a message from a shared worker, and a message that never comes
-          // would leave this up for ever with every trip already downloaded.
-          // So it closes on whichever happens first: the load finishing, the
-          // trips appearing on screen, or a last-resort timeout.
+      try {
+        const out = await zip.generateAsync({ type: "blob", compression: "STORE" });
+        if (typeof window.eucViewerLoadFile === "function") {
+          // Not waiting on that promise alone: it settles on a message from a
+          // shared worker, and one that never arrives would leave the spinner
+          // turning for ever. Whichever comes first wins.
           const loaded = window.eucViewerLoadFile(
             new File([out], "dropbox_new.zip", { type: "application/zip" }),
             { append: true, dropboxMap: map, source: "dropbox" });
@@ -3574,11 +3590,9 @@ document.addEventListener("DOMContentLoaded", function () {
               }, 400);
             }),
           ]);
-        } finally {
-          closeSyncModal();
         }
-      } else {
-        closeSyncModal();
+      } finally {
+        hidePageSpinner();
       }
     } catch (e) {
       eta.finish();

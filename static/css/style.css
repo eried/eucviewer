@@ -1671,6 +1671,29 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
 /* Loading spinner. The open state fades a centred one in only if the load is
    slow (a fast one is replaced before the delay elapses, so nothing flashes). */
 @keyframes dbx-spin { to { transform: rotate(360deg); } }
+/* The handoff from the Dropbox dialog to the map. Bundling and parsing a few
+   hundred trips takes a few seconds, and the page has nothing to show in the
+   meantime because a Dropbox load appends and so never raises the progress
+   bar. This used to be a panel inside the dialog, which read as a second,
+   differently shaped dialog that did nothing. A plain spinner over the page
+   says the same thing without pretending to be a window. */
+#page-spinner {
+    position: fixed; inset: 0; z-index: 5000;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(6, 9, 14, 0.72);
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    opacity: 0; transition: opacity 0.2s ease;
+}
+#page-spinner.on { opacity: 1; }
+#page-spinner i {
+    display: block; box-sizing: border-box; width: 42px; height: 42px;
+    border: 3px solid rgba(255, 255, 255, 0.16); border-top-color: #4aa3ff;
+    border-radius: 50%; animation: dbx-spin 0.75s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+    #page-spinner i { animation-duration: 2.4s; }
+}
+
 @keyframes dbx-fadein { to { opacity: 1; } }
 #dbx-sync-modal .dbx-spinner {
     display: inline-block; box-sizing: border-box; width: 22px; height: 22px;
@@ -1682,19 +1705,6 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
     display: flex; justify-content: center; padding: 40px 0;
     opacity: 0; animation: dbx-fadein 0.25s ease 0.25s forwards;
 }
-/* The gap between the last file landing and the trips appearing on the map.
-   The dialog holds this instead of closing, so the page is never sitting
-   there looking idle and clickable while the worker is still parsing. */
-#dbx-sync-modal .dbx-opening {
-    display: flex; flex-direction: column; align-items: center; gap: 13px;
-    padding: 46px 0 52px;
-    opacity: 0; animation: dbx-fadein 0.25s ease forwards;
-}
-#dbx-sync-modal .dbx-opening-text { font-size: 0.84rem; color: rgba(224, 232, 240, 0.7); }
-/* An error here used to be the raw Dropbox JSON, which wrapped over a dozen
-   lines and shoved the card's whole layout around as it appeared. Two lines
-   at most now, the rest on hover, so the dialog keeps its shape whatever
-   comes back. */
 #dbx-sync-modal .dbx-status {
     margin: 0 1.4rem 1.1rem; min-height: 1.1rem; font-size: 0.8rem; color: rgba(224, 232, 240, 0.6);
     display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
