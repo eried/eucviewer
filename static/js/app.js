@@ -3006,7 +3006,12 @@ document.addEventListener("DOMContentLoaded", function () {
                 `<button type="button" class="dbx-sync-menu-item" id="dbx-do-archive">Archive ${arch}</button>` +
               `</div>` +
             `</div>`
-          : `<button type="button" class="src-primary-btn dbx-sync-main" id="dbx-do-all">${syncMainLabel}</button>`) : "") +
+          : `<button type="button" class="src-primary-btn dbx-sync-main" id="dbx-do-all">${syncMainLabel}</button>`)
+          // Nothing to send: say so where the button would be. An empty space
+          // leaves it ambiguous whether the viewer looked and found nothing or
+          // never looked, and that is the whole question when an edit seems to
+          // have gone missing.
+          : `<button type="button" class="src-primary-btn dbx-sync-idle" disabled title="Every trip loaded here matches its copy on Dropbox">Nothing to sync</button>`) +
         (remoteFiles.length ? `<button type="button" class="${upstream ? "src-secondary-btn" : "src-primary-btn"}" id="dbx-load-remote">Load ${remoteFiles.length} from Dropbox</button>` : "") +
       `</div></div>` +
       `<div class="dbx-status"></div>`;
