@@ -1639,9 +1639,13 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
 #dbx-sync-modal .dbx-sync-split { position: relative; display: inline-flex; }
 /* Single-line label: "Synchronize (3 to upload, 2 to archive)". Grows the
    button rather than wrapping the text; only the main half of a split flattens
-   its right corners against the caret. */
-#dbx-sync-modal .dbx-sync-main { gap: 0.35rem; white-space: nowrap; }
-#dbx-sync-modal .dbx-sync-split .dbx-sync-main {
+   its right corners against the caret.
+   Scoped to the button on purpose. The dialog's body container carries the
+   same class name, so an unscoped rule put white-space: nowrap on everything
+   inside it, and the sign-in line, which is a sentence, ran off the side of
+   the card on a phone instead of wrapping. */
+#dbx-sync-modal button.dbx-sync-main { gap: 0.35rem; white-space: nowrap; }
+#dbx-sync-modal .dbx-sync-split button.dbx-sync-main {
     border-top-right-radius: 0; border-bottom-right-radius: 0;
 }
 #dbx-sync-modal .dbx-sync-title { font-weight: 600; }
