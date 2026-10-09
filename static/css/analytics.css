@@ -1414,6 +1414,13 @@ body.weather-loaded .forensic-tag.weather-tag {
 }
 .cmd-opt.on { color: #eafff4; }
 .cmd-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* One line per option is right while there is room for one. On a phone the
+   longer options are sentences, and clipping one to "No model from trips
+   telemetry in t..." loses the half that matters, so down here they wrap
+   instead. */
+@media (max-width: 480px) {
+    .cmd-label { white-space: normal; overflow: visible; text-overflow: clip; }
+}
 /* Loaded profile row: two lines, plus a quiet forget control. */
 .cmd-opt.cmd-opt-2l { align-items: flex-start; }
 .cmd-opt.cmd-opt-2l .cmd-mark { margin-top: 1px; }
