@@ -178,6 +178,21 @@ document.addEventListener("DOMContentLoaded", function () {
     // native level makes Leaflet upscale the last real imagery instead.
     { maxZoom: 19, maxNativeZoom: 18, attribution: "Esri, Maxar, Earthstar Geographics" }
   );
+  // Satellite with road and place names on top, Esri's own "Imagery Hybrid"
+  // recipe on the same keyless host. Same layer as EUC Planet's
+  // SATELLITE_LABELS, so the app and the viewer offer the same map.
+  const esriRef = (name) => L.tileLayer(
+    "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/" + name + "/MapServer/tile/{z}/{y}/{x}",
+    { maxZoom: 19, maxNativeZoom: 18, attribution: "Esri, HERE, Garmin, © OpenStreetMap contributors" }
+  );
+  const satelliteLabelsLayer = L.layerGroup([
+    L.tileLayer(
+      "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+      { maxZoom: 19, maxNativeZoom: 18, attribution: "Esri, Maxar, Earthstar Geographics" }
+    ),
+    esriRef("World_Transportation"),
+    esriRef("World_Boundaries_and_Places"),
+  ]);
   // Map style is chosen in the #map-controls panel and persisted to localStorage.
   const MAP_LAYER_KEY = "dbb_map_layer";
   const BASE_STYLES = {
@@ -188,6 +203,7 @@ document.addEventListener("DOMContentLoaded", function () {
     voyager:   { layer: esriStreetsLayer, light: true,  label: "Streets" },
     cartodark: { layer: esriDarkLayer,    light: false, label: "Dark" },
     satellite: { layer: satelliteLayer, light: false, label: "Satellite" },
+    satlabels: { layer: satelliteLabelsLayer, light: false, label: "Satellite + labels" },
   };
   let selectedStyle = "satellite"; // default for new users
   try {
@@ -210,7 +226,7 @@ document.addEventListener("DOMContentLoaded", function () {
     if (savedTs === "normal" || savedTs === "neon" || savedTs === "dark") traceStyleUser = savedTs;
   } catch (_) {}
   function defaultTraceStyle(styleName) {
-    if (styleName === "satellite") return "normal";
+    if (styleName === "satellite" || styleName === "satlabels") return "normal";
     if (styleName === "cartodark") return "neon"; // dark basemap
     return "dark"; // light basemaps need the dark casing
   }
