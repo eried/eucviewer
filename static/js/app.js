@@ -203,7 +203,7 @@ document.addEventListener("DOMContentLoaded", function () {
     voyager:   { layer: esriStreetsLayer, light: true,  label: "Streets" },
     cartodark: { layer: esriDarkLayer,    light: false, label: "Dark" },
     satellite: { layer: satelliteLayer, light: false, label: "Satellite" },
-    satlabels: { layer: satelliteLabelsLayer, light: false, label: "Satellite + labels" },
+    satlabels: { layer: satelliteLabelsLayer, light: false, label: "Satellite hybrid" },
   };
   let selectedStyle = "satellite"; // default for new users
   try {
