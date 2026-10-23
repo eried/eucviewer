@@ -2528,8 +2528,13 @@ document.addEventListener("DOMContentLoaded", function () {
       const onDropbox = [...idxs].filter((i) => allTracks[i] && allTracks[i].dropboxPath).length;
       let msg = "Remove " + idxs.size + " trip(s) from the loaded library? The original files are not touched.";
       if (onDropbox) {
-        msg += "\n\n" + onDropbox + " of them are still on Dropbox, so the next sync will offer them back. "
-          + "Archive instead to move them out of /trips and have it stick.";
+        const one = onDropbox === 1;
+        const subject = onDropbox === idxs.size
+          ? (one ? "It is" : "They are")
+          : onDropbox + (one ? " of them is" : " of them are");
+        const them = one ? "it" : "them";
+        msg += "\n\n" + subject + " still on Dropbox, so the next sync will offer " + them + " back. "
+          + "Archive instead to move " + them + " out of /trips and have it stick.";
       }
       if (!window.confirm(msg)) return;
       const remaining = allTracks.filter((_, i) => !idxs.has(i));
