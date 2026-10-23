@@ -2042,6 +2042,12 @@ body.print-mode html {
     color: #1a1a1a !important;
 }
 body.print-mode::before { display: none !important; }
+/* Same overlays, hidden from the moment print-mode goes on, so the repaint
+   the print dialog snapshots never has one up. */
+body.print-mode #an-tooltip,
+body.print-mode .calc-canvas-tooltip,
+body.print-mode #calc-modal,
+body.print-mode #error-banner { display: none !important; }
 /* Ride labels link into the inspector by an index into this browser's own
    library, so they lead nowhere for anyone else. They print as plain text. */
 body.print-mode .ta-link-inline,
@@ -2163,6 +2169,14 @@ body.print-mode .anomaly-row .anom-peak { color: #000 !important; }
     .layout-toggle-btn,
     .adv-settings,
     #weather-status,
+    /* Floating overlays: a hover tooltip left up by the pointer sitting on a
+       chart when Print was pressed got printed over the chart it describes.
+       Everything else here is fixed-position chrome that would land on top of
+       the report the same way. */
+    #an-tooltip,
+    .calc-canvas-tooltip,
+    #calc-modal,
+    #error-banner,
     .weather-capsule { display: none !important; }
     #topbar { position: static; padding: 8px 16px; }
     body[data-layout="tabs"] [data-tab]:not(.tab-btn):not(.tab-active) { display: revert !important; }
