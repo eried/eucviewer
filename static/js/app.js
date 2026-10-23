@@ -3374,10 +3374,38 @@ document.addEventListener("DOMContentLoaded", function () {
   // awaited before the first error is rethrown, so nothing is left running
   // behind a failure.
   const DBX_PARALLEL = 10;
+  // A long run had no way out: every button in the dialog is disabled while it
+  // works, so a few hundred trips meant closing the tab or waiting. Stopping is
+  // cooperative and lands between files, never mid-upload, so what already
+  // reached Dropbox stays there and the runs report how far they got.
+  let dbxStopRequested = false;
+  // Swap the action row for a single Stop while a run is going. The row is
+  // rebuilt wholesale by renderSyncState when the run ends, so there is
+  // nothing to undo here.
+  function armStopButton(main, label) {
+    dbxStopRequested = false;
+    const row = main.querySelector(".src-action-row");
+    if (!row) return;
+    row.querySelectorAll("button").forEach((b) => { b.disabled = true; });
+    const stop = document.createElement("button");
+    stop.type = "button";
+    stop.className = "src-primary-btn dbx-stop-btn";
+    stop.textContent = "Stop";
+    stop.title = label || "Stop after the files already in flight finish";
+    stop.addEventListener("click", () => {
+      dbxStopRequested = true;
+      stop.disabled = true;
+      // The lanes already in the air still have to land, so do not claim it
+      // has stopped until they have.
+      stop.textContent = "Stopping…";
+    });
+    row.appendChild(stop);
+  }
   async function mapLimit(items, limit, fn) {
     let next = 0, firstErr = null;
     const worker = async () => {
       for (;;) {
+        if (dbxStopRequested) return;
         const i = next++;
         if (i >= items.length) return;
         try { await fn(items[i], i); }
@@ -3414,7 +3442,7 @@ document.addEventListener("DOMContentLoaded", function () {
       const k = dbxTrackKey(t); keyOf.set(t, k);
       const b = rowSyncBtn(k); if (b) { b.disabled = true; b.innerHTML = '<span class="dbx-spinner sm"></span>'; }
     });
-    main.querySelectorAll(".src-action-row button").forEach((b) => { b.disabled = true; });
+    armStopButton(main, "Stop uploading");
     const eta = makeEtaNotice(main, uploadTracks.length);
     try {
       // Scrolling follows the furthest row started, so with several in flight
@@ -3468,6 +3496,12 @@ document.addEventListener("DOMContentLoaded", function () {
       const s = await gatherSyncState();
       main.classList.remove("dbx-locked");
       renderSyncState(s, main);
+      // The ones it never reached keep their Changed flag, so they are still
+      // listed and Synchronize picks up where this left off.
+      if (dbxStopRequested) {
+        const st = main.querySelector(".dbx-status");
+        if (st) st.textContent = "Stopped. " + finished + " of " + uploadTracks.length + " uploaded.";
+      }
     } catch (e) {
       eta.finish();
       // Keep whatever did land. Every upload is attempted before the first
@@ -3512,10 +3546,12 @@ document.addEventListener("DOMContentLoaded", function () {
       const k = dbxTrackKey(t); keyOf.set(t, k);
       const b = rowArchBtn(k); if (b) { b.disabled = true; b.innerHTML = '<span class="dbx-spinner sm"></span>'; }
     });
-    main.querySelectorAll(".src-action-row button").forEach((b) => { b.disabled = true; });
     const removed = new Set();
     let err = null;
+    armStopButton(main, "Stop archiving");
+    let archived = 0;
     for (const t of archiveTracks) {
+      if (dbxStopRequested) break;
       const li = main.querySelector(`.dbx-row[data-key="${String(keyOf.get(t)).replace(/["\\]/g, "\\$&")}"]`);
       if (li) li.scrollIntoView({ block: "nearest" });
       try {
@@ -3532,6 +3568,7 @@ document.addEventListener("DOMContentLoaded", function () {
         if (!/not_found|from_lookup/i.test(msg)) { err = err || e; continue; }
       }
       removed.add(t);
+      archived++;
       const b = rowArchBtn(keyOf.get(t)); if (b) b.innerHTML = "✓";
     }
     // Apply whatever succeeded (partial failure keeps the un-moved ones).
@@ -3548,6 +3585,10 @@ document.addEventListener("DOMContentLoaded", function () {
     main.classList.remove("dbx-locked");
     const s = await gatherSyncState().catch(() => null);
     if (s) renderSyncState(s, main);
+    if (dbxStopRequested && !err) {
+      const st = main.querySelector(".dbx-status");
+      if (st) st.textContent = "Stopped. " + archived + " of " + archiveTracks.length + " archived.";
+    }
     if (err) {
       const st = main.querySelector(".dbx-status");
       const msg = String(err.message || err);
@@ -3569,7 +3610,7 @@ document.addEventListener("DOMContentLoaded", function () {
     main.classList.add("dbx-locked");
     const rowEl = (path) => main.querySelector(`.dbx-row[data-path="${String(path || "").replace(/["\\]/g, "\\$&")}"]`);
     files.forEach((f) => { const li = rowEl(f.path); const b = li && li.querySelector(".dbx-row-open"); if (b) { b.disabled = true; b.innerHTML = '<span class="dbx-spinner sm"></span>'; } });
-    main.querySelectorAll(".src-action-row button").forEach((b) => { b.disabled = true; });
+    armStopButton(main, "Stop loading");
     const eta = makeEtaNotice(main, files.length);
     try {
       const zip = new window.JSZip();
@@ -3619,13 +3660,28 @@ document.addEventListener("DOMContentLoaded", function () {
         eta.tick(++finished);
       });
       eta.finish();
+      // A stopped run leaves holes in blobs, and JSZip would be handed an
+      // undefined entry, so bundle only what actually landed.
+      let bundled = 0;
       files.forEach((f, i) => {
+        if (!blobs[i]) return;
+        bundled++;
         zip.file(names[i], blobs[i]);
         // The rev travels with the path: it is the version this copy was taken
         // from, and uploading quotes it back so Dropbox can refuse a write that
         // would bury someone else's edit.
         map[names[i]] = { path: f.path, rev: f.rev || "" };
       });
+      if (!bundled) {
+        // Stopped before a single file landed: stay in the dialog and say so
+        // rather than handing the viewer an empty bundle to parse.
+        main.classList.remove("dbx-locked");
+        const s0 = await gatherSyncState().catch(() => null);
+        if (s0) renderSyncState(s0, main);
+        const st0 = main.querySelector(".dbx-status");
+        if (st0) st0.textContent = "Stopped. Nothing was loaded.";
+        return;
+      }
       // Hand over to a bare spinner across the page. Bundling and parsing take
       // a few seconds and a Dropbox load appends, so the progress bar never
       // comes up and the page would otherwise sit there looking idle. Keeping
