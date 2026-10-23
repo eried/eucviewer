@@ -2042,6 +2042,15 @@ body.print-mode html {
     color: #1a1a1a !important;
 }
 body.print-mode::before { display: none !important; }
+/* Ride labels link into the inspector by an index into this browser's own
+   library, so they lead nowhere for anyone else. They print as plain text. */
+body.print-mode .ta-link-inline,
+body.print-mode .anom-link {
+    color: inherit !important;
+    text-decoration: none !important;
+    border-bottom: 0 !important;
+    cursor: default;
+}
 body.print-mode #topbar {
     background: #ffffff !important;
     border-bottom: 1px solid rgba(0, 0, 0, 0.15) !important;
@@ -2165,6 +2174,14 @@ body.print-mode .anomaly-row .anom-peak { color: #000 !important; }
     }
     .chart-section + .chart-section { break-before: page; }
     .anomalies-list { max-height: 300px; overflow: hidden; }
+    /* Nothing may look clickable on paper. Match the classes, not the tag:
+       the JS turns these anchors into plain spans before printing and the
+       link colour and dotted underline live on the class. */
+    a, .ta-link-inline, .anom-link {
+        color: inherit !important;
+        text-decoration: none !important;
+        border-bottom: 0 !important;
+    }
     @page {
         size: A4;
         margin: 12mm;

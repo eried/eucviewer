@@ -1632,9 +1632,45 @@
   // then open the browser print dialog. Pick "Save as PDF" in the dialog
   // for an exported report.
   const printBtn = document.getElementById("print-btn");
+
+  // The PDF takes its name from the page title, so every export used to land
+  // as the same "Wheel Forensics". Say what is actually in this one.
+  function printDocTitle() {
+    const n = dated.length;
+    const iso = (d) => { const t = new Date(d); return isNaN(t) ? "" : t.toISOString().slice(0, 10); };
+    const lo = n ? iso(dated[0].date) : "";
+    const hi = n ? iso(dated[n - 1].date) : "";
+    const parts = ["EUC wheel forensics"];
+    const sel = document.getElementById("scope-wheel");
+    if (sel && sel.value !== "-1" && sel.selectedOptions[0]) {
+      // Drop the trailing count the option carries: it is in the title already.
+      parts.push(sel.selectedOptions[0].textContent.replace(/\s*\(\d+\)\s*$/, "").trim());
+    }
+    if (lo && hi) parts.push(lo === hi ? lo : lo + " to " + hi);
+    parts.push(n + (n === 1 ? " trip" : " trips"));
+    return parts.join(" - ");
+  }
+
+  // Ride labels link into the inspector, which is useless on paper: the link
+  // carries an index into this browser's library, so nobody opening the PDF
+  // can follow it, and a printed anchor keeps that dead link inside the file.
+  // Swap them for plain text for the duration.
+  function flattenLinksForPrint() {
+    const swapped = [];
+    document.querySelectorAll("a.ta-link-inline, a.anom-link").forEach((a) => {
+      const span = document.createElement("span");
+      span.className = a.className;
+      span.textContent = a.textContent;
+      a.replaceWith(span);
+      swapped.push([span, a]);
+    });
+    return () => swapped.forEach(([span, a]) => { if (span.parentNode) span.replaceWith(a); });
+  }
+
   if (printBtn) {
     printBtn.addEventListener("click", () => {
       const prevLayout = document.body.getAttribute("data-layout");
+      const prevTitle = document.title;
       document.body.classList.add("print-mode");
       document.body.setAttribute("data-layout", "single");
       applyChartTheme(true);
@@ -1642,7 +1678,12 @@
       // Let the browser re-lay and paint before the print dialog grabs
       // its snapshot; some browsers race window.print() against layout.
       setTimeout(() => {
+        // After renderAll, so it catches the links this render produced.
+        const restoreLinks = flattenLinksForPrint();
+        document.title = printDocTitle();
         try { window.print(); } finally {
+          document.title = prevTitle;
+          restoreLinks();
           document.body.classList.remove("print-mode");
           if (prevLayout) document.body.setAttribute("data-layout", prevLayout);
           applyChartTheme(false);
