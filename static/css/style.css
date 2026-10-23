@@ -792,6 +792,16 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
     border-top: 1px solid rgba(0, 229, 255, 0.1);
 }
 .tm-actions select { flex: 1; }
+/* On a phone the four controls in one row squeezed the wheel select down to
+   about 50px, which showed "> W" and nothing else. Picking the wrong wheel in
+   a bulk assign is hard to notice, so the select gets the first row to itself
+   and the actions sit underneath: Set wheel on the left with its dropdown,
+   Archive and Remove pushed to the right. */
+@media (max-width: 900px) {
+    .tm-actions { flex-wrap: wrap; row-gap: 8px; }
+    #tm-wheel-target { flex: 1 1 100%; }
+    #tm-archive { margin-left: auto; }
+}
 .tm-actions button {
     background: rgba(0, 229, 255, 0.08);
     border: 1px solid rgba(0, 229, 255, 0.3);
