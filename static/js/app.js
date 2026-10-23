@@ -2358,6 +2358,12 @@ document.addEventListener("DOMContentLoaded", function () {
   // euc.world, share links), so wheels can be uniformed across all of
   // them: remove trips, or assign/clear the wheel on any selection. Edits
   // persist to the session and flow out through the normal exports.
+  // Archiving is a flag the Dropbox sync acts on: it moves the file into
+  // /trips/archive. A trip that never came from Dropbox has nothing to move,
+  // so marking it would strike it out forever with no sync to clear it. A
+  // trip already marked stays eligible so the mark can be taken back.
+  const canArchiveTrip = (t) => !!(t && (t.dropboxPath || t._archive));
+
   const tmRoot = document.getElementById("trip-manager");
   function tmClose() { if (tmRoot) tmRoot.classList.add("hidden"); }
   if (tmRoot) {
@@ -2418,9 +2424,17 @@ document.addEventListener("DOMContentLoaded", function () {
       applyBtn.disabled = !n;
       delBtn.disabled = !n;
       if (archBtn) {
-        archBtn.disabled = !n;
+        // Only the trips that came from Dropbox can be archived, same rule the
+        // per-trip menu uses. One manually added trip in the selection must not
+        // block the rest, so the button stays live while any of them qualify.
         const idxs = checkedIdx();
-        archBtn.textContent = (n && idxs.every((i) => allTracks[i]._archive)) ? "Unarchive" : "Archive";
+        const able = idxs.filter((i) => canArchiveTrip(allTracks[i]));
+        archBtn.disabled = !able.length;
+        archBtn.textContent = (able.length && able.every((i) => allTracks[i]._archive)) ? "Unarchive" : "Archive";
+        archBtn.title = able.length
+          ? "Mark for archive: Dropbox sync moves these into /trips/archive and drops them here"
+          : (n ? "These trips did not come from Dropbox, so there is nothing to archive"
+               : "Select trips to archive");
       }
       selAll.checked = n === allTracks.length;
     };
@@ -2454,17 +2468,20 @@ document.addEventListener("DOMContentLoaded", function () {
     // Dropbox until the sync dialog runs.
     archBtn.onclick = () => {
       const idxs = checkedIdx();
-      if (!idxs.length) return;
-      const allMarked = idxs.every((i) => allTracks[i]._archive);
-      for (const i of idxs) {
+      const able = idxs.filter((i) => canArchiveTrip(allTracks[i]));
+      if (!able.length) return;
+      const skipped = idxs.length - able.length;
+      const allMarked = able.every((i) => allTracks[i]._archive);
+      for (const i of able) {
         if (allMarked) delete allTracks[i]._archive;
         else allTracks[i]._archive = true;
       }
       saveTracks(allTracks);
       buildTripList();
-      appToast(allMarked
-        ? "Archive mark removed from " + idxs.length + "."
-        : idxs.length + " marked for archive. Run the Dropbox sync to move them.");
+      appToast((allMarked
+        ? "Archive mark removed from " + able.length + "."
+        : able.length + " marked for archive. Run the Dropbox sync to move them.")
+        + (skipped ? " " + skipped + " not on Dropbox, skipped." : ""));
       renderTripManager(new Set(idxs));
     };
     applyBtn.onclick = () => {
@@ -2504,7 +2521,17 @@ document.addEventListener("DOMContentLoaded", function () {
     delBtn.onclick = () => {
       const idxs = new Set(checkedIdx());
       if (!idxs.size) return;
-      if (!window.confirm("Remove " + idxs.size + " trip(s) from the loaded library? The original files are not touched.")) return;
+      // Removing is local only, so a trip whose file is still in /trips shows
+      // up as "not loaded here" on the next sync and the Load button offers it
+      // straight back. Easy to read as the removal not having worked, so say
+      // up front which action is the one that sticks.
+      const onDropbox = [...idxs].filter((i) => allTracks[i] && allTracks[i].dropboxPath).length;
+      let msg = "Remove " + idxs.size + " trip(s) from the loaded library? The original files are not touched.";
+      if (onDropbox) {
+        msg += "\n\n" + onDropbox + " of them are still on Dropbox, so the next sync will offer them back. "
+          + "Archive instead to move them out of /trips and have it stick.";
+      }
+      if (!window.confirm(msg)) return;
       const remaining = allTracks.filter((_, i) => !idxs.has(i));
       loadTracks(remaining, true);
       saveTracks(allTracks);
@@ -2567,7 +2594,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // Sharing needs a Dropbox origin; the archive toggle also shows for a trip
     // already marked (so it can be unmarked) even if it has no Dropbox path.
     const canShare = !!t.dropboxPath;
-    const canArchive = !!(t.dropboxPath || t._archive);
+    const canArchive = canArchiveTrip(t);
     m.innerHTML =
       `<a class="ttm-item" href="video.html?i=${i}" target="_blank" rel="noopener">${ICON.video}Make video</a>` +
       `<a class="ttm-item" href="inspector.html?i=${i}" target="_blank" rel="noopener">${ICON.inspect}Inspector</a>` +
