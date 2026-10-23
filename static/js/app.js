@@ -2690,7 +2690,14 @@ document.addEventListener("DOMContentLoaded", function () {
   function removeTrip(i) {
     const t = allTracks[i];
     if (!t) return;
-    if (!window.confirm("Remove this trip from the loaded library? The original file is not touched.")) return;
+    // Same trap as the batch Remove: the file stays in /trips, so the next
+    // sync lists it as not loaded here and offers it straight back.
+    let msg = "Remove this trip from the loaded library? The original file is not touched.";
+    if (t.dropboxPath) {
+      msg += "\n\nIt is still on Dropbox, so the next sync will offer it back. "
+        + "Archive instead to move it out of /trips and have it stick.";
+    }
+    if (!window.confirm(msg)) return;
     const remaining = allTracks.filter((_, idx) => idx !== i);
     loadTracks(remaining, true);
     saveTracks(allTracks);
