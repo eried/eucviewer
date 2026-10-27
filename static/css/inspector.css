@@ -532,9 +532,19 @@ body.sidebar-resizing * { cursor: col-resize !important; }
     overflow: hidden;
     touch-action: none;
 }
-.trim-spark { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+/* Comparing stacks two traces in here, so it needs the room for both. */
+body.cmp-on .trim-track { height: 80px; }
+.trim-spark {
+    position: absolute; inset: 0; z-index: 2;
+    width: 100%; height: 100%; display: block;
+    pointer-events: none;          /* the band underneath owns the drag */
+}
+/* The selection tint sits UNDER the traces. Over them, its cyan turned the
+   compared trip's orange a muddy green, which is exactly the colour that is
+   supposed to tell the two apart. The canvas is transparent between traces,
+   so the tint still reads as a highlighted region. */
 .trim-band {
-    position: absolute; top: 0; bottom: 0;
+    position: absolute; top: 0; bottom: 0; z-index: 1;
     background: rgba(0, 229, 255, 0.16);
     border-left: 1px solid rgba(0, 229, 255, 0.7);
     border-right: 1px solid rgba(0, 229, 255, 0.7);
@@ -542,7 +552,7 @@ body.sidebar-resizing * { cursor: col-resize !important; }
 }
 .trim-band.dragging { cursor: grabbing; }
 .trim-grip {
-    position: absolute; top: 0; bottom: 0;
+    position: absolute; top: 0; bottom: 0; z-index: 3;
     width: 18px; margin-left: -9px;
     cursor: col-resize;
     background: transparent;

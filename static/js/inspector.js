@@ -4111,6 +4111,45 @@
       return sec;
     }
 
+    // One band per trip, both on the primary trip's 0..duration axis so the
+    // band and grips line up with what is drawn underneath them. A compared
+    // trip is placed by its offset, which is the point: you can see where it
+    // starts and stops relative to this one, and trim to the overlap instead
+    // of guessing at it.
+    function sparkTrace(ctx, times, rows, offset, top, bandH, fill, line, w, dpr) {
+      const n = rows.length;
+      if (!n) return;
+      let mx = 0;
+      for (let i = 0; i < n; i++) { const v = rows[i][SPD]; if (typeof v === "number" && v > mx) mx = v; }
+      if (mx <= 0) mx = 1;
+      const bot = top + bandH;
+      const xs = [], ys = [];
+      for (let i = 0; i < n; i++) {
+        const v = rows[i][SPD];
+        if (typeof v !== "number") continue;
+        xs.push(((times[i] + offset) / (duration || 1)) * w);
+        ys.push(bot - (v / mx) * (bandH - 2 * dpr));
+      }
+      if (!xs.length) return;
+      ctx.beginPath();
+      ctx.moveTo(xs[0], bot);
+      for (let i = 0; i < xs.length; i++) ctx.lineTo(xs[i], ys[i]);
+      ctx.lineTo(xs[xs.length - 1], bot);
+      ctx.closePath();
+      ctx.fillStyle = fill;
+      ctx.fill();
+      // The fill is translucent, so inside the selection the band's tint
+      // shows through it and both traces drift toward the same colour. A
+      // solid top edge keeps each one its own colour wherever it sits.
+      ctx.beginPath();
+      for (let i = 0; i < xs.length; i++) {
+        if (i === 0) ctx.moveTo(xs[i], ys[i]); else ctx.lineTo(xs[i], ys[i]);
+      }
+      ctx.strokeStyle = line;
+      ctx.lineWidth = 1.2 * dpr;
+      ctx.stroke();
+    }
+
     function drawSpark() {
       const dpr = window.devicePixelRatio || 1;
       const w = Math.round(trackEl.clientWidth * dpr);
@@ -4119,22 +4158,26 @@
       spark.width = w; spark.height = h;
       const ctx = spark.getContext("2d");
       ctx.clearRect(0, 0, w, h);
-      const n = ts.length;
-      if (!n) return;
-      let mx = 0;
-      for (let i = 0; i < n; i++) { const v = ts[i][SPD]; if (typeof v === "number" && v > mx) mx = v; }
-      if (mx <= 0) mx = 1;
-      ctx.beginPath();
-      ctx.moveTo(0, h);
-      for (let i = 0; i < n; i++) {
-        const x = (sampleTimes[i] / (duration || 1)) * w;
-        const y = h - (ts[i][SPD] / mx) * (h - 2 * dpr);
-        ctx.lineTo(x, y);
+      if (!ts.length) return;
+      const bands = cmp ? 2 : 1;
+      const bandH = h / bands;
+      sparkTrace(ctx, sampleTimes, ts, 0, 0, bandH, "rgba(0, 229, 255, 0.18)", "#00e5ff", w, dpr);
+      if (cmp) {
+        sparkTrace(ctx, cmp.times, cmp.rows, cmp.offset, bandH, bandH,
+                   "rgba(255, 158, 64, 0.20)", CMP_COLOR, w, dpr);
+        ctx.save();
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.10)";
+        ctx.lineWidth = 1 * dpr;
+        ctx.beginPath(); ctx.moveTo(0, bandH); ctx.lineTo(w, bandH); ctx.stroke();
+        ctx.font = "700 " + (9 * dpr) + "px ui-sans-serif, system-ui, sans-serif";
+        ctx.textBaseline = "top";
+        ctx.textAlign = "right";
+        ctx.fillStyle = "#00e5ff";
+        ctx.fillText("A", w - 4 * dpr, 2 * dpr);
+        ctx.fillStyle = CMP_COLOR;
+        ctx.fillText("B", w - 4 * dpr, bandH + 2 * dpr);
+        ctx.restore();
       }
-      ctx.lineTo(w, h);
-      ctx.closePath();
-      ctx.fillStyle = "rgba(0, 229, 255, 0.18)";
-      ctx.fill();
     }
 
     function render() {
@@ -4239,7 +4282,14 @@
       if (e.key === "Escape" && !dialog.classList.contains("hidden")) close();
     });
 
-    document.getElementById("trim-reset").addEventListener("click", () => setPending(0, duration));
+    // Reset is an action, not a pending edit: it puts the whole trip back and
+    // closes, because there is nothing left to adjust once the section is the
+    // entire trip.
+    document.getElementById("trim-reset").addEventListener("click", () => {
+      setPending(0, duration);
+      setView(0, duration);
+      close();
+    });
     document.getElementById("trim-apply").addEventListener("click", () => {
       setView(a, b);
       close();
