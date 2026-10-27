@@ -1623,7 +1623,6 @@
 
   function makeCombinedGraph(def) {
     const chartsRoot = document.getElementById("charts");
-    const resizeEl = document.getElementById("sidebar-resize");
     const block = makeEl("div", "chart-block combined-chart");
     block.dataset.key = def.id;
     const head = makeEl("div", "chart-head");
@@ -1635,7 +1634,7 @@
     const canvas = document.createElement("canvas");
     body.appendChild(canvas);
     block.append(head, legend, body);
-    chartsRoot.insertBefore(block, resizeEl);
+    chartsRoot.appendChild(block);
 
     const cg = { id: def.id, name: def.name, block, canvas, legend, head, collapsed: false, metricKeys: (def.metrics || []).slice() };
     cg.selected = () => cg.metricKeys.map((k) => CUSTOM_AVAIL.find((a) => a.key === k)).filter(Boolean);
@@ -3503,7 +3502,6 @@
   // is the only editor; the graphs themselves just render.
   (function chartLayoutManager() {
     const chartsRoot = document.getElementById("charts");
-    const resizeEl = document.getElementById("sidebar-resize");
     const dialog = document.getElementById("charts-dialog");
     const emptyEl = document.getElementById("charts-empty");
     if (!chartsRoot || !dialog) return;
@@ -3566,7 +3564,7 @@
 
     function apply() {
       rebuildCombined();
-      layout.order.forEach((k) => { const b = chartsRoot.querySelector(`.chart-block[data-key="${k}"]`); if (b) chartsRoot.insertBefore(b, resizeEl); });
+      layout.order.forEach((k) => { const b = chartsRoot.querySelector(`.chart-block[data-key="${k}"]`); if (b) chartsRoot.appendChild(b); });
       chartsRoot.querySelectorAll(".chart-block").forEach((b) => { if (b.querySelector(".chart-head")) b.classList.toggle("chart-hidden", layout.hidden.includes(b.dataset.key)); });
       resizeCharts();
       updateEmptyState();
@@ -4547,48 +4545,79 @@
   attachZoomHandleDrag(zoomHandleA, true);
   attachZoomHandleDrag(zoomHandleB, false);
 
-  // Sidebar resize. Drag handle on the left edge of the charts column.
-  // We drive a CSS variable on #stage so the grid track itself reflows;
-  // no inline width on #charts means the flex/scroll behaviour inside is
-  // unaffected.
+  // Sidebar resize. Drag handle on the boundary between map and graphs.
+  // We drive a CSS variable on #stage so the grid track itself reflows; no
+  // inline width on #charts means the flex/scroll behaviour inside is
+  // unaffected, and the handle reads the same variable to find the edge.
   (function setupSidebarResize() {
     const STORAGE_KEY = "inspector-sidebar-w";
+    const DEFAULT_W = 360;
     const stage = document.getElementById("stage");
-    function applyW(w) {
-      const cap = Math.min(700, Math.floor(window.innerWidth * 0.6));
-      w = Math.max(240, Math.min(cap, w));
+    // Narrow enough to still read, wide enough to leave the map a view.
+    function limits() {
+      const cap = Math.min(900, Math.floor(window.innerWidth * 0.6));
+      return { min: Math.min(240, cap), max: cap };
+    }
+    function applyW(w, store) {
+      const { min, max } = limits();
+      w = Math.round(Math.max(min, Math.min(max, w)));
       stage.style.setProperty("--charts-w", w + "px");
-      try { localStorage.setItem(STORAGE_KEY, String(w)); } catch (_) {}
+      if (store !== false) {
+        try { localStorage.setItem(STORAGE_KEY, String(w)); } catch (_) {}
+      }
       requestAnimationFrame(() => {
         resizeCharts();
         if (typeof map !== "undefined" && map && typeof map.resize === "function") map.resize();
       });
+      return w;
+    }
+    function current() {
+      const v = parseInt(stage.style.getPropertyValue("--charts-w"), 10);
+      return v > 0 ? v : chartsAside.getBoundingClientRect().width || DEFAULT_W;
     }
     try {
       const stored = parseInt(localStorage.getItem(STORAGE_KEY) || "", 10);
-      if (stored && stored > 0) applyW(stored);
+      if (stored && stored > 0) applyW(stored, false);
     } catch (_) {}
-    let dragging = false;
+    // A width that fitted a wide window would eat a narrow one, so the
+    // stored value is re-clamped rather than written over: widen the window
+    // again and the graphs go back to the size that was asked for.
+    window.addEventListener("resize", () => {
+      const { min, max } = limits();
+      const w = current();
+      let want = w;
+      try {
+        const stored = parseInt(localStorage.getItem(STORAGE_KEY) || "", 10);
+        if (stored > 0) want = stored;
+      } catch (_) {}
+      const clamped = Math.max(min, Math.min(max, want));
+      if (clamped !== w) applyW(clamped, false);
+    });
     let startX = 0;
     let startW = 0;
-    sidebarResize.addEventListener("mousedown", (e) => {
-      dragging = true;
+    sidebarResize.addEventListener("pointerdown", (e) => {
+      if (e.button !== undefined && e.button !== 0) return;
       startX = e.clientX;
       startW = chartsAside.getBoundingClientRect().width;
       document.body.classList.add("sidebar-resizing");
+      // Capture keeps the drag alive past the window edge and over the
+      // map canvas, which otherwise swallows the move events.
+      try { sidebarResize.setPointerCapture(e.pointerId); } catch (_) {}
       e.preventDefault();
     });
-    window.addEventListener("mousemove", (e) => {
-      if (!dragging) return;
-      // Sidebar is on the right edge; dragging left widens it.
+    sidebarResize.addEventListener("pointermove", (e) => {
+      if (!document.body.classList.contains("sidebar-resizing")) return;
+      // The column is on the right edge, so dragging left widens it.
       applyW(startW + (startX - e.clientX));
     });
-    window.addEventListener("mouseup", () => {
-      if (!dragging) return;
-      dragging = false;
+    const endDrag = (e) => {
+      if (!document.body.classList.contains("sidebar-resizing")) return;
       document.body.classList.remove("sidebar-resizing");
-    });
-    sidebarResize.addEventListener("dblclick", () => applyW(360));
+      try { sidebarResize.releasePointerCapture(e.pointerId); } catch (_) {}
+    };
+    sidebarResize.addEventListener("pointerup", endDrag);
+    sidebarResize.addEventListener("pointercancel", endDrag);
+    sidebarResize.addEventListener("dblclick", () => applyW(DEFAULT_W));
   })();
 
   refreshSectionUi();

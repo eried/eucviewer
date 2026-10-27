@@ -6,7 +6,7 @@
     <title>EUC Planet Trip Viewer</title>
     <link rel="icon" href="static/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="static/css/style.css?v=114" />
+    <link rel="stylesheet" href="static/css/style.css?v=117" />
     <script type="text/javascript">
         (function(c,l,a,r,i,t,y){
             c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
@@ -140,6 +140,9 @@
 
     <div id="trip-panel-clip">
         <div id="trip-panel" class="hidden">
+            <!-- Drag the seam to widen the panel. Only there while it is open:
+                 closed, it would sit on top of the tab that opens it. -->
+            <div id="panel-resize" title="Drag to resize the panel. Double-click to reset."><span></span></div>
             <div id="panel-tab"><span id="panel-tab-text">Trip Explorer</span></div>
             <div id="panel-body">
                 <div id="panel-header"></div>
@@ -208,7 +211,7 @@
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-    <script src="static/js/app.js?v=213"></script>
+    <script src="static/js/app.js?v=216"></script>
     <script src="static/js/dropbox-source.js?v=12"></script>
     <script src="static/js/source-hints.js?v=40"></script>
 </body>

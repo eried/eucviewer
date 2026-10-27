@@ -6,7 +6,7 @@
     <title>Trip Inspector - EUC Planet</title>
     <link rel="icon" href="static/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
-    <link rel="stylesheet" href="static/css/inspector.css?v=64" />
+    <link rel="stylesheet" href="static/css/inspector.css?v=67" />
     <script type="text/javascript">
         (function(c,l,a,r,i,t,y){
             c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
@@ -222,9 +222,12 @@
                 <div class="chart-block" data-key="currentavg" data-default-hidden="1"><div class="chart-body"><canvas></canvas></div></div>
                 <div class="chart-block" data-key="pwmavg" data-default-hidden="1"><div class="chart-body"><canvas></canvas></div></div>
                 <div class="chart-block" data-key="batterysoc" data-default-hidden="1"><div class="chart-body"><canvas></canvas></div></div>
-                <!-- Combined graphs are created dynamically before this marker. -->
-                <div id="sidebar-resize" title="Drag to resize charts"></div>
             </aside>
+
+            <!-- Drag handle on the boundary between the map and the graphs.
+                 It sits on #stage, not inside #charts: that column scrolls,
+                 and a handle parked in it slid away with the content. -->
+            <div id="sidebar-resize" title="Drag to resize the graphs. Double-click to reset."><span></span></div>
         </main>
 
         <footer id="playback">
@@ -407,6 +410,6 @@
     </div>
 
     <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-    <script src="static/js/inspector.js?v=132"></script>
+    <script src="static/js/inspector.js?v=134"></script>
 </body>
 </html>

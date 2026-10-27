@@ -5882,14 +5882,15 @@ document.addEventListener("DOMContentLoaded", function () {
   // window and snap without animation if the write didn't land.
   function setPanelOpen(open) {
     panel.classList.toggle("open", open);
-    const target = open ? "translateX(0px)" : "translateX(320px)";
+    document.body.classList.toggle("panel-open", open);
+    const target = open ? "translateX(0px)" : "translateX(" + panelWidth() + "px)";
     panel.style.transform = target;
     clearTimeout(setPanelOpen._verify);
     setPanelOpen._verify = setTimeout(() => {
       // Compare the RENDERED position, not computed style: one wedge mode
       // freezes computed at the old value, the other updates computed but
       // never repaints. The rect catches both.
-      const want = open ? 0 : 320;
+      const want = open ? 0 : panelWidth();
       const base = window.innerWidth - panel.offsetWidth;
       const gotOffset = panel.getBoundingClientRect().left - base;
       if (Math.abs(gotOffset - want) > 4) {
@@ -5909,6 +5910,82 @@ document.addEventListener("DOMContentLoaded", function () {
   panelTab.addEventListener("click", () => {
     setPanelOpen(!panel.classList.contains("open"));
   });
+
+  // --- Panel resize. One variable drives the body's width and the distance
+  // the panel slides when it closes, so the two can never disagree.
+  const PANEL_W_KEY = "dbb_panel_w";
+  const PANEL_W_DEFAULT = 320;
+  function panelLimits() {
+    // Leave the map at least 40% of the window. The default width is the
+    // floor of that cap, not its victim: on a phone 60% is narrower than
+    // the panel has always been, and a resize (every URL-bar nudge fires
+    // one) must not shrink it below what it was built for.
+    const cap = Math.max(PANEL_W_DEFAULT, Math.min(640, Math.floor(window.innerWidth * 0.6)));
+    return { min: Math.min(280, cap), max: cap };
+  }
+  function panelWidth() {
+    const v = parseInt(document.documentElement.style.getPropertyValue("--panel-w"), 10);
+    return v > 0 ? v : PANEL_W_DEFAULT;
+  }
+  function setPanelWidth(w, store) {
+    const { min, max } = panelLimits();
+    w = Math.round(Math.max(min, Math.min(max, w)));
+    document.documentElement.style.setProperty("--panel-w", w + "px");
+    // The closed panel's parked position is written inline, so it has to
+    // be rewritten here or the next close would use the old width.
+    if (!panel.classList.contains("open")) panel.style.transform = "translateX(" + w + "px)";
+    if (store !== false) {
+      try { localStorage.setItem(PANEL_W_KEY, String(w)); } catch (_) {}
+    }
+    return w;
+  }
+  (function setupPanelResize() {
+    const handle = document.getElementById("panel-resize");
+    if (!handle) return;
+    try {
+      const stored = parseInt(localStorage.getItem(PANEL_W_KEY) || "", 10);
+      if (stored > 0) setPanelWidth(stored, false);
+    } catch (_) {}
+    // A width that fitted a wide window would swallow a narrow one, so the
+    // stored value is re-clamped rather than overwritten: widen the window
+    // again and the panel goes back to the size that was asked for.
+    window.addEventListener("resize", () => {
+      const { min, max } = panelLimits();
+      const w = panelWidth();
+      let want = w;
+      try {
+        const stored = parseInt(localStorage.getItem(PANEL_W_KEY) || "", 10);
+        if (stored > 0) want = stored;
+      } catch (_) {}
+      const clamped = Math.max(min, Math.min(max, want));
+      if (clamped !== w) setPanelWidth(clamped, false);
+    });
+    let startX = 0;
+    let startW = 0;
+    handle.addEventListener("pointerdown", (e) => {
+      if (e.button !== undefined && e.button !== 0) return;
+      startX = e.clientX;
+      startW = panelWidth();
+      document.body.classList.add("panel-resizing");
+      // Capture keeps the drag alive over the map, which otherwise eats
+      // the move events as a pan.
+      try { handle.setPointerCapture(e.pointerId); } catch (_) {}
+      e.preventDefault();
+    });
+    handle.addEventListener("pointermove", (e) => {
+      if (!document.body.classList.contains("panel-resizing")) return;
+      // The panel is on the right edge, so dragging left widens it.
+      setPanelWidth(startW + (startX - e.clientX));
+    });
+    const endDrag = (e) => {
+      if (!document.body.classList.contains("panel-resizing")) return;
+      document.body.classList.remove("panel-resizing");
+      try { handle.releasePointerCapture(e.pointerId); } catch (_) {}
+    };
+    handle.addEventListener("pointerup", endDrag);
+    handle.addEventListener("pointercancel", endDrag);
+    handle.addEventListener("dblclick", () => setPanelWidth(PANEL_W_DEFAULT));
+  })();
 
   fileInput.addEventListener("change", (e) => {
     if (e.target.files[0]) handleFile(e.target.files[0]);

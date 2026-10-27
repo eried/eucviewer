@@ -552,8 +552,13 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
     border-radius: 16px;
 }
 
+/* Panel width, dragged by #panel-resize. It lives on the root because the
+   body's width, the distance the closed panel slides and the build badge's
+   idea of where the map's centre is all follow from it. */
+:root { --panel-w: 320px; }
+
 /* Trip panel. The clip wrapper is load-bearing: the closed panel's
-   translateX(320px) hangs past the right screen edge, and Android Chrome
+   translateX hangs past the right screen edge, and Android Chrome
    grows the LAYOUT viewport to contain transformed overflow (root
    overflow rules don't stop it). That inflated viewport let the visual
    viewport pan into never-painted white space. Clipping at a fixed
@@ -575,7 +580,7 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
     z-index: 800;
     display: flex;
     transition: transform 0.3s ease;
-    transform: translateX(320px);
+    transform: translateX(var(--panel-w));
     /* Pre-promote the layer: the backdrop-filter children make Chromium
        re-rasterize on the first transform animation, which can flash a
        white mis-painted frame and overshoot before correcting. */
@@ -583,6 +588,42 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
 }
 #trip-panel.hidden { display: none; }
 #trip-panel.open { transform: translateX(0); }
+
+/* Resize handle on the seam between the map and the panel. Closed, the
+   panel is parked over its own tab, so the handle is only there while the
+   panel is open; the tab keeps its whole surface for opening and closing. */
+#panel-resize {
+    position: absolute;
+    left: -7px;
+    top: 0;
+    bottom: 0;
+    width: 10px;
+    z-index: 2;
+    cursor: col-resize;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    transition: background 0.18s;
+    touch-action: none;
+}
+#trip-panel.open #panel-resize { display: flex; }
+#panel-resize span {
+    width: 3px;
+    height: 30px;
+    border-radius: 2px;
+    background: rgba(0, 229, 255, 0.5);
+    transition: background 0.18s, height 0.18s;
+}
+#panel-resize:hover span,
+body.panel-resizing #panel-resize span { background: #00e5ff; height: 44px; }
+#panel-resize:hover,
+body.panel-resizing #panel-resize { background: rgba(0, 229, 255, 0.18); }
+body.panel-resizing { user-select: none; cursor: col-resize; }
+body.panel-resizing * { cursor: col-resize !important; }
+/* The slide is an animation; a drag is not, and the panel must not lag
+   the pointer by 0.3 s while being dragged. */
+body.panel-resizing #trip-panel { transition: none; }
 
 /* Vertical tab on the left edge of the panel */
 #panel-tab {
@@ -612,7 +653,7 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
 
 /* Panel body */
 #panel-body {
-    width: 320px;
+    width: var(--panel-w, 320px);
     flex-shrink: 0;
     background: rgba(10, 10, 15, 0.92);
     backdrop-filter: blur(12px);
@@ -1805,6 +1846,7 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
     bottom: 8px;
     left: 50%;
     transform: translateX(-50%);
+    transition: left 0.3s ease;
     /* Below #trip-panel-clip (800): the expanded panel slides OVER this
        badge; on phones it used to sit on top of the trip list. */
     z-index: 700;
@@ -1827,6 +1869,13 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
    its blurred black. Lift the footer above it only while the overlay is
    up, so the phone trip panel (z 800) still slides over it in normal use. */
 #upload-overlay:not(.hidden) ~ #page-footer { z-index: 1010; }
+/* With room for both, the badge centres on the map rather than on the
+   window, so a wide panel stops cutting through it. Desktop only: on a
+   phone the panel is most of the screen and there is nowhere to move to,
+   which is why it is allowed to cover the badge there. */
+@media (min-width: 901px) {
+    body.panel-open #page-footer { left: calc(50% - (var(--panel-w) + 32px) / 2); }
+}
 /* Narrow phones: icon-only GitHub link so the build date keeps one line */
 @media (max-width: 480px) {
     #page-footer { gap: 8px; }
@@ -1836,6 +1885,10 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
 /* Phones: backdrop blur is a mobile-GPU tax that can wedge the panel's
    slide into stale pixels; solid backgrounds keep the compositor honest. */
 @media (max-width: 700px) {
+    /* The panel is most of the screen here and cannot usefully be made
+       wider, so the handle goes rather than sit on the tab's edge taking
+       touches meant for it. */
+    #trip-panel.open #panel-resize { display: none; }
     #panel-tab, #panel-body { backdrop-filter: none; }
     #panel-body { background: rgba(10, 10, 15, 0.97); }
     #panel-tab { background: rgba(10, 10, 15, 0.94); }

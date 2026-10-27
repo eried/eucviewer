@@ -317,6 +317,7 @@ html, body {
     /* --charts-w is updated by the sidebar resize drag handle. */
     grid-template-columns: 1fr var(--charts-w, 360px);
     min-height: 0;
+    position: relative;   /* anchor for #sidebar-resize */
 }
 
 #map {
@@ -358,16 +359,35 @@ html, body {
     padding: 6px;
     gap: 6px;
 }
+/* Sits on the column boundary by reading the same variable the grid track
+   does, so it follows the edge without being inside the scrolling column. */
 #sidebar-resize {
     position: absolute;
-    left: -3px;
     top: 0;
     bottom: 0;
-    width: 6px;
+    right: calc(var(--charts-w, 360px) - 4px);
+    width: 9px;
     cursor: col-resize;
-    z-index: 30;
+    z-index: 31;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     background: transparent;
     transition: background 0.18s;
+    touch-action: none;
+}
+/* The grip. Dim enough to sit over the map unnoticed, obvious on approach. */
+#sidebar-resize span {
+    width: 3px;
+    height: 30px;
+    border-radius: 2px;
+    background: rgba(0, 229, 255, 0.5);
+    transition: background 0.18s, height 0.18s;
+}
+#sidebar-resize:hover span,
+body.sidebar-resizing #sidebar-resize span {
+    background: #00e5ff;
+    height: 44px;
 }
 #sidebar-resize:hover,
 body.sidebar-resizing #sidebar-resize { background: rgba(0, 229, 255, 0.18); }
@@ -502,10 +522,14 @@ body.sidebar-resizing * { cursor: col-resize !important; }
 .cc-val .ch-unit { font-weight: 500; color: #9aa0a6; margin-left: 2px; font-size: 0.82em; }
 .cc-empty { font-size: 0.66rem; color: #6e6e78; }
 
-/* Charts toolbar with the Customize button. */
+/* Charts toolbar with the Customize button. It wraps rather than overflow:
+   dragged down to its narrowest the column cannot hold the title and four
+   controls on one line, and the buttons that did not fit used to sit
+   outside the panel behind a scrollbar. */
 .charts-toolbar {
     position: sticky; top: -6px; z-index: 5;
     display: flex; align-items: center; gap: 8px;
+    flex-wrap: wrap; row-gap: 5px; justify-content: flex-end;
     margin: -2px -2px 0;
     padding: 4px 6px 5px;
     background: rgba(10, 10, 15, 0.98);
@@ -1472,6 +1496,8 @@ body.cmp-on .trim-track { height: 80px; }
 @media (max-width: 900px) {
     #stage { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
     #charts { max-height: 40vh; border-left: none; border-top: 1px solid rgba(0, 229, 255, 0.12); }
+    /* Graphs sit under the map here, so there is no vertical edge to drag. */
+    #sidebar-resize { display: none; }
 
     #dash { padding: 8px 12px; }
     /* A trip that logs torque has a stats line wider than the phone. The
