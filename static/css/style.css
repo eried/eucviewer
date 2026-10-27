@@ -981,6 +981,24 @@ body.panel-resizing #trip-panel { transition: none; }
     padding: 4px 6px;
     color-scheme: dark;
 }
+/* One wheel, or none recorded: nothing to choose, so the row names the
+   wheel instead of offering a disabled select, which keeps its chevron and
+   goes on looking like a list with something behind it. */
+.wheel-filter-row .wheel-only {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: #6fc3d6;
+    font-size: 0.8rem;
+    white-space: nowrap;
+    overflow: hidden;
+}
+.wheel-filter-row .wheel-only svg { flex: 0 0 auto; }
+.wheel-filter-row .wheel-only span { overflow: hidden; text-overflow: ellipsis; }
+.wheel-filter-row .wheel-unset { color: #7a8894; }
+
 .all-trips-row {
     display: flex;
     align-items: center;

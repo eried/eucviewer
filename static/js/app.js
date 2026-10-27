@@ -4285,16 +4285,18 @@ document.addEventListener("DOMContentLoaded", function () {
     // One row: wheel selector on the left, Forensics on the right.
     // Forensics opens in a new tab (viewer state survives) scoped to the
     // selected wheel; "All wheels" opens the whole history. A library
-    // with a single wheel, or none recorded at all, gets a disabled
-    // selector that just states what's loaded, and Forensics opens
-    // unscoped (it IS the whole history then).
+    // with a single wheel, or none recorded at all, has nothing to pick,
+    // so the row states what's loaded and Forensics opens unscoped (it IS
+    // the whole history then).
     const wheelGroups = computeWheelGroups();
     let forensicsWheel = null; // null = whole library
     const wheelRow = document.createElement("div");
     wheelRow.className = "wheel-filter-row";
-    const wheelSel = document.createElement("select");
-    wheelSel.className = "wheel-filter";
+    let wheelEl;
     if (wheelGroups.length > 1) {
+      const wheelSel = document.createElement("select");
+      wheelSel.className = "wheel-filter";
+      wheelEl = wheelSel;
       wheelSel.innerHTML = '<option value="-1">All wheels (' + allTracks.length + ")</option>" +
         wheelGroups.map((g, gi) =>
           '<option value="' + gi + '">' + g.label + " (" + g.indices.length + ")</option>").join("");
@@ -4322,11 +4324,19 @@ document.addEventListener("DOMContentLoaded", function () {
         fitAll();
       });
     } else {
+      // A disabled select keeps its chevron, so it still reads as a list
+      // with something behind it. With one wheel there is nothing to
+      // choose, and the count is already in the summary above, so the row
+      // simply names the wheel.
       const only = wheelGroups[0];
-      const label = only && !only.unknown ? only.label : "Generic wheel";
-      wheelSel.innerHTML = "<option>" + label + " (" + allTracks.length + ")</option>";
-      wheelSel.disabled = true;
-      wheelSel.title = only && !only.unknown
+      const known = !!(only && !only.unknown);
+      wheelEl = document.createElement("div");
+      wheelEl.className = known ? "wheel-only" : "wheel-only wheel-unset";
+      wheelEl.innerHTML = '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">' +
+        '<circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.5"/>' +
+        '<circle cx="8" cy="8" r="1.7" fill="currentColor"/></svg><span></span>';
+      wheelEl.querySelector("span").textContent = known ? only.label : "No wheel recorded";
+      wheelEl.title = known
         ? "Every loaded trip is from this wheel"
         : "None of the loaded trips carry a wheel identity; assign one in Batch edit";
     }
@@ -4367,7 +4377,7 @@ document.addEventListener("DOMContentLoaded", function () {
       label.textContent = orig;
       analyticsBtn.style.pointerEvents = "";
     });
-    wheelRow.appendChild(wheelSel);
+    wheelRow.appendChild(wheelEl);
     wheelRow.appendChild(analyticsBtn);
     header.appendChild(wheelRow);
 
