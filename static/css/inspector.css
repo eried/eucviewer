@@ -893,12 +893,15 @@ body.cmp-on .trim-track { height: 80px; }
    gives it something to undo. */
 .cmp-auto:disabled { opacity: 0.4; cursor: default; }
 
-.cmp-opts { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
-.cmp-seg { display: flex; gap: 0; flex: 1 1 auto; min-width: 0; }
+/* Sized to its labels rather than stretched across the panel: two options
+   do not need the full width, and the checkbox reads better on its own line
+   underneath than squeezed in beside them. */
+.cmp-opts { display: flex; align-items: center; gap: 8px; }
+.cmp-seg { display: inline-flex; gap: 0; flex: 0 0 auto; }
 .cmp-seg button {
-    flex: 1 1 0; min-width: 0;
+    flex: 0 0 auto;
     display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-    padding: 7px 8px;
+    padding: 7px 14px;
     font-size: 0.76rem; color: #9fb4c0;
     background: rgba(255, 255, 255, 0.03);
     border: 1px solid rgba(255, 255, 255, 0.14);
@@ -912,10 +915,11 @@ body.cmp-on .trim-track { height: 80px; }
     border-color: rgba(0, 229, 255, 0.4);
     background: rgba(0, 229, 255, 0.12);
 }
-.cmp-viewtitle { margin-top: 14px; }
+.cmp-aligntitle { margin-top: 2px; }
+.cmp-viewtitle { margin-top: 16px; }
 /* A plain checkbox, like every other boolean in the viewer. */
 .cmp-check {
-    flex: 0 0 auto;
+    margin-top: 10px;
     display: inline-flex; align-items: center; gap: 7px;
     font-size: 0.76rem; color: #cfe3ec;
     cursor: pointer;

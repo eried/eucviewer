@@ -6,7 +6,7 @@
     <title>Trip Inspector - EUC Planet</title>
     <link rel="icon" href="static/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
-    <link rel="stylesheet" href="static/css/inspector.css?v=63" />
+    <link rel="stylesheet" href="static/css/inspector.css?v=64" />
     <script type="text/javascript">
         (function(c,l,a,r,i,t,y){
             c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
@@ -365,12 +365,13 @@
 
                     <div class="cmp-shared" id="cmp-shared"></div>
 
+                    <div class="cd-sub cmp-aligntitle">Alignment</div>
                     <div class="cmp-strip" id="cmp-strip">
                         <canvas id="cmp-strip-canvas"></canvas>
                     </div>
 
                     <div class="cmp-alignrow">
-                        <label class="cmp-lbl" for="cmp-align">Align by</label>
+                        <label class="cmp-lbl" for="cmp-align">Metric</label>
                         <select id="cmp-align"></select>
                         <label class="cmp-lbl" for="cmp-offset">Offset</label>
                         <input type="text" id="cmp-offset" class="cmp-offin" inputmode="text" autocomplete="off" spellcheck="false" />
@@ -389,11 +390,11 @@
                                 Overlay
                             </button>
                         </div>
-                        <label class="cmp-check" title="Show the difference from this trip instead of the other trip's own value">
-                            <input type="checkbox" id="cmp-delta" />
-                            <span>Show deltas</span>
-                        </label>
                     </div>
+                    <label class="cmp-check" title="Show the difference from this trip instead of the other trip's own value">
+                        <input type="checkbox" id="cmp-delta" />
+                        <span>Show deltas</span>
+                    </label>
                 </div>
             </div>
             <footer class="cd-foot">
@@ -406,6 +407,6 @@
     </div>
 
     <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-    <script src="static/js/inspector.js?v=131"></script>
+    <script src="static/js/inspector.js?v=132"></script>
 </body>
 </html>

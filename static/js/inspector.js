@@ -4169,10 +4169,12 @@
     alignSel.addEventListener("change", () => {
       if (!draft) return;
       draft.alignIdx = Number(alignSel.value);
-      // A different metric is a different search, so Auto has something to
-      // offer again.
-      autoBtn.disabled = false;
-      drawStrip();
+      // A disabled Auto means the offset on screen is still the one it
+      // picked, so there is no hand-made choice to protect: run it again on
+      // the new metric. Once the offset has been moved by hand, leave it
+      // alone and just make Auto pressable again.
+      if (autoBtn.disabled) runAuto();
+      else drawStrip();
     });
     autoBtn.addEventListener("click", runAuto);
     document.getElementById("cmp-change").addEventListener("click", () => {
