@@ -3928,6 +3928,7 @@
     const modeOver = document.getElementById("cmp-mode-over");
     const deltaEl = document.getElementById("cmp-delta");
     const applyBtn = document.getElementById("cmp-apply");
+    const resetBtn = document.getElementById("cmp-reset");
     const splitEl = document.getElementById("charts-compare-split");
     const offBtn = document.getElementById("charts-compare-off");
 
@@ -4205,26 +4206,37 @@
       // Trim to where the two overlap. It is the section you would pick by
       // hand anyway, and it is only the view, so nothing is lost: Trim's
       // Reset puts the whole trip back.
+      //
+      // This runs on every apply, including a change of trip. It used to
+      // skip the call when the overlap turned out to be the whole trip,
+      // which left the previous trip's narrower section applied to the new
+      // one: picking this same trip, or any that spans it, trimmed to
+      // whatever was showing before.
       const a = Math.max(0, cmp.offset);
       const b = Math.min(duration, cmp.offset + cmp.dur);
-      if (b - a > 1 && (a > 0.01 || b < duration - 0.01)) setView(a, b);
+      if (b - a > 1) setView(a, b);
       btn.classList.add("on");
       splitEl.classList.add("on");
       close();
     });
     // Ending a comparison should not need the dialog, so the lit Compare
     // button grows a second half that just stops it.
-    offBtn.addEventListener("click", () => {
+    const stopComparing = () => {
       cmpClear();
       btn.classList.remove("on");
       splitEl.classList.remove("on");
       close();
-    });
+    };
+    offBtn.addEventListener("click", stopComparing);
+    // Same place and same job as Trim's Reset: undo what this dialog set up
+    // and get out. The x on the toolbar button is the shortcut for it.
+    resetBtn.addEventListener("click", stopComparing);
 
     btn.addEventListener("click", () => {
       // Reopening while a comparison is live resumes editing it, so the
       // offset and the layout choice are not thrown away on every visit.
       draft = cmp ? Object.assign({}, cmp) : null;
+      resetBtn.classList.toggle("hidden", !cmp);
       dialog.classList.remove("hidden");
       if (draft) {
         setMode(draft.mode);
