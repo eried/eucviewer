@@ -2033,7 +2033,7 @@
       idx: idxB, track: trackB, rows, times,
       dur: n ? times[n - 1] : 0,
       offset: 0, alignIdx: SPD,
-      mode: "side",            // "side" | "overlay"
+      mode: "stacked",         // "stacked" | "overlay"
       showDelta: false
     };
   }
@@ -2074,11 +2074,11 @@
   function cmpHas(idx) {
     return !!(cmp && idx <= PHASE && cmp.sharedIdx && cmp.sharedIdx.has(idx));
   }
-  // Side-by-side splits one canvas into two stacked bands sharing a y scale.
-  // A shared scale is the whole point: two independently scaled traces look
-  // alike however far apart the real numbers are.
-  function cmpSideBands(idx) {
-    return (cmp && cmp.mode === "side" && cmpHas(idx)) ? 2 : 1;
+  // Stacked splits one canvas into two bands sharing a y scale. A shared
+  // scale is the whole point: two independently scaled traces look alike
+  // however far apart the real numbers are.
+  function cmpBandCount(idx) {
+    return (cmp && cmp.mode === "stacked" && cmpHas(idx)) ? 2 : 1;
   }
 
   // Resample both trips onto a common 1 s grid, normalise each, then slide
@@ -2143,9 +2143,9 @@
   function cmpApply() {
     if (cmp) cmp.sharedIdx = new Set(cmpSharedKeys(cmp.rows).map((k) => CHART_CONFIG[k].idx));
     document.body.classList.toggle("cmp-on", !!cmp);
-    document.body.classList.toggle("cmp-side", !!cmp && cmp.mode === "side");
+    document.body.classList.toggle("cmp-stacked", !!cmp && cmp.mode === "stacked");
     charts.forEach((c) => {
-      c.block.classList.toggle("cmp-split", cmpSideBands(c.cfg.idx) === 2);
+      c.block.classList.toggle("cmp-split", cmpBandCount(c.cfg.idx) === 2);
     });
     cmpInvalidate();
     buildCompareHeader();
@@ -2166,8 +2166,34 @@
   // doubling it. The B elements are added alongside the originals rather
   // than replacing them, so updateUI keeps writing to exactly the ids it
   // always has and knows nothing about compare.
+  // The same label the primary trip gets, so the two lines in the header are
+  // written in the same language. Showing one as "22/10/2026, 18:27" and the
+  // other as "trip_20261002_090501" made them look like different kinds of
+  // thing rather than two trips.
   function cmpTripLabel(tr) {
-    return tr.customName || tr.date || tr.name || "Trip";
+    if (tr.customName) return tr.customName;
+    if (tr.dateStart) {
+      const d = new Date(tr.dateStart);
+      if (!isNaN(d.getTime())) {
+        return new Intl.DateTimeFormat(DATE_LOCALE, {
+          year: "numeric", month: "numeric", day: "numeric",
+          hour: "numeric", minute: "2-digit",
+        }).format(d);
+      }
+    }
+    // Last resort before the bare filename: EUC Planet names its exports
+    // trip_YYYYMMDD_HHMMSS, which carries the same date the field would.
+    const m = /(\d{4})(\d{2})(\d{2})[_-](\d{2})(\d{2})/.exec(tr.name || "");
+    if (m) {
+      const d = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]);
+      if (!isNaN(d.getTime())) {
+        return new Intl.DateTimeFormat(DATE_LOCALE, {
+          year: "numeric", month: "numeric", day: "numeric",
+          hour: "numeric", minute: "2-digit",
+        }).format(d);
+      }
+    }
+    return tr.date || tr.name || "Trip";
   }
 
   // B's cumulative distance, built the same way the primary trip's is, so
@@ -2287,7 +2313,32 @@
     return sign + Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
   }
 
+  // Where the compared trip was at this moment. Just the position, not its
+  // whole route: two trips are often nowhere near each other and a second
+  // full trace would bury the one being studied.
+  let cmpMarker = null;
+  function updateCompareMarker() {
+    if (typeof map === "undefined" || !map || !map.isStyleLoaded || !map.isStyleLoaded()) return;
+    const lat = cmp ? cmpValueAt(LAT, currentTime) : null;
+    const lon = cmp ? cmpValueAt(LON, currentTime) : null;
+    // 0/0 is what a row without a GPS fix carries, not a place anyone rode.
+    const ok = cmp && lat != null && lon != null && lat !== 0 && lon !== 0;
+    if (!ok) {
+      if (cmpMarker) { cmpMarker.remove(); cmpMarker = null; }
+      return;
+    }
+    if (!cmpMarker) {
+      const el = document.createElement("div");
+      el.className = "rider-dot rider-dot-b";
+      el.title = "Compared trip";
+      cmpMarker = new maplibregl.Marker({ element: el }).setLngLat([lon, lat]).addTo(map);
+    } else {
+      cmpMarker.setLngLat([lon, lat]);
+    }
+  }
+
   function updateCompareHeader() {
+    updateCompareMarker();
     if (!cmp) return;
     const t = currentTime;
     const dash = "—";
@@ -2444,10 +2495,10 @@
       const t = sampleTimes[i0] + (sampleTimes[i1] - sampleTimes[i0]) * f;
       return pad + (t - viewT0) / viewW * innerW;
     };
-    // Side by side splits the canvas into two stacked bands that share one
-    // scale; band 0 is this trip, band 1 the compared one. Overlay leaves a
-    // single band, so py is unchanged for every non-compare chart.
-    const bands = cmpSideBands(idx);
+    // Stacked splits the canvas into two bands that share one scale; band 0
+    // is this trip, band 1 the compared one. Overlay leaves a single band, so
+    // py is unchanged for every non-compare chart.
+    const bands = cmpBandCount(idx);
     const bandH = h / bands;
     const pyBand = (v, band) =>
       (band + 1) * bandH - pad - ((v - minV) / (maxV - minV)) * (bandH - pad * 2);
@@ -3806,6 +3857,56 @@
     apply();
   })();
 
+  // ---------- Dashboard row scrolling ----------
+  // The row overflows whenever its content outgrows the window, which
+  // comparing makes easy on a laptop too, not just a phone. A wheel over it
+  // scrolls it sideways, and so does dragging it: reaching for a drag is the
+  // obvious thing to do, and without this it just selected the text instead.
+  (function dashScroll() {
+    const row = document.querySelector(".dash-scroll");
+    if (!row) return;
+
+    // The fade only earns its keep while there is something past the edge.
+    const sync = () => row.classList.toggle("can-scroll", row.scrollWidth > row.clientWidth + 1);
+    sync();
+    window.addEventListener("resize", sync);
+    if (window.ResizeObserver) new ResizeObserver(sync).observe(row);
+
+    row.addEventListener("wheel", (e) => {
+      if (row.scrollWidth <= row.clientWidth + 1) return;
+      // A trackpad sends real horizontal deltas; a mouse only sends vertical
+      // ones, and over a strip like this that is meant to move it sideways.
+      const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+      if (!d) return;
+      e.preventDefault();
+      row.scrollLeft += d;
+    }, { passive: false });
+
+    let panId = null, panX = 0, panLeft = 0, panned = false;
+    row.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0) return;
+      if (row.scrollWidth <= row.clientWidth + 1) return;
+      // Leave real controls alone.
+      if (e.target.closest("button, select, input, a")) return;
+      panId = e.pointerId; panX = e.clientX; panLeft = row.scrollLeft; panned = false;
+    });
+    window.addEventListener("pointermove", (e) => {
+      if (panId === null || e.pointerId !== panId) return;
+      const dx = e.clientX - panX;
+      // A few pixels of slop so a plain click is still a click.
+      if (!panned && Math.abs(dx) < 4) return;
+      if (!panned) { panned = true; row.classList.add("panning"); }
+      row.scrollLeft = panLeft - dx;
+    });
+    const endPan = (e) => {
+      if (panId === null || (e && e.pointerId !== panId)) return;
+      panId = null;
+      row.classList.remove("panning");
+    };
+    window.addEventListener("pointerup", endPan);
+    window.addEventListener("pointercancel", endPan);
+  })();
+
   // ---------- Compare dialog ----------
   // Pick a second trip, line it up, apply. Everything is pending until
   // Compare is pressed, so backing out leaves the view exactly as it was.
@@ -3821,12 +3922,14 @@
     const alignSel = document.getElementById("cmp-align");
     const stripEl = document.getElementById("cmp-strip");
     const stripCv = document.getElementById("cmp-strip-canvas");
-    const offValEl = document.getElementById("cmp-offval");
-    const modeSide = document.getElementById("cmp-mode-side");
+    const offInEl = document.getElementById("cmp-offset");
+    const autoBtn = document.getElementById("cmp-auto");
+    const modeStack = document.getElementById("cmp-mode-stack");
     const modeOver = document.getElementById("cmp-mode-over");
     const deltaEl = document.getElementById("cmp-delta");
     const applyBtn = document.getElementById("cmp-apply");
-    const stopBtn = document.getElementById("cmp-stop");
+    const splitEl = document.getElementById("charts-compare-split");
+    const offBtn = document.getElementById("charts-compare-off");
 
     // The pending selection. Only copied into `cmp` on apply.
     let draft = null;
@@ -3846,14 +3949,18 @@
       listEl.innerHTML = "";
       let shown = 0;
       tracks.forEach((tr, i) => {
-        if (i === trackIdx) return;                 // comparing a trip to itself proves nothing
         if (!(tr.timeseries || []).length) return;
         const label = cmpTripLabel(tr);
         if (q && label.toLowerCase().indexOf(q) === -1) return;
         if (shown >= 300) return;                   // 227 trips today, but don't bet on it
         shown++;
-        const li = makeEl("li", null);
+        // The trip already open is listed, marked. Comparing it with itself
+        // is worth doing once an offset is in play: it lines a ride up
+        // against its own earlier stretch.
+        const here = i === trackIdx;
+        const li = makeEl("li", here ? "cmp-current" : null);
         li.appendChild(makeEl("span", null, label));
+        if (here) li.appendChild(makeEl("span", "cmp-here", "this trip"));
         li.appendChild(makeEl("span", "cmp-li-sub", tripSummary(tr)));
         li.addEventListener("click", () => choose(i));
         listEl.appendChild(li);
@@ -3867,12 +3974,10 @@
       draft.sharedIdx = new Set(shared.map((k) => CHART_CONFIG[k].idx));
       document.getElementById("cmp-chosen-name").textContent = cmpTripLabel(draft.track);
 
+      // Only worth saying when it is bad news. Listing every shared metric
+      // just repeated what the graphs are about to show anyway.
       sharedEl.innerHTML = "";
-      if (!shared.length) {
-        sharedEl.appendChild(makeEl("span", "cmp-chip cmp-none", "No metric in common"));
-      } else {
-        shared.forEach((k) => sharedEl.appendChild(makeEl("span", "cmp-chip", CHART_CONFIG[k].label)));
-      }
+      if (!shared.length) sharedEl.appendChild(makeEl("span", "cmp-chip cmp-none", "No metric in common"));
 
       alignSel.innerHTML = "";
       shared.forEach((k) => {
@@ -3965,10 +4070,28 @@
       ctx.restore();
     }
 
-    function setOffset(v) {
+    // "+12:07", "12:07", "-1:30", "90". The sign matters here in a way it
+    // does not in the trim fields: a compared trip can start before this one.
+    function parseOffsetInput(str) {
+      const t = String(str).trim().replace(/−/g, "-");
+      const m = /^([+-]?)(\d+)(?::([0-5]?\d))?(?::([0-5]?\d))?$/.exec(t);
+      if (!m) return null;
+      let sec = 0;
+      for (const part of [m[2], m[3], m[4]]) {
+        if (part == null) continue;
+        sec = sec * 60 + Number(part);
+      }
+      return (m[1] === "-" ? -1 : 1) * sec;
+    }
+
+    // fromAuto marks the one caller whose result Auto cannot improve on, so
+    // the button stays spent until the offset is moved by hand.
+    function setOffset(v, fromAuto) {
       if (!draft) return;
       draft.offset = v;
-      offValEl.textContent = fmtOffset(draft.offset);
+      if (document.activeElement !== offInEl) offInEl.value = fmtOffset(draft.offset);
+      offInEl.classList.remove("bad");
+      if (!fromAuto) autoBtn.disabled = false;
       drawStrip();
     }
 
@@ -3980,8 +4103,19 @@
       cmp = draft;
       let best = 0;
       try { best = cmpAutoOffset(draft.alignIdx); } finally { cmp = prev; }
-      setOffset(best);
+      setOffset(best, true);
+      autoBtn.disabled = true;
     }
+
+    const commitOffset = () => {
+      const v = parseOffsetInput(offInEl.value);
+      if (v === null) { offInEl.classList.add("bad"); return; }
+      setOffset(v);
+    };
+    offInEl.addEventListener("change", commitOffset);
+    offInEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); commitOffset(); offInEl.blur(); }
+    });
 
     stripEl.addEventListener("pointerdown", (e) => {
       if (!draft) return;
@@ -4009,10 +4143,12 @@
     alignSel.addEventListener("change", () => {
       if (!draft) return;
       draft.alignIdx = Number(alignSel.value);
+      // A different metric is a different search, so Auto has something to
+      // offer again.
+      autoBtn.disabled = false;
       drawStrip();
     });
-    document.getElementById("cmp-auto").addEventListener("click", runAuto);
-    document.getElementById("cmp-zero").addEventListener("click", () => setOffset(0));
+    autoBtn.addEventListener("click", runAuto);
     document.getElementById("cmp-change").addEventListener("click", () => {
       setupView.classList.add("hidden");
       pickView.classList.remove("hidden");
@@ -4021,12 +4157,16 @@
 
     const setMode = (m) => {
       if (draft) draft.mode = m;
-      modeSide.classList.toggle("on", m === "side");
+      modeStack.classList.toggle("on", m === "stacked");
       modeOver.classList.toggle("on", m === "overlay");
     };
-    modeSide.addEventListener("click", () => setMode("side"));
+    modeStack.addEventListener("click", () => setMode("stacked"));
     modeOver.addEventListener("click", () => setMode("overlay"));
-    deltaEl.addEventListener("change", () => { if (draft) draft.showDelta = deltaEl.checked; });
+    const setDelta = (on) => {
+      if (draft) draft.showDelta = on;
+      deltaEl.setAttribute("aria-pressed", on ? "true" : "false");
+    };
+    deltaEl.addEventListener("click", () => setDelta(deltaEl.getAttribute("aria-pressed") !== "true"));
 
     const close = () => dialog.classList.add("hidden");
     dialog.querySelectorAll("[data-cmp-close]").forEach((el) => el.addEventListener("click", close));
@@ -4039,12 +4179,22 @@
       cmp = draft;
       draft = null;
       cmpApply();
+      // Trim to where the two overlap. It is the section you would pick by
+      // hand anyway, and it is only the view, so nothing is lost: Trim's
+      // Reset puts the whole trip back.
+      const a = Math.max(0, cmp.offset);
+      const b = Math.min(duration, cmp.offset + cmp.dur);
+      if (b - a > 1 && (a > 0.01 || b < duration - 0.01)) setView(a, b);
       btn.classList.add("on");
+      splitEl.classList.add("on");
       close();
     });
-    stopBtn.addEventListener("click", () => {
+    // Ending a comparison should not need the dialog, so the lit Compare
+    // button grows a second half that just stops it.
+    offBtn.addEventListener("click", () => {
       cmpClear();
       btn.classList.remove("on");
+      splitEl.classList.remove("on");
       close();
     });
 
@@ -4052,19 +4202,21 @@
       // Reopening while a comparison is live resumes editing it, so the
       // offset and the layout choice are not thrown away on every visit.
       draft = cmp ? Object.assign({}, cmp) : null;
-      stopBtn.classList.toggle("hidden", !cmp);
       dialog.classList.remove("hidden");
       if (draft) {
         setMode(draft.mode);
-        deltaEl.checked = !!draft.showDelta;
+        setDelta(!!draft.showDelta);
         pickView.classList.add("hidden");
         setupView.classList.remove("hidden");
         document.getElementById("cmp-chosen-name").textContent = cmpTripLabel(draft.track);
-        offValEl.textContent = fmtOffset(draft.offset);
+        offInEl.value = fmtOffset(draft.offset);
+        // Resuming an existing comparison: the offset is already whatever
+        // the user settled on, so Auto is live rather than spent.
+        autoBtn.disabled = false;
         requestAnimationFrame(fitStrip);
       } else {
-        setMode("side");
-        deltaEl.checked = false;
+        setMode("stacked");
+        setDelta(false);
         setupView.classList.add("hidden");
         pickView.classList.remove("hidden");
         searchEl.value = "";

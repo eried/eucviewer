@@ -34,17 +34,36 @@ html, body {
 }
 /* The metrics live in their own row so the collapse button never sits on
    top of them; it's a separate flex item pinned to the right. */
+/* One scrolling row at every width. This used to be phone-only, but the row
+   overflows whenever the content outgrows the window, which comparing makes
+   easy on a laptop too: with overflow visible the far end was simply cut off
+   and scrollLeft did nothing, so the clock was unreachable. */
 .dash-scroll {
     flex: 1;
     min-width: 0;
     display: flex;
     align-items: center;
     gap: 18px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    overscroll-behavior-x: contain;
 }
-/* Collapse toggle: only shown on narrow screens (wired in the media query).
-   Kept visually identical to the graphs collapse-all button (.ct-iconbtn). */
+.dash-scroll::-webkit-scrollbar { display: none; }
+/* Dragging the row to pan would otherwise select the text under the cursor. */
+.dash-scroll.panning { cursor: grabbing; user-select: none; }
+/* Fade the scroll edge so the last metric tapers off instead of hard
+   clipping, and hint that there is more. Only while it actually overflows. */
+.dash-scroll.can-scroll {
+    padding-right: 26px;
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 22px), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 22px), transparent);
+}
+/* Collapse toggle. Kept visually identical to the graphs collapse-all
+   button (.ct-iconbtn). */
 .dash-toggle {
-    display: none;
+    display: flex;
     flex-shrink: 0;
     width: 26px; height: 24px; align-items: center; justify-content: center;
     padding: 0;
@@ -54,10 +73,45 @@ html, body {
 }
 .dash-toggle:hover, .dash-toggle:active { color: #bfeef7; border-color: rgba(0, 229, 255, 0.35); }
 .dash-toggle svg { width: 14px; height: 14px; transition: transform 0.2s; }
-/* Same rule as the Metrics chevron: v means closed, click to open. The
-   header shrinks upward, so collapsed the glyph points down at the room it
-   will grow back into. */
+/* The header shrinks upward, so collapsed the glyph points down at the room
+   it will grow back into. The Metrics bar at the foot of the screen grows
+   the other way, so its chevron points the other way too. */
 #inspector:not(.dash-collapsed) .dash-toggle svg { transform: rotate(180deg); }
+
+/* Compact: one short row. It drops the captions, the trip title and the
+   G-force dial, not the numbers. Hiding every readout but the clock left a
+   bar that was almost entirely empty, which is a poor trade for the handful
+   of pixels it saved. The row scrolls, so anything that does not fit is
+   still reachable. */
+#inspector.dash-collapsed .trip-title,
+#inspector.dash-collapsed .gauge-gforce,
+#inspector.dash-collapsed .gauge-label,
+#inspector.dash-collapsed .readout-label,
+#inspector.dash-collapsed .readout-sub { display: none; }
+#inspector.dash-collapsed .gauge-speed { width: 66px; }
+#inspector.dash-collapsed .gauge-speed .gauge-value { top: 17px; font-size: 0.85rem; }
+#inspector.dash-collapsed .gauge-value small { display: none; }
+#inspector.dash-collapsed .cmp-gb { font-size: 0.72rem; }
+#inspector.dash-collapsed .clock .readout-value { font-size: 0.9rem; }
+
+/* Compare lives on a split button: the main half opens the dialog, the x
+   half ends the comparison without one. */
+.ct-split { display: inline-flex; flex-shrink: 0; }
+.ct-split .ct-x {
+    display: none;
+    width: 24px; padding: 0;
+    align-items: center; justify-content: center;
+    font-size: 0.9rem; line-height: 1;
+    color: #ffcf9e;
+    border: 1px solid rgba(255, 158, 64, 0.5);
+    border-left: 0;
+    border-radius: 0 5px 5px 0;
+    background: rgba(255, 158, 64, 0.14);
+    cursor: pointer;
+}
+.ct-split .ct-x:hover { background: rgba(255, 158, 64, 0.28); color: #fff; }
+.ct-split.on .ct-x { display: inline-flex; }
+.ct-split.on .ct-btn { border-radius: 5px 0 0 5px; }
 
 .back-link {
     color: #00e5ff;
@@ -284,6 +338,14 @@ html, body {
     border: 3px solid #fff;
     box-shadow: 0 0 0 2px rgba(255, 160, 0, 0.45), 0 0 14px rgba(255, 160, 0, 0.9);
 }
+/* The compared trip's position. Smaller and hollow so it never reads as the
+   trip being played, and it keeps the compare orange from the graphs. */
+.rider-dot-b {
+    width: 15px; height: 15px;
+    background: transparent;
+    border: 3px solid #ff9e40;
+    box-shadow: 0 0 0 2px rgba(10, 10, 15, 0.7), 0 0 10px rgba(255, 158, 64, 0.8);
+}
 
 /* ---------- Charts ---------- */
 #charts {
@@ -478,10 +540,9 @@ body.sidebar-resizing * { cursor: col-resize !important; }
 .ct-iconbtn:hover { color: #bfeef7; border-color: rgba(0, 229, 255, 0.35); }
 .ct-iconbtn.on { color: #00e5ff; border-color: rgba(0, 229, 255, 0.4); background: rgba(0, 229, 255, 0.1); }
 .ct-iconbtn svg { transition: transform 0.2s; }
-/* The graphs sit under this bar, so the chevron points at them: down while
-   they are hidden (open it), up once they are showing (close it). .on is the
-   collapsed state and matches the base glyph, so the flip rides on :not(). */
-.ct-iconbtn:not(.on) svg { transform: rotate(180deg); }
+/* Collapsed, the panel is a bar at the bottom of the screen and the chevron
+   points up at the room it will grow back into. */
+.ct-iconbtn.on svg { transform: rotate(180deg); }
 
 .chart-block.chart-hidden { display: none; }
 
@@ -669,9 +730,9 @@ body.cmp-on .trim-track { height: 80px; }
     font-size: 0.68rem; color: #ffcf9e;
     font-family: 'SF Mono', Menlo, Consolas, monospace;
 }
-/* Side by side stacks two bands in one canvas, so the body needs the room
-   for both. One canvas keeps the grid, the cursor and the zoom handling in
-   a single code path. */
+/* Stacked puts two bands in one canvas, so the body needs the room for
+   both. One canvas keeps the grid, the cursor and the zoom handling in a
+   single code path. */
 .chart-block.cmp-split .chart-body { height: 196px; }
 
 /* ---------- Compare dialog ---------- */
@@ -704,6 +765,18 @@ body.cmp-on .trim-track { height: 80px; }
 }
 .cmp-list .cmp-empty { color: #7c8b95; cursor: default; }
 .cmp-list .cmp-empty:hover { background: none; }
+/* The trip already open is listed too: comparing it with itself is a real
+   thing to do once an offset is in play. It just says which one it is. */
+.cmp-list li.cmp-current { color: #bfeef7; }
+.cmp-here {
+    flex: 0 0 auto;
+    font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.05em;
+    padding: 1px 6px;
+    border-radius: 999px;
+    border: 1px solid rgba(0, 229, 255, 0.4);
+    background: rgba(0, 229, 255, 0.1);
+    color: #00e5ff;
+}
 
 .cmp-chosen {
     display: flex; align-items: center; gap: 2px;
@@ -731,20 +804,41 @@ body.cmp-on .trim-track { height: 80px; }
 }
 .cmp-shared .cmp-none { color: #ff8a80; border-color: rgba(255, 90, 90, 0.45); }
 
-.cmp-field {
+/* One row: what to align on, by how much, and a way to let it work that
+   out. The offset is typed as well as dragged. */
+.cmp-alignrow {
     display: flex; align-items: center; gap: 8px;
-    font-size: 0.72rem; text-transform: uppercase;
-    letter-spacing: 0.05em; color: #8fa7b0;
-    margin-bottom: 8px;
+    margin-top: 10px;
 }
-.cmp-field select {
-    flex: 1;
+.cmp-lbl {
+    font-size: 0.68rem; text-transform: uppercase;
+    letter-spacing: 0.05em; color: #8fa7b0;
+    white-space: nowrap;
+}
+.cmp-alignrow select {
+    flex: 1 1 0; min-width: 0;
     padding: 6px 8px;
     font-size: 0.82rem; color: #eaf6fb;
     background: rgba(255, 255, 255, 0.04);
     border: 1px solid rgba(255, 255, 255, 0.14);
     border-radius: 5px;
 }
+/* A native dropdown list takes the platform's own colours unless the
+   options say otherwise, which on a dark panel is white text on white. */
+.cmp-alignrow select option { background: #0f1419; color: #e4f6fa; }
+.cmp-offin {
+    width: 72px; flex: 0 0 72px;
+    box-sizing: border-box;
+    padding: 6px 8px;
+    font-family: 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 0.82rem; font-weight: 700;
+    color: #ffcf9e; text-align: right;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 5px;
+}
+.cmp-offin:focus { outline: none; border-color: rgba(255, 158, 64, 0.55); }
+.cmp-offin.bad { border-color: rgba(255, 90, 90, 0.6); color: #ffb3b3; }
 
 .cmp-strip {
     position: relative;
@@ -757,44 +851,31 @@ body.cmp-on .trim-track { height: 80px; }
     touch-action: none;
 }
 .cmp-strip canvas { width: 100%; height: 100%; display: block; }
-.cmp-striphint {
-    margin-top: 4px;
-    font-size: 0.66rem; color: #7c8b95;
-}
-
-.cmp-offrow {
-    display: flex; align-items: center; gap: 10px;
-    margin-top: 10px;
-}
 .cmp-auto {
+    flex: 0 0 auto;
     font-size: 0.72rem; color: #bfeef7;
-    padding: 5px 11px;
+    padding: 6px 11px;
     border: 1px solid rgba(0, 229, 255, 0.28);
     border-radius: 5px;
     background: rgba(0, 229, 255, 0.06);
     cursor: pointer;
 }
-.cmp-auto:hover { background: rgba(0, 229, 255, 0.16); }
-.cmp-offlabel {
-    margin-left: auto;
-    font-size: 0.66rem; text-transform: uppercase;
-    letter-spacing: 0.05em; color: #8fa7b0;
-}
-.cmp-offval {
-    font-family: 'SF Mono', Menlo, Consolas, monospace;
-    font-size: 0.95rem; font-weight: 700; color: #ffcf9e;
-    min-width: 62px; text-align: right;
-}
+.cmp-auto:hover:not(:disabled) { background: rgba(0, 229, 255, 0.16); }
+/* Auto already ran on arrival, so it starts spent. Moving the trace is what
+   gives it something to undo. */
+.cmp-auto:disabled { opacity: 0.4; cursor: default; }
 
-.cmp-opts { margin-top: 12px; }
-.cmp-seg { display: flex; gap: 0; margin-bottom: 10px; }
+.cmp-opts { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+.cmp-seg { display: flex; gap: 0; flex: 1 1 auto; min-width: 0; }
 .cmp-seg button {
-    flex: 1;
-    padding: 7px 10px;
-    font-size: 0.78rem; color: #9fb4c0;
+    flex: 1 1 0; min-width: 0;
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 7px 8px;
+    font-size: 0.76rem; color: #9fb4c0;
     background: rgba(255, 255, 255, 0.03);
     border: 1px solid rgba(255, 255, 255, 0.14);
     cursor: pointer;
+    white-space: nowrap;
 }
 .cmp-seg button:first-child { border-radius: 5px 0 0 5px; }
 .cmp-seg button:last-child { border-radius: 0 5px 5px 0; border-left: 0; }
@@ -803,10 +884,21 @@ body.cmp-on .trim-track { height: 80px; }
     border-color: rgba(0, 229, 255, 0.4);
     background: rgba(0, 229, 255, 0.12);
 }
-.cmp-check {
-    display: flex; align-items: center; gap: 7px;
-    font-size: 0.76rem; color: #cfe3ec;
+.cmp-toggle {
+    flex: 0 0 auto;
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 10px;
+    font-size: 0.76rem; color: #9fb4c0;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 5px;
     cursor: pointer;
+    white-space: nowrap;
+}
+.cmp-toggle[aria-pressed="true"] {
+    color: #ffcf9e;
+    border-color: rgba(255, 158, 64, 0.5);
+    background: rgba(255, 158, 64, 0.14);
 }
 
 /* Customize dialog. */
@@ -1355,9 +1447,6 @@ body.cmp-on .trim-track { height: 80px; }
     #stage { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
     #charts { max-height: 40vh; border-left: none; border-top: 1px solid rgba(0, 229, 255, 0.12); }
 
-    /* One clean scrollable row instead of an ugly multi-line wrap, with a
-       collapse toggle that shrinks it to just the essentials. */
-    .dash-toggle { display: flex; }
     #dash { padding: 8px 12px; }
     /* A trip that logs torque has a stats line wider than the phone. The
        block does not shrink, so it used to just grow and shove the gauges
@@ -1368,35 +1457,8 @@ body.cmp-on .trim-track { height: 80px; }
        between-group separators and the desktop line break go with it. */
     #trip-subtitle .ts-g { display: block; }
     #trip-subtitle .ts-sep, #trip-subtitle br { display: none; }
-    .dash-scroll {
-        flex-wrap: nowrap;
-        overflow-x: auto;
-        overflow-y: hidden;
-        gap: 14px;
-        scrollbar-width: none;
-    }
-    .dash-scroll::-webkit-scrollbar { display: none; }
-    /* Fade the scroll edge so the last metric tapers off next to the button
-       instead of hard-clipping (also hints there's more to scroll). The
-       trailing padding keeps the clock clear of the fade at max scroll. */
-    #inspector:not(.dash-collapsed) .dash-scroll {
-        padding-right: 26px;
-        -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 22px), transparent);
-        mask-image: linear-gradient(to right, #000 calc(100% - 22px), transparent);
-    }
+    .dash-scroll { gap: 14px; }
     .clock { padding-right: 2px; }
 
-    /* Collapsed: a tiny bar with speed, battery and the clock only. */
     #inspector.dash-collapsed #dash { padding: 5px 12px; }
-    #inspector.dash-collapsed .dash-scroll { gap: 14px; overflow: hidden; justify-content: center; }
-    #inspector.dash-collapsed .trip-title,
-    #inspector.dash-collapsed .gauge-gforce,
-    #inspector.dash-collapsed .readout:not(.clock) { display: none; }
-    #inspector.dash-collapsed .gauge-speed { width: 66px; }
-    #inspector.dash-collapsed .gauge-speed .gauge-value { top: 17px; font-size: 0.85rem; }
-    #inspector.dash-collapsed .gauge-value small { display: none; }
-    #inspector.dash-collapsed .gauge-label,
-    #inspector.dash-collapsed .clock .readout-label,
-    #inspector.dash-collapsed .clock .readout-sub { display: none; }
-    #inspector.dash-collapsed .clock .readout-value { font-size: 0.9rem; }
 }

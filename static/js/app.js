@@ -2602,7 +2602,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const canArchive = canArchiveTrip(t);
     m.innerHTML =
       `<a class="ttm-item" href="video.html?i=${i}" target="_blank" rel="noopener">${ICON.video}Make video</a>` +
-      `<a class="ttm-item" href="inspector.html?i=${i}" target="_blank" rel="noopener">${ICON.inspect}Inspector</a>` +
+      `<a class="ttm-item" href="inspector.html?i=${i}" target="_blank" rel="noopener">${ICON.inspect}Inspect / Compare</a>` +
       `<div class="ttm-sep"></div>` +
       `<button type="button" class="ttm-item" data-act="rename">${ICON.rename}Rename trip…</button>` +
       `<button type="button" class="ttm-item" data-act="wheel">${ICON.wheel}Change wheel…</button>` +

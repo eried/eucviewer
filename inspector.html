@@ -6,7 +6,7 @@
     <title>Trip Inspector - EUC Planet</title>
     <link rel="icon" href="static/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
-    <link rel="stylesheet" href="static/css/inspector.css?v=56" />
+    <link rel="stylesheet" href="static/css/inspector.css?v=59" />
     <script type="text/javascript">
         (function(c,l,a,r,i,t,y){
             c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
@@ -194,10 +194,13 @@
                         <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M2 4h9M2 8h6M2 12h9"/><circle cx="13" cy="4" r="1.6"/><circle cx="10" cy="8" r="1.6"/><circle cx="13" cy="12" r="1.6"/></svg>
                         Customize
                     </button>
-                    <button type="button" id="charts-compare" class="ct-btn" title="Overlay another trip on these graphs">
-                        <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 11l3-5 3 3 3-6 3 8"/></svg>
-                        Compare
-                    </button>
+                    <span class="ct-split" id="charts-compare-split">
+                        <button type="button" id="charts-compare" class="ct-btn" title="Overlay another trip on these graphs">
+                            <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 11l3-5 3 3 3-6 3 8"/></svg>
+                            Compare
+                        </button>
+                        <button type="button" class="ct-x" id="charts-compare-off" title="Stop comparing" aria-label="Stop comparing">&times;</button>
+                    </span>
                 </div>
                 <!-- Shown when every graph is hidden (all toggled off in Customize). -->
                 <div class="charts-empty hidden" id="charts-empty">
@@ -362,36 +365,37 @@
 
                     <div class="cmp-shared" id="cmp-shared"></div>
 
-                    <label class="cmp-field">Align by
-                        <select id="cmp-align"></select>
-                    </label>
-
                     <div class="cmp-strip" id="cmp-strip">
                         <canvas id="cmp-strip-canvas"></canvas>
                     </div>
-                    <div class="cmp-striphint">Drag the orange trace to line it up.</div>
 
-                    <div class="cmp-offrow">
-                        <button type="button" class="cmp-auto" id="cmp-auto">Auto</button>
-                        <span class="cmp-offlabel">Offset</span>
-                        <span class="cmp-offval" id="cmp-offval">+0:00</span>
-                        <button type="button" class="cmp-auto" id="cmp-zero">Reset</button>
+                    <div class="cmp-alignrow">
+                        <label class="cmp-lbl" for="cmp-align">Align by</label>
+                        <select id="cmp-align"></select>
+                        <label class="cmp-lbl" for="cmp-offset">Offset</label>
+                        <input type="text" id="cmp-offset" class="cmp-offin" inputmode="text" autocomplete="off" spellcheck="false" />
+                        <button type="button" class="cmp-auto" id="cmp-auto" title="Find the offset that lines the two traces up best">Auto</button>
                     </div>
 
                     <div class="cmp-opts">
                         <div class="cmp-seg" role="group" aria-label="Graph layout">
-                            <button type="button" id="cmp-mode-side" class="on">Side by side</button>
-                            <button type="button" id="cmp-mode-over">Overlay</button>
+                            <button type="button" id="cmp-mode-stack" class="on" title="Each trip gets its own band, one above the other, both on one shared scale">
+                                <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2.5" width="12" height="4.5" rx="1"/><rect x="2" y="9" width="12" height="4.5" rx="1"/></svg>
+                                Stacked
+                            </button>
+                            <button type="button" id="cmp-mode-over" title="Both traces drawn on the same plot">
+                                <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 11.5 5 5l3 4 3-6 2.5 9"/><path d="M1.5 8.5 5 10l3-4 3 4 2.5-3" opacity=".55" stroke-dasharray="2.5 2"/></svg>
+                                Overlay
+                            </button>
                         </div>
-                        <label class="cmp-check">
-                            <input type="checkbox" id="cmp-delta" />
-                            Show deltas instead of the second trip's values
-                        </label>
+                        <button type="button" id="cmp-delta" class="cmp-toggle" aria-pressed="false" title="Show the difference from this trip instead of the other trip's own value">
+                            <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M8 3 13 12.5H3z"/></svg>
+                            Show deltas
+                        </button>
                     </div>
                 </div>
             </div>
             <footer class="cd-foot">
-                <button type="button" class="cd-reset" id="cmp-stop">Stop comparing</button>
                 <span class="cd-spacer"></span>
                 <button type="button" class="cd-cancel" data-cmp-close>Cancel</button>
                 <button type="button" class="cd-create" id="cmp-apply">Compare</button>
@@ -400,6 +404,6 @@
     </div>
 
     <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-    <script src="static/js/inspector.js?v=124"></script>
+    <script src="static/js/inspector.js?v=127"></script>
 </body>
 </html>
