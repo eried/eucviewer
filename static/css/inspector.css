@@ -767,9 +767,16 @@ body.cmp-on .trim-track { height: 80px; }
 .cmp-li-name { flex: 0 0 auto; }
 /* The filename next to the date: the date reads better, the filename is
    what you actually type to find a trip. Italic and quiet so it stays
-   secondary, and it gives way first when the row runs out of room. */
+   secondary.
+   It takes the slack rather than merely being allowed to shrink into it.
+   Shrinking alone clipped it while free space sat unused further along the
+   row, because flex sizing is resolved before an auto margin hands anything
+   back: the "this trip" row lost 20px of filename with 18px still spare.
+   The padding is for the italic overhang, which overflow: hidden otherwise
+   shaves off the last glyph even when the box is wide enough. */
 .cmp-li-file {
-    flex: 0 1 auto; min-width: 0;
+    flex: 1 1 auto; min-width: 0;
+    padding-right: 3px;
     font-style: italic;
     font-size: 0.72rem; color: #7c8b95;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -787,10 +794,12 @@ body.cmp-on .trim-track { height: 80px; }
 /* The trip already open is listed too: comparing it with itself is a real
    thing to do once an offset is in play. It just says which one it is. */
 .cmp-list li.cmp-current { color: #bfeef7; }
+/* Kept small on purpose: at "this trip" width it ate 75px of a row that had
+   23px to spare, and the filename was truncated to pay for it. */
 .cmp-here {
     flex: 0 0 auto;
-    font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.05em;
-    padding: 1px 6px;
+    font-size: 0.55rem; text-transform: uppercase; letter-spacing: 0.04em;
+    padding: 1px 5px;
     border-radius: 999px;
     border: 1px solid rgba(0, 229, 255, 0.4);
     background: rgba(0, 229, 255, 0.1);

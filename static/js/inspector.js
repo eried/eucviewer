@@ -3982,7 +3982,11 @@
         li.appendChild(makeEl("span", "cmp-li-name", label));
         const file = cmpTripFile(tr);
         if (file) li.appendChild(makeEl("span", "cmp-li-file", file));
-        if (here) li.appendChild(makeEl("span", "cmp-here", "this trip"));
+        if (here) {
+          const tag = makeEl("span", "cmp-here", "open");
+          tag.title = "The trip this inspector is showing";
+          li.appendChild(tag);
+        }
         li.appendChild(makeEl("span", "cmp-li-sub", tripSummary(tr)));
         li.addEventListener("click", () => choose(i));
         listEl.appendChild(li);
