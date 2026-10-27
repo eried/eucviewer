@@ -3934,6 +3934,13 @@
     // The pending selection. Only copied into `cmp` on apply.
     let draft = null;
 
+    function setChosenName(tr) {
+      const el = document.getElementById("cmp-chosen-name");
+      el.textContent = cmpTripLabel(tr);
+      const file = cmpTripFile(tr);
+      el.appendChild(makeEl("span", "cmp-li-file", file || ""));
+    }
+
     function tripSummary(tr) {
       const st = tr.stats || {};
       const rows = tr.timeseries || [];
@@ -3944,6 +3951,14 @@
       return bits.join("  ");
     }
 
+    // The filename, when it is not already what the label shows. The label is
+    // a formatted date, which reads better but is useless for finding the
+    // file you mean, so the raw name rides alongside it.
+    function cmpTripFile(tr) {
+      const label = cmpTripLabel(tr);
+      return tr.name && tr.name !== label ? tr.name : "";
+    }
+
     function renderList() {
       const q = (searchEl.value || "").trim().toLowerCase();
       listEl.innerHTML = "";
@@ -3951,7 +3966,11 @@
       tracks.forEach((tr, i) => {
         if (!(tr.timeseries || []).length) return;
         const label = cmpTripLabel(tr);
-        if (q && label.toLowerCase().indexOf(q) === -1) return;
+        // Match the date, the filename and any custom name. Filtering only
+        // the label meant that once the label became a date, typing a
+        // filename found nothing.
+        const hay = (label + " " + (tr.name || "") + " " + (tr.customName || "")).toLowerCase();
+        if (q && hay.indexOf(q) === -1) return;
         if (shown >= 300) return;                   // 227 trips today, but don't bet on it
         shown++;
         // The trip already open is listed, marked. Comparing it with itself
@@ -3959,20 +3978,22 @@
         // against its own earlier stretch.
         const here = i === trackIdx;
         const li = makeEl("li", here ? "cmp-current" : null);
-        li.appendChild(makeEl("span", null, label));
+        li.appendChild(makeEl("span", "cmp-li-name", label));
+        const file = cmpTripFile(tr);
+        if (file) li.appendChild(makeEl("span", "cmp-li-file", file));
         if (here) li.appendChild(makeEl("span", "cmp-here", "this trip"));
         li.appendChild(makeEl("span", "cmp-li-sub", tripSummary(tr)));
         li.addEventListener("click", () => choose(i));
         listEl.appendChild(li);
       });
-      if (!shown) listEl.appendChild(makeEl("li", "cmp-empty", q ? "No trip matches that." : "No other trip is loaded."));
+      if (!shown) listEl.appendChild(makeEl("li", "cmp-empty", q ? "No trip matches that." : "No trip is loaded."));
     }
 
     function choose(i) {
       draft = cmpMake(tracks[i], i);
       const shared = cmpSharedKeys(draft.rows);
       draft.sharedIdx = new Set(shared.map((k) => CHART_CONFIG[k].idx));
-      document.getElementById("cmp-chosen-name").textContent = cmpTripLabel(draft.track);
+      setChosenName(draft.track);
 
       // Only worth saying when it is bad news. Listing every shared metric
       // just repeated what the graphs are about to show anyway.
@@ -4162,11 +4183,13 @@
     };
     modeStack.addEventListener("click", () => setMode("stacked"));
     modeOver.addEventListener("click", () => setMode("overlay"));
+    // A checkbox, like every other boolean in the app. The one toggle button
+    // here was the only aria-pressed control in the whole viewer.
     const setDelta = (on) => {
       if (draft) draft.showDelta = on;
-      deltaEl.setAttribute("aria-pressed", on ? "true" : "false");
+      deltaEl.checked = on;
     };
-    deltaEl.addEventListener("click", () => setDelta(deltaEl.getAttribute("aria-pressed") !== "true"));
+    deltaEl.addEventListener("change", () => setDelta(deltaEl.checked));
 
     const close = () => dialog.classList.add("hidden");
     dialog.querySelectorAll("[data-cmp-close]").forEach((el) => el.addEventListener("click", close));
@@ -4208,7 +4231,7 @@
         setDelta(!!draft.showDelta);
         pickView.classList.add("hidden");
         setupView.classList.remove("hidden");
-        document.getElementById("cmp-chosen-name").textContent = cmpTripLabel(draft.track);
+        setChosenName(draft.track);
         offInEl.value = fmtOffset(draft.offset);
         // Resuming an existing comparison: the offset is already whatever
         // the user settled on, so Auto is live rather than spent.

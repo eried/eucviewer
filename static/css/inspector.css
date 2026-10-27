@@ -749,7 +749,13 @@ body.cmp-on .trim-track { height: 80px; }
 .cmp-list {
     list-style: none; margin: 0; padding: 0;
     max-height: 46vh; overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: #00e5ff33 transparent;
 }
+/* Left alone it renders as a bright bar down a dark panel. */
+.cmp-list::-webkit-scrollbar { width: 6px; }
+.cmp-list::-webkit-scrollbar-track { background: transparent; }
+.cmp-list::-webkit-scrollbar-thumb { background: #00e5ff33; border-radius: 3px; }
 .cmp-list li {
     display: flex; align-items: baseline; gap: 8px;
     padding: 7px 9px;
@@ -758,11 +764,24 @@ body.cmp-on .trim-track { height: 80px; }
     font-size: 0.82rem; color: #d6e6ee;
 }
 .cmp-list li:hover { background: rgba(0, 229, 255, 0.1); }
+.cmp-li-name { flex: 0 0 auto; }
+/* The filename next to the date: the date reads better, the filename is
+   what you actually type to find a trip. Italic and quiet so it stays
+   secondary, and it gives way first when the row runs out of room. */
+.cmp-li-file {
+    flex: 0 1 auto; min-width: 0;
+    font-style: italic;
+    font-size: 0.72rem; color: #7c8b95;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .cmp-list li .cmp-li-sub {
     margin-left: auto;
+    flex: 0 0 auto;
+    padding-left: 8px;
     font-size: 0.7rem; color: #8fa7b0;
     font-family: 'SF Mono', Menlo, Consolas, monospace;
 }
+.cmp-chosen .cmp-li-file { margin-left: 7px; font-size: 0.7rem; }
 .cmp-list .cmp-empty { color: #7c8b95; cursor: default; }
 .cmp-list .cmp-empty:hover { background: none; }
 /* The trip already open is listed too: comparing it with itself is a real
@@ -884,22 +903,16 @@ body.cmp-on .trim-track { height: 80px; }
     border-color: rgba(0, 229, 255, 0.4);
     background: rgba(0, 229, 255, 0.12);
 }
-.cmp-toggle {
+.cmp-viewtitle { margin-top: 14px; }
+/* A plain checkbox, like every other boolean in the viewer. */
+.cmp-check {
     flex: 0 0 auto;
-    display: inline-flex; align-items: center; gap: 6px;
-    padding: 7px 10px;
-    font-size: 0.76rem; color: #9fb4c0;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    border-radius: 5px;
+    display: inline-flex; align-items: center; gap: 7px;
+    font-size: 0.76rem; color: #cfe3ec;
     cursor: pointer;
     white-space: nowrap;
 }
-.cmp-toggle[aria-pressed="true"] {
-    color: #ffcf9e;
-    border-color: rgba(255, 158, 64, 0.5);
-    background: rgba(255, 158, 64, 0.14);
-}
+.cmp-check input { accent-color: #ff9e40; cursor: pointer; }
 
 /* Customize dialog. */
 .cd-modal { position: fixed; inset: 0; z-index: 3000; }
