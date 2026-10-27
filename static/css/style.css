@@ -1927,7 +1927,18 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
     font-size: 0.78rem;
     font-family: inherit;
     cursor: pointer;
-    min-width: 120px;
+}
+/* Every control in this column is one width. min-width was a floor, so a
+   select whose widest option needed more simply grew: Trace color carries
+   optgroups, whose indent counts toward the intrinsic width, and Map style
+   has "Satellite hybrid". They came out 122px and 121.3px against everyone
+   else's 120, and since the column is right-aligned that shows up as a
+   ragged left edge. */
+#map-controls select,
+#map-controls .units-toggle {
+    flex: 0 0 124px;
+    width: 124px;
+    min-width: 0;
 }
 #map-controls select:focus { outline: 1px solid #00e5ff; }
 #map-controls select option {
