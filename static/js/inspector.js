@@ -3367,6 +3367,186 @@
     apply();
   })();
 
+  // ---------- Trim dialog ----------
+  // The pinch gesture is the only way to pick a section today, which is fine
+  // on a phone and hopeless with a mouse or when you already know the exact
+  // timecode. This sets the very same viewT0..viewT1 window; nothing is ever
+  // written back to the trip. The speed sparkline behind the band is what
+  // makes a span pickable: without it you are guessing where the ride was.
+  (function trimDialog() {
+    const dialog = document.getElementById("trim-dialog");
+    const btn = document.getElementById("charts-trim");
+    if (!dialog || !btn) return;
+    const trackEl = document.getElementById("trim-track");
+    const bandEl = document.getElementById("trim-band");
+    const gripA = document.getElementById("trim-grip-a");
+    const gripB = document.getElementById("trim-grip-b");
+    const spark = document.getElementById("trim-spark");
+    const startIn = document.getElementById("trim-start");
+    const endIn = document.getElementById("trim-end");
+    const sumEl = document.getElementById("trim-sum");
+
+    // Pending edits live here until Apply, so Cancel really cancels.
+    let a = 0, b = duration;
+
+    // Accepts "90", "1:30" and "0:01:30". Anything else is rejected, so a
+    // typo cannot silently throw the section somewhere unintended.
+    function parseTimeInput(str) {
+      const t = String(str).trim();
+      if (!t) return null;
+      if (!/^\d+(:[0-5]?\d){0,2}$/.test(t)) return null;
+      let sec = 0;
+      for (const p of t.split(":")) sec = sec * 60 + Number(p);
+      return sec;
+    }
+
+    function drawSpark() {
+      const dpr = window.devicePixelRatio || 1;
+      const w = Math.round(trackEl.clientWidth * dpr);
+      const h = Math.round(trackEl.clientHeight * dpr);
+      if (w < 2 || h < 2) return;
+      spark.width = w; spark.height = h;
+      const ctx = spark.getContext("2d");
+      ctx.clearRect(0, 0, w, h);
+      const n = ts.length;
+      if (!n) return;
+      let mx = 0;
+      for (let i = 0; i < n; i++) { const v = ts[i][SPD]; if (typeof v === "number" && v > mx) mx = v; }
+      if (mx <= 0) mx = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, h);
+      for (let i = 0; i < n; i++) {
+        const x = (sampleTimes[i] / (duration || 1)) * w;
+        const y = h - (ts[i][SPD] / mx) * (h - 2 * dpr);
+        ctx.lineTo(x, y);
+      }
+      ctx.lineTo(w, h);
+      ctx.closePath();
+      ctx.fillStyle = "rgba(0, 229, 255, 0.18)";
+      ctx.fill();
+    }
+
+    function render() {
+      const span = duration || 1;
+      const aPct = (a / span) * 100, bPct = (b / span) * 100;
+      bandEl.style.left = aPct + "%";
+      bandEl.style.width = (bPct - aPct) + "%";
+      gripA.style.left = aPct + "%";
+      gripB.style.left = bPct + "%";
+      // Leave the field the user is typing in alone, or every keystroke
+      // would be rewritten under the caret.
+      if (document.activeElement !== startIn) startIn.value = fmtMs(a);
+      if (document.activeElement !== endIn) endIn.value = fmtMs(b);
+      startIn.classList.remove("bad");
+      endIn.classList.remove("bad");
+      sumEl.textContent = "Section " + fmtTime(b - a) + " of " + fmtTime(duration);
+    }
+
+    function setPending(na, nb) {
+      const minSpan = 0.5;
+      a = Math.max(0, Math.min(duration, na));
+      b = Math.max(0, Math.min(duration, nb));
+      if (b - a < minSpan) b = Math.min(duration, a + minSpan);
+      if (b - a < minSpan) a = Math.max(0, b - minSpan);
+      render();
+    }
+
+    const timeAtClientX = (clientX) => {
+      const r = trackEl.getBoundingClientRect();
+      if (r.width <= 0) return 0;
+      return ((clientX - r.left) / r.width) * duration;
+    };
+
+    // One drag handler for both grips and the band. The band moves the whole
+    // span, so it is clamped as a unit; clamping each edge separately would
+    // shrink the section against a trip boundary instead of stopping it.
+    function startDrag(e, mode) {
+      e.preventDefault();
+      const id = e.pointerId;
+      const tGrab = timeAtClientX(e.clientX);
+      const a0 = a, b0 = b;
+      const move = (ev) => {
+        if (ev.pointerId !== id) return;
+        const t = timeAtClientX(ev.clientX);
+        if (mode === "a") setPending(Math.min(t, b0 - 0.5), b0);
+        else if (mode === "b") setPending(a0, Math.max(t, a0 + 0.5));
+        else {
+          const span = b0 - a0;
+          let na = a0 + (t - tGrab);
+          if (na < 0) na = 0;
+          if (na + span > duration) na = duration - span;
+          setPending(na, na + span);
+        }
+      };
+      const up = (ev) => {
+        if (ev.pointerId !== id) return;
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", up);
+        window.removeEventListener("pointercancel", up);
+        bandEl.classList.remove("dragging");
+      };
+      if (mode === "band") bandEl.classList.add("dragging");
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", up);
+      window.addEventListener("pointercancel", up);
+    }
+    gripA.addEventListener("pointerdown", (e) => startDrag(e, "a"));
+    gripB.addEventListener("pointerdown", (e) => startDrag(e, "b"));
+    bandEl.addEventListener("pointerdown", (e) => startDrag(e, "band"));
+
+    // Arrow keys nudge a focused grip, so a precise edge does not demand a
+    // steady hand. Shift jumps by ten seconds.
+    const nudge = (grip, isA) => grip.addEventListener("keydown", (e) => {
+      const step = e.shiftKey ? 10 : 1;
+      let d = 0;
+      if (e.key === "ArrowLeft") d = -step;
+      else if (e.key === "ArrowRight") d = step;
+      else return;
+      e.preventDefault();
+      if (isA) setPending(a + d, b); else setPending(a, b + d);
+    });
+    nudge(gripA, true);
+    nudge(gripB, false);
+
+    const commitField = () => {
+      const na = parseTimeInput(startIn.value);
+      const nb = parseTimeInput(endIn.value);
+      if (na === null) { startIn.classList.add("bad"); return; }
+      if (nb === null) { endIn.classList.add("bad"); return; }
+      setPending(na, nb);
+    };
+    [startIn, endIn].forEach((el) => {
+      el.addEventListener("change", commitField);
+      el.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); commitField(); }
+      });
+    });
+
+    const close = () => dialog.classList.add("hidden");
+    dialog.querySelectorAll("[data-trim-close]").forEach((el) => el.addEventListener("click", close));
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && !dialog.classList.contains("hidden")) close();
+    });
+
+    document.getElementById("trim-reset").addEventListener("click", () => setPending(0, duration));
+    document.getElementById("trim-apply").addEventListener("click", () => {
+      setView(a, b);
+      close();
+    });
+
+    btn.addEventListener("click", () => {
+      a = viewT0; b = viewT1;
+      document.getElementById("trim-total").textContent = fmtMs(duration);
+      dialog.classList.remove("hidden");
+      // The track has no width until the dialog is shown, so the sparkline
+      // and the band positions have to wait for layout.
+      requestAnimationFrame(() => { drawSpark(); render(); });
+    });
+    window.addEventListener("resize", () => {
+      if (!dialog.classList.contains("hidden")) { drawSpark(); render(); }
+    });
+  })();
+
   // Loop toggle. Reset-zoom is now the pill click; one less button.
   loopBtn.addEventListener("click", () => {
     loopOn = !loopOn;

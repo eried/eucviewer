@@ -509,6 +509,85 @@ body.sidebar-resizing * { cursor: col-resize !important; }
     line-height: 1.6;
 }
 
+/* ---------- Trim dialog ---------- */
+/* A typed / dragged way to set the same viewT0..viewT1 section the pinch
+   gesture makes. The speed sparkline behind the band is what makes a span
+   pickable at all: without it you are guessing where the ride happened. */
+.trim-panel { width: min(460px, 94vw); }
+.trim-track {
+    position: relative;
+    height: 58px;
+    margin: 4px 0 2px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.03);
+    overflow: hidden;
+    touch-action: none;
+}
+.trim-spark { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.trim-band {
+    position: absolute; top: 0; bottom: 0;
+    background: rgba(0, 229, 255, 0.16);
+    border-left: 1px solid rgba(0, 229, 255, 0.7);
+    border-right: 1px solid rgba(0, 229, 255, 0.7);
+    cursor: grab;
+}
+.trim-band.dragging { cursor: grabbing; }
+.trim-grip {
+    position: absolute; top: 0; bottom: 0;
+    width: 18px; margin-left: -9px;
+    cursor: col-resize;
+    background: transparent;
+}
+/* The visible handle is a slim bar centred in a deliberately fat hit area,
+   so a fingertip can grab it without the bar having to be finger-sized. */
+.trim-grip::after {
+    content: "";
+    position: absolute; left: 50%; top: 6px; bottom: 6px;
+    width: 3px; margin-left: -1.5px;
+    border-radius: 2px;
+    background: #00e5ff;
+    box-shadow: 0 0 6px rgba(0, 229, 255, 0.6);
+}
+.trim-grip:hover::after, .trim-grip:focus-visible::after { background: #fff; }
+.trim-grip:focus-visible { outline: none; }
+.trim-scale {
+    display: flex; justify-content: space-between;
+    font-size: 0.66rem; color: #7c8b95;
+    font-family: 'SF Mono', Menlo, Consolas, monospace;
+}
+.trim-fields { display: flex; gap: 10px; margin-top: 12px; }
+.trim-field {
+    flex: 1 1 0;
+    min-width: 0;                 /* inputs have an intrinsic width; without
+                                     this the row overflows the panel */
+    display: flex; flex-direction: column; gap: 4px;
+    font-size: 0.66rem; letter-spacing: 0.05em;
+    text-transform: uppercase; color: #8fa7b0;
+}
+.trim-field input {
+    width: 100%;
+    box-sizing: border-box;
+    font-family: 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 0.95rem;
+    padding: 7px 9px;
+    color: #eaf6fb;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 5px;
+}
+.trim-field input:focus {
+    outline: none;
+    border-color: rgba(0, 229, 255, 0.55);
+    background: rgba(0, 229, 255, 0.06);
+}
+.trim-field input.bad { border-color: rgba(255, 90, 90, 0.6); color: #ffb3b3; }
+.trim-sum {
+    margin-top: 10px;
+    font-size: 0.78rem; color: #bfeef7;
+    font-family: 'SF Mono', Menlo, Consolas, monospace;
+}
+
 /* Customize dialog. */
 .cd-modal { position: fixed; inset: 0; z-index: 3000; }
 .cd-modal.hidden { display: none; }

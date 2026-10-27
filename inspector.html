@@ -6,7 +6,7 @@
     <title>Trip Inspector - EUC Planet</title>
     <link rel="icon" href="static/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
-    <link rel="stylesheet" href="static/css/inspector.css?v=50" />
+    <link rel="stylesheet" href="static/css/inspector.css?v=52" />
     <script type="text/javascript">
         (function(c,l,a,r,i,t,y){
             c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
@@ -186,9 +186,17 @@
                     <button type="button" id="charts-collapse-all" class="ct-iconbtn" title="Collapse all graphs">
                         <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 6 8 10 12 6"/></svg>
                     </button>
+                    <button type="button" id="charts-trim" class="ct-btn" title="Set the playback section by typing or dragging">
+                        <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M3 2v12M13 2v12"/><path d="M3 8h10"/></svg>
+                        Trim
+                    </button>
                     <button type="button" id="charts-customize" class="ct-btn" title="Reorder, hide, or add graphs">
                         <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M2 4h9M2 8h6M2 12h9"/><circle cx="13" cy="4" r="1.6"/><circle cx="10" cy="8" r="1.6"/><circle cx="13" cy="12" r="1.6"/></svg>
                         Customize
+                    </button>
+                    <button type="button" id="charts-compare" class="ct-btn" title="Overlay another trip on these graphs">
+                        <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 11l3-5 3 3 3-6 3 8"/></svg>
+                        Compare
                     </button>
                 </div>
                 <!-- Shown when every graph is hidden (all toggled off in Customize). -->
@@ -291,7 +299,44 @@
         </div>
     </div>
 
+    <!-- Trim: a typed / dragged way to set the same playback section the
+         pinch gesture makes. Never touches the trip data. -->
+    <div id="trim-dialog" class="cd-modal hidden" role="dialog" aria-label="Trim to section">
+        <div class="cd-backdrop" data-trim-close></div>
+        <div class="cd-panel trim-panel">
+            <header class="cd-head">
+                <h3>Trim to section</h3>
+                <button type="button" class="cd-close" data-trim-close aria-label="Close">&times;</button>
+            </header>
+            <div class="cd-body">
+                <div class="trim-track" id="trim-track">
+                    <canvas id="trim-spark" class="trim-spark"></canvas>
+                    <div class="trim-band" id="trim-band"></div>
+                    <div class="trim-grip" id="trim-grip-a" tabindex="0" role="slider" aria-label="Section start"></div>
+                    <div class="trim-grip" id="trim-grip-b" tabindex="0" role="slider" aria-label="Section end"></div>
+                </div>
+                <div class="trim-scale"><span>0:00</span><span id="trim-total">0:00</span></div>
+                <div class="trim-fields">
+                    <label class="trim-field">Start
+                        <input type="text" id="trim-start" inputmode="numeric" autocomplete="off" spellcheck="false" />
+                    </label>
+                    <label class="trim-field">End
+                        <input type="text" id="trim-end" inputmode="numeric" autocomplete="off" spellcheck="false" />
+                    </label>
+                </div>
+                <div class="trim-sum" id="trim-sum"></div>
+                <div class="cd-hint">The trip itself is never changed. This is the same section the pinch gesture sets.</div>
+            </div>
+            <footer class="cd-foot">
+                <button type="button" class="cd-reset" id="trim-reset">Whole trip</button>
+                <span class="cd-spacer"></span>
+                <button type="button" class="cd-cancel" data-trim-close>Cancel</button>
+                <button type="button" class="cd-create" id="trim-apply">Apply</button>
+            </footer>
+        </div>
+    </div>
+
     <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-    <script src="static/js/inspector.js?v=118"></script>
+    <script src="static/js/inspector.js?v=119"></script>
 </body>
 </html>
