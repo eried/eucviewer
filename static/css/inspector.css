@@ -522,10 +522,10 @@ body.sidebar-resizing * { cursor: col-resize !important; }
 .cc-val .ch-unit { font-weight: 500; color: #9aa0a6; margin-left: 2px; font-size: 0.82em; }
 .cc-empty { font-size: 0.66rem; color: #6e6e78; }
 
-/* Charts toolbar with the Customize button. It wraps rather than overflow:
-   dragged down to its narrowest the column cannot hold the title and four
-   controls on one line, and the buttons that did not fit used to sit
-   outside the panel behind a scrollbar. */
+/* Charts toolbar with the Customize button. The drag handle's minimum is
+   set to keep this on one line, so the wrap is a backstop: should a button
+   ever outgrow it, the row breaks instead of putting Compare outside the
+   panel behind a scrollbar. */
 .charts-toolbar {
     position: sticky; top: -6px; z-index: 5;
     display: flex; align-items: center; gap: 8px;

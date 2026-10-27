@@ -4553,10 +4553,13 @@
     const STORAGE_KEY = "inspector-sidebar-w";
     const DEFAULT_W = 360;
     const stage = document.getElementById("stage");
-    // Narrow enough to still read, wide enough to leave the map a view.
+    // The default is also the floor: at 354 the toolbar can no longer hold
+    // Trim, Customize and Compare on one line, and once a comparison is
+    // running the stop button pushes that up again. Wide enough to leave
+    // the map a view going the other way.
     function limits() {
-      const cap = Math.min(900, Math.floor(window.innerWidth * 0.6));
-      return { min: Math.min(240, cap), max: cap };
+      const cap = Math.max(DEFAULT_W, Math.min(900, Math.floor(window.innerWidth * 0.6)));
+      return { min: Math.min(DEFAULT_W, cap), max: cap };
     }
     function applyW(w, store) {
       const { min, max } = limits();

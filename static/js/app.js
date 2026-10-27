@@ -5916,12 +5916,14 @@ document.addEventListener("DOMContentLoaded", function () {
   const PANEL_W_KEY = "dbb_panel_w";
   const PANEL_W_DEFAULT = 320;
   function panelLimits() {
-    // Leave the map at least 40% of the window. The default width is the
-    // floor of that cap, not its victim: on a phone 60% is narrower than
-    // the panel has always been, and a resize (every URL-bar nudge fires
-    // one) must not shrink it below what it was built for.
-    const cap = Math.max(PANEL_W_DEFAULT, Math.min(640, Math.floor(window.innerWidth * 0.6)));
-    return { min: Math.min(280, cap), max: cap };
+    // 300 is where the All row still holds Batch and Customize beside the
+    // checkbox; a hair under and they drop to a line of their own. Leave
+    // the map at least 40% of the window going the other way, and treat
+    // the default as the floor of that cap rather than its victim: on a
+    // phone 60% is narrower than the panel has always been, and a resize
+    // (every URL-bar nudge fires one) must not shrink it below that.
+    const cap = Math.max(PANEL_W_DEFAULT, Math.min(900, Math.floor(window.innerWidth * 0.6)));
+    return { min: Math.min(300, cap), max: cap };
   }
   function panelWidth() {
     const v = parseInt(document.documentElement.style.getPropertyValue("--panel-w"), 10);
