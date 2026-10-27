@@ -467,7 +467,10 @@ body.sidebar-resizing * { cursor: col-resize !important; }
 .ct-iconbtn:hover { color: #bfeef7; border-color: rgba(0, 229, 255, 0.35); }
 .ct-iconbtn.on { color: #00e5ff; border-color: rgba(0, 229, 255, 0.4); background: rgba(0, 229, 255, 0.1); }
 .ct-iconbtn svg { transition: transform 0.2s; }
-.ct-iconbtn.on svg { transform: rotate(180deg); }
+/* The graphs sit under this bar, so the chevron points at them: down while
+   they are hidden (open it), up once they are showing (close it). .on is the
+   collapsed state and matches the base glyph, so the flip rides on :not(). */
+.ct-iconbtn:not(.on) svg { transform: rotate(180deg); }
 
 .chart-block.chart-hidden { display: none; }
 
@@ -486,6 +489,12 @@ body.sidebar-resizing * { cursor: col-resize !important; }
     #charts-collapse-all { display: inline-flex; }
     #charts.charts-collapsed .chart-block { display: none; }
     #charts.charts-collapsed .charts-empty { display: none; }
+    /* Collapsed, the toolbar is the whole panel, so its divider rules off
+       nothing and the panel's bottom padding leaves a dark strip above the
+       playback bar's own border. Two lines and a gap where one line does.
+       Drop both and the bar is just the bar. */
+    #charts.charts-collapsed { padding-bottom: 4px; gap: 0; }
+    #charts.charts-collapsed .charts-toolbar { border-bottom: 0; padding-bottom: 4px; }
 }
 
 /* Empty state: every graph toggled off in Customize. */
