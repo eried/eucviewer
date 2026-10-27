@@ -54,7 +54,10 @@ html, body {
 }
 .dash-toggle:hover, .dash-toggle:active { color: #bfeef7; border-color: rgba(0, 229, 255, 0.35); }
 .dash-toggle svg { width: 14px; height: 14px; transition: transform 0.2s; }
-#inspector.dash-collapsed .dash-toggle svg { transform: rotate(180deg); }
+/* Same rule as the Metrics chevron: v means closed, click to open. The
+   header shrinks upward, so collapsed the glyph points down at the room it
+   will grow back into. */
+#inspector:not(.dash-collapsed) .dash-toggle svg { transform: rotate(180deg); }
 
 .back-link {
     color: #00e5ff;
