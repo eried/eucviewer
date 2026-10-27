@@ -6,7 +6,7 @@
     <title>Trip Inspector - EUC Planet</title>
     <link rel="icon" href="static/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
-    <link rel="stylesheet" href="static/css/inspector.css?v=52" />
+    <link rel="stylesheet" href="static/css/inspector.css?v=54" />
     <script type="text/javascript">
         (function(c,l,a,r,i,t,y){
             c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
@@ -336,7 +336,70 @@
         </div>
     </div>
 
+    <!-- Compare: pick a second trip, line it up, and ride it along in the
+         graphs and the info bar. Nothing here changes either trip. -->
+    <div id="compare-dialog" class="cd-modal hidden" role="dialog" aria-label="Compare with another trip">
+        <div class="cd-backdrop" data-cmp-close></div>
+        <div class="cd-panel cmp-panel">
+            <header class="cd-head">
+                <h3>Compare with another trip</h3>
+                <button type="button" class="cd-close" data-cmp-close aria-label="Close">&times;</button>
+            </header>
+            <div class="cd-body">
+                <!-- Step 1: which trip -->
+                <div id="cmp-pick">
+                    <input type="search" id="cmp-search" class="cmp-search" placeholder="Filter trips" autocomplete="off" spellcheck="false" />
+                    <ul class="cmp-list" id="cmp-list"></ul>
+                </div>
+
+                <!-- Step 2: line it up -->
+                <div id="cmp-setup" class="hidden">
+                    <div class="cmp-chosen">
+                        <span class="cmp-dot cmp-dot-b"></span>
+                        <span id="cmp-chosen-name"></span>
+                        <button type="button" class="cmp-change" id="cmp-change">Change</button>
+                    </div>
+
+                    <div class="cmp-shared" id="cmp-shared"></div>
+
+                    <label class="cmp-field">Align by
+                        <select id="cmp-align"></select>
+                    </label>
+
+                    <div class="cmp-strip" id="cmp-strip">
+                        <canvas id="cmp-strip-canvas"></canvas>
+                    </div>
+                    <div class="cmp-striphint">Drag the orange trace to line it up.</div>
+
+                    <div class="cmp-offrow">
+                        <button type="button" class="cmp-auto" id="cmp-auto">Auto</button>
+                        <span class="cmp-offlabel">Offset</span>
+                        <span class="cmp-offval" id="cmp-offval">+0:00</span>
+                        <button type="button" class="cmp-auto" id="cmp-zero">Reset</button>
+                    </div>
+
+                    <div class="cmp-opts">
+                        <div class="cmp-seg" role="group" aria-label="Graph layout">
+                            <button type="button" id="cmp-mode-side" class="on">Side by side</button>
+                            <button type="button" id="cmp-mode-over">Overlay</button>
+                        </div>
+                        <label class="cmp-check">
+                            <input type="checkbox" id="cmp-delta" />
+                            Show deltas instead of the second trip's values
+                        </label>
+                    </div>
+                </div>
+            </div>
+            <footer class="cd-foot">
+                <button type="button" class="cd-reset" id="cmp-stop">Stop comparing</button>
+                <span class="cd-spacer"></span>
+                <button type="button" class="cd-cancel" data-cmp-close>Cancel</button>
+                <button type="button" class="cd-create" id="cmp-apply">Compare</button>
+            </footer>
+        </div>
+    </div>
+
     <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-    <script src="static/js/inspector.js?v=119"></script>
+    <script src="static/js/inspector.js?v=122"></script>
 </body>
 </html>

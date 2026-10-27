@@ -1992,6 +1992,361 @@
     }
   }
 
+  // ---------- Compare ----------
+  // A second trip rides along as a secondary: its own samples and its own
+  // time base, shifted by one offset so the two line up. The chart x-axis is
+  // already absolute trip time (px() resolves a sample to a timestamp before
+  // mapping it), so aligning two trips is nothing more than that offset.
+  //
+  // Only raw log columns can be compared. The inspector derives the avg /
+  // envelope columns for the primary trip alone, so those charts stay
+  // single-trace rather than quietly showing one trip's derived series
+  // against nothing.
+  const CMP_COLOR = "#ff9e40";
+  let cmp = null;
+
+  function cmpColHasData(rows, idx) {
+    for (let i = 0; i < rows.length; i++) {
+      const v = rows[i][idx];
+      if (typeof v === "number" && v !== 0) return true;
+    }
+    return false;
+  }
+
+  // Metric keys both trips actually carry. An all-zero column counts as
+  // absent, the same rule the single-trip charts already use.
+  function cmpSharedKeys(rows) {
+    return Object.keys(CHART_CONFIG).filter((k) => {
+      const i = CHART_CONFIG[k].idx;
+      if (i > PHASE) return false;             // derived: primary trip only
+      return chartHasData(i) && cmpColHasData(rows, i);
+    });
+  }
+
+  function cmpMake(trackB, idxB) {
+    const rows = trackB.timeseries || [];
+    const n = rows.length;
+    const times = new Float64Array(n);
+    const base = n ? rows[0][SEC] : 0;
+    for (let i = 0; i < n; i++) times[i] = rows[i][SEC] - base;
+    return {
+      idx: idxB, track: trackB, rows, times,
+      dur: n ? times[n - 1] : 0,
+      offset: 0, alignIdx: SPD,
+      mode: "side",            // "side" | "overlay"
+      showDelta: false
+    };
+  }
+
+  function cmpSampleAt(times, t) {
+    let lo = 0, hi = times.length - 1;
+    if (hi < 0) return -1;
+    if (t <= times[0]) return 0;
+    if (t >= times[hi]) return hi;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (times[mid] <= t) lo = mid; else hi = mid - 1;
+    }
+    return lo;
+  }
+
+  // B's value on the primary clock, interpolated between its own samples.
+  // Returns null outside B's span, so a readout can show a dash instead of
+  // clamping to an endpoint, which would quietly invent data for a stretch
+  // of time where the second trip simply was not running.
+  function cmpValueAt(idx, tPrimary) {
+    if (!cmp) return null;
+    const t = tPrimary - cmp.offset;
+    if (t < 0 || t > cmp.dur) return null;
+    const i = cmpSampleAt(cmp.times, t);
+    if (i < 0) return null;
+    const a = cmp.rows[i][idx];
+    if (typeof a !== "number") return null;
+    const j = Math.min(cmp.times.length - 1, i + 1);
+    if (j === i) return a;
+    const b = cmp.rows[j][idx];
+    if (typeof b !== "number") return a;
+    const span = cmp.times[j] - cmp.times[i];
+    if (span <= 0) return a;
+    return a + (b - a) * ((t - cmp.times[i]) / span);
+  }
+
+  function cmpHas(idx) {
+    return !!(cmp && idx <= PHASE && cmp.sharedIdx && cmp.sharedIdx.has(idx));
+  }
+  // Side-by-side splits one canvas into two stacked bands sharing a y scale.
+  // A shared scale is the whole point: two independently scaled traces look
+  // alike however far apart the real numbers are.
+  function cmpSideBands(idx) {
+    return (cmp && cmp.mode === "side" && cmpHas(idx)) ? 2 : 1;
+  }
+
+  // Resample both trips onto a common 1 s grid, normalise each, then slide
+  // one past the other and keep the offset that correlates best. Normalising
+  // matters: without it the score is dominated by whichever trip is simply
+  // faster, not by the shape, and every ride aligns to its own fastest part.
+  function cmpAutoOffset(idx) {
+    const STEP = 1;
+    const grid = (times, rows, dur) => {
+      const n = Math.max(1, Math.floor(dur / STEP) + 1);
+      const out = new Float64Array(n);
+      let k = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i * STEP;
+        while (k < times.length - 2 && times[k + 1] <= t) k++;
+        const v = rows[k] ? rows[k][idx] : 0;
+        out[i] = typeof v === "number" ? v : 0;
+      }
+      return out;
+    };
+    const norm = (x) => {
+      const n = x.length || 1;
+      let m = 0;
+      for (let i = 0; i < x.length; i++) m += x[i];
+      m /= n;
+      let s = 0;
+      for (let i = 0; i < x.length; i++) s += (x[i] - m) * (x[i] - m);
+      s = Math.sqrt(s / n) || 1;
+      const o = new Float64Array(x.length);
+      for (let i = 0; i < x.length; i++) o[i] = (x[i] - m) / s;
+      return o;
+    };
+    const A = norm(grid(sampleTimes, ts, duration));
+    const B = norm(grid(cmp.times, cmp.rows, cmp.dur));
+    if (A.length < 4 || B.length < 4) return 0;
+    const minLen = Math.min(A.length, B.length);
+    let best = 0, bestScore = -Infinity;
+    const lo = -Math.floor(B.length * 0.9);
+    const hi = Math.floor(A.length * 0.9);
+    for (let off = lo; off <= hi; off++) {
+      const i0 = Math.max(0, off);
+      const i1 = Math.min(A.length - 1, off + B.length - 1);
+      const n = i1 - i0 + 1;
+      if (n < 10) continue;
+      let s = 0;
+      for (let i = i0; i <= i1; i++) s += A[i] * B[i - off];
+      // Weight by how much of the shorter trip actually overlaps, or a
+      // three-sample coincidence at the very edge outscores a real match.
+      const score = (s / n) * Math.min(1, n / minLen);
+      if (score > bestScore) { bestScore = score; best = off; }
+    }
+    return best * STEP;
+  }
+
+  // Every chart caches its y range, and compare changes what belongs in it,
+  // so the caches have to go whenever the second trip or its offset moves.
+  function cmpInvalidate() {
+    charts.forEach((c) => { c._fullRange = null; });
+    combinedGraphs.forEach((cg) => { cg._fullRange = null; });
+  }
+
+  function cmpApply() {
+    if (cmp) cmp.sharedIdx = new Set(cmpSharedKeys(cmp.rows).map((k) => CHART_CONFIG[k].idx));
+    document.body.classList.toggle("cmp-on", !!cmp);
+    document.body.classList.toggle("cmp-side", !!cmp && cmp.mode === "side");
+    charts.forEach((c) => {
+      c.block.classList.toggle("cmp-split", cmpSideBands(c.cfg.idx) === 2);
+    });
+    cmpInvalidate();
+    buildCompareHeader();
+    // The split blocks change height, so the canvases need refitting before
+    // anything is drawn into them.
+    requestAnimationFrame(() => { resizeCharts(); updateUI(); });
+  }
+
+  function cmpClear() {
+    cmp = null;
+    cmpApply();
+  }
+
+
+  // ---------- Compare: the info bar ----------
+  // One bar, not two. Every readout grows a second line for the compared
+  // trip, which costs about twelve pixels of header height instead of
+  // doubling it. The B elements are added alongside the originals rather
+  // than replacing them, so updateUI keeps writing to exactly the ids it
+  // always has and knows nothing about compare.
+  function cmpTripLabel(tr) {
+    return tr.customName || tr.date || tr.name || "Trip";
+  }
+
+  // B's cumulative distance, built the same way the primary trip's is, so
+  // the Distance rows are measured alike rather than one from GPS and one
+  // from whatever the log happened to store.
+  function cmpBuildCumKm(rows) {
+    const out = new Float32Array(rows.length);
+    let pLat = null, pLon = null, total = 0;
+    for (let i = 0; i < rows.length; i++) {
+      const lat = rows[i][LAT], lon = rows[i][LON];
+      if (lat !== 0 && lon !== 0) {
+        if (pLat !== null) total += haversineKm(pLat, pLon, lat, lon);
+        pLat = lat; pLon = lon;
+      }
+      out[i] = total;
+    }
+    return out;
+  }
+
+  // Which column each readout shows, so the B line can be filled from the
+  // same source as the A line above it.
+  const CMP_READOUTS = [
+    { id: "odo-value", kind: "dist", dp: 2, cum: true },
+    { id: "volt-value", kind: null, idx: VOLT, dp: 1 },
+    { id: "temp-value", kind: "temp", idx: TEMP, dp: 1 },
+    { id: "alt-value", kind: "alt", idx: ALT, dp: 0 }
+  ];
+
+  function cmpConvert(kind, v) {
+    if (kind === "dist") return UNITS.dist(v);
+    if (kind === "temp") return UNITS.temp(v);
+    if (kind === "alt") return UNITS.alt(v);
+    return v;
+  }
+
+  function buildCompareHeader() {
+    document.querySelectorAll(".cmp-el").forEach((el) => el.remove());
+    if (!cmp) return;
+    cmp.cumKm = cmpBuildCumKm(cmp.rows);
+
+    const add = (tag, cls, parent, txt) => {
+      const e = makeEl(tag, "cmp-el " + cls, txt);
+      parent.appendChild(e);
+      return e;
+    };
+
+    // Trip identity: a dot on each line so the colour explains itself.
+    const titleEl = document.querySelector(".trip-title");
+    const nameEl = document.getElementById("trip-name");
+    if (titleEl && nameEl && !nameEl.querySelector(".cmp-dot")) {
+      const dot = makeEl("span", "cmp-el cmp-dot cmp-dot-a");
+      nameEl.insertBefore(dot, nameEl.firstChild);
+    }
+    if (titleEl) {
+      const idB = makeEl("div", "cmp-el cmp-id-b");
+      idB.appendChild(makeEl("span", "cmp-dot cmp-dot-b"));
+      idB.appendChild(makeEl("span", null, cmpTripLabel(cmp.track)));
+      titleEl.insertBefore(idB, document.getElementById("trip-subtitle"));
+      const st = cmp.track.stats || {};
+      const bits = [];
+      if (st.distanceKm) bits.push(UNITS.dist(st.distanceKm).toFixed(2) + " " + UNITS.distUnit);
+      bits.push(fmtTime(cmp.dur));
+      if (st.maxSpeed) bits.push(UNITS.speed(st.maxSpeed).toFixed(0) + " max");
+      add("div", "cmp-sub-b", titleEl, bits.join(" · "));
+    }
+
+    // Speedo: a dashed ghost needle for B, and its number under A's.
+    const gsvg = document.querySelector(".gauge-speed .gauge-svg");
+    if (gsvg) {
+      const ln = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      ln.setAttribute("class", "cmp-el cmp-needle");
+      ln.setAttribute("x1", "60"); ln.setAttribute("y1", "60");
+      ln.setAttribute("x2", "60"); ln.setAttribute("y2", "22");
+      gsvg.insertBefore(ln, gsvg.querySelector(".gauge-hub"));
+    }
+    const gauge = document.querySelector(".gauge-speed");
+    const gLabel = gauge && gauge.querySelector(".gauge-label");
+    if (gauge && gLabel) {
+      const v = makeEl("div", "cmp-el cmp-gb", "—");
+      gauge.insertBefore(v, gLabel);
+    }
+
+    // Battery: a second slim bar under the existing one.
+    const bGauge = document.querySelector(".gauge-battery");
+    const bLabel = bGauge && bGauge.querySelector(".gauge-label");
+    if (bGauge && bLabel) {
+      const wrap = makeEl("div", "cmp-el cmp-batt-b");
+      const shell = makeEl("div", "cmp-bshell");
+      shell.appendChild(makeEl("i", "cmp-bfill"));
+      wrap.append(shell, makeEl("span", "cmp-bnum", "—"));
+      bGauge.insertBefore(wrap, bLabel);
+    }
+
+    // Readouts: one extra line each.
+    CMP_READOUTS.forEach((r) => {
+      const valEl = document.getElementById(r.id);
+      const ro = valEl && valEl.closest(".readout");
+      if (!ro) return;
+      const unit = valEl.parentElement.querySelector("small");
+      const line = makeEl("div", "cmp-el cmp-row2");
+      line.appendChild(makeEl("span", "cmp-row2-v", "—"));
+      if (unit) line.appendChild(makeEl("small", null, unit.textContent));
+      ro.appendChild(line);
+      r._el = line.firstChild;
+      r._unit = line.querySelector("small");
+    });
+
+    // The offset belongs next to the clock: it is a time, and it is the one
+    // number that explains why the two traces sit where they do.
+    const clock = document.querySelector(".readout.clock");
+    if (clock) add("div", "cmp-offset", clock, "");
+  }
+
+  function fmtOffset(sec) {
+    const s = Math.round(Math.abs(sec));
+    const sign = sec < 0 ? "−" : "+";
+    return sign + Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+  }
+
+  function updateCompareHeader() {
+    if (!cmp) return;
+    const t = currentTime;
+    const dash = "—";
+
+    const spd = cmpValueAt(SPD, t);
+    const gb = document.querySelector(".cmp-gb");
+    if (gb) gb.textContent = spd == null ? dash : UNITS.speed(spd).toFixed(1);
+    const needle = document.querySelector(".cmp-needle");
+    if (needle) {
+      const maxSpeed = Math.max(track.stats?.maxSpeed || 60, 60);
+      needle.style.display = spd == null ? "none" : "";
+      if (spd != null) {
+        const ratio = Math.min(1, spd / maxSpeed);
+        needle.style.transform = "rotate(" + (-90 + ratio * 180) + "deg)";
+      }
+    }
+
+    const batt = cmpValueAt(BATT, t);
+    const bfill = document.querySelector(".cmp-bfill");
+    const bnum = document.querySelector(".cmp-bnum");
+    if (bfill) bfill.style.width = batt == null ? "0%" : Math.max(0, Math.min(100, batt)) + "%";
+    if (bnum) bnum.textContent = batt == null ? dash : batt.toFixed(0) + "%";
+
+    CMP_READOUTS.forEach((r) => {
+      if (!r._el) return;
+      let v;
+      if (r.cum) {
+        const tb = t - cmp.offset;
+        v = (tb < 0 || tb > cmp.dur) ? null : cmp.cumKm[cmpSampleAt(cmp.times, tb)];
+      } else {
+        v = cmpValueAt(r.idx, t);
+      }
+      if (v == null) {
+        r._el.textContent = dash;
+        r._el.classList.remove("up", "dn", "flat");
+        if (r._unit) r._unit.style.visibility = "hidden";
+        return;
+      }
+      if (r._unit) r._unit.style.visibility = "";
+      const bVal = cmpConvert(r.kind, v);
+      if (!cmp.showDelta) {
+        r._el.textContent = bVal.toFixed(r.dp);
+        r._el.classList.remove("up", "dn", "flat");
+        return;
+      }
+      // Delta mode: the A value is read back off the element above rather
+      // than recomputed, so the two can never disagree about rounding.
+      const aVal = parseFloat(document.getElementById(r.id).textContent);
+      const d = bVal - (isNaN(aVal) ? bVal : aVal);
+      r._el.textContent = (d > 0 ? "+" : d < 0 ? "−" : "") + Math.abs(d).toFixed(r.dp);
+      r._el.classList.toggle("flat", Math.abs(d) < Math.pow(10, -r.dp) / 2);
+      r._el.classList.toggle("up", d >= Math.pow(10, -r.dp) / 2);
+      r._el.classList.toggle("dn", d <= -Math.pow(10, -r.dp) / 2);
+    });
+
+    const off = document.querySelector(".cmp-offset");
+    if (off) off.textContent = "B " + fmtOffset(cmp.offset);
+  }
+
   function drawChart(c, fracIdxArg) {
     if (c.collapsed) return;
     const ctx = c.canvas.getContext("2d");
@@ -2056,6 +2411,14 @@
           if (typeof e === "number") { if (e < a) a = e; if (e > b) b = e; }
         }
       }
+      // The compared trip shares this axis, so its peaks belong in the scale.
+      // Without it B is drawn against A's range alone and clips off the top.
+      if (cmpHas(idx)) {
+        for (let i = 0; i < cmp.rows.length; i++) {
+          const v = cmp.rows[i][idx];
+          if (typeof v === "number") { if (v < a) a = v; if (v > b) b = v; }
+        }
+      }
       c._fullRange = { min: a, max: b };
     }
     let minV = c._fullRange.min, maxV = c._fullRange.max;
@@ -2081,7 +2444,14 @@
       const t = sampleTimes[i0] + (sampleTimes[i1] - sampleTimes[i0]) * f;
       return pad + (t - viewT0) / viewW * innerW;
     };
-    const py = (v) => h - pad - ((v - minV) / (maxV - minV)) * (h - pad * 2);
+    // Side by side splits the canvas into two stacked bands that share one
+    // scale; band 0 is this trip, band 1 the compared one. Overlay leaves a
+    // single band, so py is unchanged for every non-compare chart.
+    const bands = cmpSideBands(idx);
+    const bandH = h / bands;
+    const pyBand = (v, band) =>
+      (band + 1) * bandH - pad - ((v - minV) / (maxV - minV)) * (bandH - pad * 2);
+    const py = (v) => pyBand(v, 0);
     // Convenience for AB markers / drag overlay (time → x).
     const pxT = (t) => pad + (t - viewT0) / viewW * innerW;
 
@@ -2124,6 +2494,74 @@
         const v = ts[k][c.extra.idx];
         if (typeof v !== "number") { started = false; continue; }
         const x = px(k), y = py(v);
+        if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Compared trip. Same shared scale, drawn either dashed over the primary
+    // line or into the lower band. Its samples are walked on their own time
+    // base and placed through pxT, so the offset is the only thing aligning
+    // them; nothing is resampled.
+    if (cmpHas(idx)) {
+      const band = bands === 2 ? 1 : 0;
+      const jLo = Math.max(0, cmpSampleAt(cmp.times, viewT0 - cmp.offset) - 1);
+      const jHi = Math.min(cmp.rows.length - 1, cmpSampleAt(cmp.times, viewT1 - cmp.offset) + 1);
+      if (bands === 2) {
+        // A hairline between the bands, and a letter in each corner. The
+        // orange is already the compared trip everywhere else, but with two
+        // bands of the same chart stacked it is worth saying which is which
+        // without making the reader remember a colour.
+        ctx.save();
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.10)";
+        ctx.lineWidth = 1 * dpr;
+        ctx.beginPath();
+        ctx.moveTo(0, bandH);
+        ctx.lineTo(w, bandH);
+        ctx.stroke();
+        // Top right of each band: the time grid labels own the top left, and
+        // the baseline area fill swallows anything put at the bottom.
+        ctx.font = "700 " + (9 * dpr) + "px ui-sans-serif, system-ui, sans-serif";
+        ctx.textBaseline = "top";
+        ctx.textAlign = "right";
+        ctx.fillStyle = c.cfg.color;
+        ctx.fillText("A", w - 4 * dpr, 2 * dpr);
+        ctx.fillStyle = CMP_COLOR;
+        ctx.fillText("B", w - 4 * dpr, bandH + 2 * dpr);
+        ctx.textAlign = "left";
+        ctx.restore();
+      }
+      ctx.save();
+      if (bands === 2 && render !== "line") {
+        const grad = ctx.createLinearGradient(0, bandH, 0, h);
+        grad.addColorStop(0, CMP_COLOR + "44");
+        grad.addColorStop(1, CMP_COLOR + "00");
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.moveTo(pxT(cmp.times[jLo] + cmp.offset), h);
+        for (let j = jLo; j <= jHi; j++) {
+          const v = cmp.rows[j][idx];
+          if (typeof v !== "number") continue;
+          ctx.lineTo(pxT(cmp.times[j] + cmp.offset), pyBand(v, band));
+        }
+        ctx.lineTo(pxT(cmp.times[jHi] + cmp.offset), h);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.strokeStyle = CMP_COLOR;
+      ctx.lineWidth = 1.5 * dpr;
+      ctx.lineJoin = "round";
+      // Overlaid, the dash is what separates it from the primary line at a
+      // glance. In its own band there is nothing to confuse it with, so it
+      // gets a solid line and stays readable when the trace is busy.
+      if (bands === 1) ctx.setLineDash([5 * dpr, 4 * dpr]);
+      ctx.beginPath();
+      let started = false;
+      for (let j = jLo; j <= jHi; j++) {
+        const v = cmp.rows[j][idx];
+        if (typeof v !== "number") { started = false; continue; }
+        const x = pxT(cmp.times[j] + cmp.offset), y = pyBand(v, band);
         if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
       }
       ctx.stroke();
@@ -2477,6 +2915,7 @@
     document.getElementById("alt-value").textContent = UNITS.alt(sampleAt(ALT)).toFixed(0);
     updateClock();
     updateGforceGauge();
+    updateCompareHeader();
 
     // Scrub
     if (document.activeElement !== scrub) {
@@ -3365,6 +3804,278 @@
     });
 
     apply();
+  })();
+
+  // ---------- Compare dialog ----------
+  // Pick a second trip, line it up, apply. Everything is pending until
+  // Compare is pressed, so backing out leaves the view exactly as it was.
+  (function compareDialog() {
+    const dialog = document.getElementById("compare-dialog");
+    const btn = document.getElementById("charts-compare");
+    if (!dialog || !btn) return;
+    const pickView = document.getElementById("cmp-pick");
+    const setupView = document.getElementById("cmp-setup");
+    const listEl = document.getElementById("cmp-list");
+    const searchEl = document.getElementById("cmp-search");
+    const sharedEl = document.getElementById("cmp-shared");
+    const alignSel = document.getElementById("cmp-align");
+    const stripEl = document.getElementById("cmp-strip");
+    const stripCv = document.getElementById("cmp-strip-canvas");
+    const offValEl = document.getElementById("cmp-offval");
+    const modeSide = document.getElementById("cmp-mode-side");
+    const modeOver = document.getElementById("cmp-mode-over");
+    const deltaEl = document.getElementById("cmp-delta");
+    const applyBtn = document.getElementById("cmp-apply");
+    const stopBtn = document.getElementById("cmp-stop");
+
+    // The pending selection. Only copied into `cmp` on apply.
+    let draft = null;
+
+    function tripSummary(tr) {
+      const st = tr.stats || {};
+      const rows = tr.timeseries || [];
+      const dur = rows.length ? rows[rows.length - 1][SEC] - rows[0][SEC] : 0;
+      const bits = [];
+      if (st.distanceKm) bits.push(UNITS.dist(st.distanceKm).toFixed(1) + " " + UNITS.distUnit);
+      bits.push(fmtMs(dur));
+      return bits.join("  ");
+    }
+
+    function renderList() {
+      const q = (searchEl.value || "").trim().toLowerCase();
+      listEl.innerHTML = "";
+      let shown = 0;
+      tracks.forEach((tr, i) => {
+        if (i === trackIdx) return;                 // comparing a trip to itself proves nothing
+        if (!(tr.timeseries || []).length) return;
+        const label = cmpTripLabel(tr);
+        if (q && label.toLowerCase().indexOf(q) === -1) return;
+        if (shown >= 300) return;                   // 227 trips today, but don't bet on it
+        shown++;
+        const li = makeEl("li", null);
+        li.appendChild(makeEl("span", null, label));
+        li.appendChild(makeEl("span", "cmp-li-sub", tripSummary(tr)));
+        li.addEventListener("click", () => choose(i));
+        listEl.appendChild(li);
+      });
+      if (!shown) listEl.appendChild(makeEl("li", "cmp-empty", q ? "No trip matches that." : "No other trip is loaded."));
+    }
+
+    function choose(i) {
+      draft = cmpMake(tracks[i], i);
+      const shared = cmpSharedKeys(draft.rows);
+      draft.sharedIdx = new Set(shared.map((k) => CHART_CONFIG[k].idx));
+      document.getElementById("cmp-chosen-name").textContent = cmpTripLabel(draft.track);
+
+      sharedEl.innerHTML = "";
+      if (!shared.length) {
+        sharedEl.appendChild(makeEl("span", "cmp-chip cmp-none", "No metric in common"));
+      } else {
+        shared.forEach((k) => sharedEl.appendChild(makeEl("span", "cmp-chip", CHART_CONFIG[k].label)));
+      }
+
+      alignSel.innerHTML = "";
+      shared.forEach((k) => {
+        const o = document.createElement("option");
+        o.value = String(CHART_CONFIG[k].idx);
+        o.textContent = CHART_CONFIG[k].label;
+        alignSel.appendChild(o);
+      });
+      // Speed is the best alignment signal on a wheel: it has the sharpest
+      // features and every log has it. Fall back to whatever is shared.
+      draft.alignIdx = shared.indexOf("speed") >= 0 ? SPD : (shared.length ? CHART_CONFIG[shared[0]].idx : SPD);
+      alignSel.value = String(draft.alignIdx);
+      applyBtn.disabled = !shared.length;
+
+      pickView.classList.add("hidden");
+      setupView.classList.remove("hidden");
+      // Offer the best fit straight away rather than making the user hunt
+      // for it; the drag is then a nudge, not the whole job.
+      requestAnimationFrame(() => {
+        runAuto();
+        fitStrip();
+      });
+    }
+
+    // ---- the alignment strip ----
+    // Its own little renderer: both traces of the chosen metric on one
+    // normalised scale, the primary fixed and the compared one draggable.
+    function fitStrip() {
+      const dpr = window.devicePixelRatio || 1;
+      const w = Math.round(stripEl.clientWidth * dpr);
+      const h = Math.round(stripEl.clientHeight * dpr);
+      if (w < 2 || h < 2) return;
+      stripCv.width = w; stripCv.height = h;
+      drawStrip();
+    }
+
+    // The strip always shows the full span of both trips at the current
+    // offset, so dragging never runs the compared trace off the edge.
+    function stripRange() {
+      if (!draft) return { lo: 0, hi: duration || 1 };
+      const lo = Math.min(0, draft.offset);
+      const hi = Math.max(duration, draft.offset + draft.dur);
+      return { lo, hi: hi > lo ? hi : lo + 1 };
+    }
+
+    function drawStrip() {
+      if (!draft) return;
+      const ctx = stripCv.getContext("2d");
+      const w = stripCv.width, h = stripCv.height;
+      const dpr = window.devicePixelRatio || 1;
+      ctx.clearRect(0, 0, w, h);
+      const idx = draft.alignIdx;
+      const { lo, hi } = stripRange();
+      const span = hi - lo;
+      const xOf = (t) => ((t - lo) / span) * w;
+
+      const trace = (times, rows, off, color, dash, yTop, yBot) => {
+        let mn = Infinity, mx = -Infinity;
+        for (let i = 0; i < rows.length; i++) {
+          const v = rows[i][idx];
+          if (typeof v === "number") { if (v < mn) mn = v; if (v > mx) mx = v; }
+        }
+        if (!isFinite(mn) || mx === mn) { mn = 0; mx = 1; }
+        ctx.save();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.4 * dpr;
+        if (dash) ctx.setLineDash([4 * dpr, 3 * dpr]);
+        ctx.beginPath();
+        let started = false;
+        for (let i = 0; i < rows.length; i++) {
+          const v = rows[i][idx];
+          if (typeof v !== "number") { started = false; continue; }
+          const x = xOf(times[i] + off);
+          const y = yBot - ((v - mn) / (mx - mn)) * (yBot - yTop);
+          if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+        ctx.restore();
+      };
+
+      const pad = 6 * dpr;
+      const mid = h / 2;
+      trace(sampleTimes, ts, 0, "#00e5ff", false, pad, mid - 2 * dpr);
+      trace(draft.times, draft.rows, draft.offset, CMP_COLOR, false, mid + 2 * dpr, h - pad);
+
+      ctx.save();
+      ctx.strokeStyle = "rgba(255,255,255,0.10)";
+      ctx.lineWidth = 1 * dpr;
+      ctx.beginPath(); ctx.moveTo(0, mid); ctx.lineTo(w, mid); ctx.stroke();
+      ctx.restore();
+    }
+
+    function setOffset(v) {
+      if (!draft) return;
+      draft.offset = v;
+      offValEl.textContent = fmtOffset(draft.offset);
+      drawStrip();
+    }
+
+    function runAuto() {
+      if (!draft) return;
+      // cmpAutoOffset reads the live `cmp`, so lend it the draft for the
+      // duration of the search rather than duplicating the whole routine.
+      const prev = cmp;
+      cmp = draft;
+      let best = 0;
+      try { best = cmpAutoOffset(draft.alignIdx); } finally { cmp = prev; }
+      setOffset(best);
+    }
+
+    stripEl.addEventListener("pointerdown", (e) => {
+      if (!draft) return;
+      e.preventDefault();
+      const id = e.pointerId;
+      const r = stripEl.getBoundingClientRect();
+      const { lo, hi } = stripRange();
+      const perPx = (hi - lo) / (r.width || 1);
+      const x0 = e.clientX, off0 = draft.offset;
+      const move = (ev) => {
+        if (ev.pointerId !== id) return;
+        setOffset(off0 + (ev.clientX - x0) * perPx);
+      };
+      const up = (ev) => {
+        if (ev.pointerId !== id) return;
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", up);
+        window.removeEventListener("pointercancel", up);
+      };
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", up);
+      window.addEventListener("pointercancel", up);
+    });
+
+    alignSel.addEventListener("change", () => {
+      if (!draft) return;
+      draft.alignIdx = Number(alignSel.value);
+      drawStrip();
+    });
+    document.getElementById("cmp-auto").addEventListener("click", runAuto);
+    document.getElementById("cmp-zero").addEventListener("click", () => setOffset(0));
+    document.getElementById("cmp-change").addEventListener("click", () => {
+      setupView.classList.add("hidden");
+      pickView.classList.remove("hidden");
+      renderList();
+    });
+
+    const setMode = (m) => {
+      if (draft) draft.mode = m;
+      modeSide.classList.toggle("on", m === "side");
+      modeOver.classList.toggle("on", m === "overlay");
+    };
+    modeSide.addEventListener("click", () => setMode("side"));
+    modeOver.addEventListener("click", () => setMode("overlay"));
+    deltaEl.addEventListener("change", () => { if (draft) draft.showDelta = deltaEl.checked; });
+
+    const close = () => dialog.classList.add("hidden");
+    dialog.querySelectorAll("[data-cmp-close]").forEach((el) => el.addEventListener("click", close));
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && !dialog.classList.contains("hidden")) close();
+    });
+
+    applyBtn.addEventListener("click", () => {
+      if (!draft) return;
+      cmp = draft;
+      draft = null;
+      cmpApply();
+      btn.classList.add("on");
+      close();
+    });
+    stopBtn.addEventListener("click", () => {
+      cmpClear();
+      btn.classList.remove("on");
+      close();
+    });
+
+    btn.addEventListener("click", () => {
+      // Reopening while a comparison is live resumes editing it, so the
+      // offset and the layout choice are not thrown away on every visit.
+      draft = cmp ? Object.assign({}, cmp) : null;
+      stopBtn.classList.toggle("hidden", !cmp);
+      dialog.classList.remove("hidden");
+      if (draft) {
+        setMode(draft.mode);
+        deltaEl.checked = !!draft.showDelta;
+        pickView.classList.add("hidden");
+        setupView.classList.remove("hidden");
+        document.getElementById("cmp-chosen-name").textContent = cmpTripLabel(draft.track);
+        offValEl.textContent = fmtOffset(draft.offset);
+        requestAnimationFrame(fitStrip);
+      } else {
+        setMode("side");
+        deltaEl.checked = false;
+        setupView.classList.add("hidden");
+        pickView.classList.remove("hidden");
+        searchEl.value = "";
+        renderList();
+      }
+    });
+
+    window.addEventListener("resize", () => {
+      if (!dialog.classList.contains("hidden") && !setupView.classList.contains("hidden")) fitStrip();
+    });
+    searchEl.addEventListener("input", renderList);
   })();
 
   // ---------- Trim dialog ----------

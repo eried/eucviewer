@@ -461,6 +461,14 @@ body.sidebar-resizing * { cursor: col-resize !important; }
     cursor: pointer;
 }
 .ct-btn:hover { background: rgba(0, 229, 255, 0.16); color: #00e5ff; }
+/* Compare stays lit while a comparison is live, so the second trip in the
+   graphs is never a mystery you have to open the dialog to explain. */
+.ct-btn.on {
+    color: #ffcf9e;
+    border-color: rgba(255, 158, 64, 0.5);
+    background: rgba(255, 158, 64, 0.14);
+}
+.ct-btn.on:hover { background: rgba(255, 158, 64, 0.24); color: #ffd9b3; }
 .ct-iconbtn {
     display: inline-flex; align-items: center; justify-content: center;
     width: 26px; height: 24px; padding: 0;
@@ -586,6 +594,209 @@ body.sidebar-resizing * { cursor: col-resize !important; }
     margin-top: 10px;
     font-size: 0.78rem; color: #bfeef7;
     font-family: 'SF Mono', Menlo, Consolas, monospace;
+}
+
+/* ---------- Compare ---------- */
+/* The compared trip is orange everywhere it appears: the dot in the title,
+   the ghost needle, the second battery bar, the second line under every
+   readout, and its trace in the graphs. One colour, learned once. */
+.cmp-dot {
+    display: inline-block;
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    margin-right: 6px;
+    vertical-align: 1px;
+    flex-shrink: 0;
+}
+.cmp-dot-a { background: #00e5ff; }
+.cmp-dot-b { background: #ff9e40; }
+
+.cmp-id-b {
+    font-size: 0.95rem; font-weight: 600;
+    color: #ffcf9e; white-space: nowrap;
+}
+.cmp-sub-b {
+    font-size: 0.68rem; color: #c89b6e;
+    line-height: 1.45; white-space: nowrap;
+}
+.cmp-needle {
+    stroke: #ff9e40; stroke-width: 2.4; stroke-linecap: round;
+    stroke-dasharray: 3 3; opacity: 0.8;
+    transform-origin: 60px 60px;
+}
+.cmp-gb {
+    margin-top: -1px;
+    font-size: 0.8rem; font-weight: 700;
+    color: #ffcf9e; text-align: center; line-height: 1;
+}
+.cmp-batt-b { display: flex; align-items: center; gap: 5px; margin-top: 4px; }
+.cmp-bshell {
+    position: relative;
+    width: 34px; height: 11px;
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    border-radius: 2px; overflow: hidden;
+}
+.cmp-bfill {
+    position: absolute; left: 0; top: 0; bottom: 0;
+    background: linear-gradient(90deg, #ff9e40, #ffcf9e);
+}
+.cmp-bnum {
+    font-size: 0.74rem; font-weight: 700; color: #ffcf9e;
+    font-family: 'SF Mono', Menlo, Consolas, monospace;
+}
+.cmp-row2 {
+    font-size: 0.78rem; font-weight: 600;
+    color: #ffcf9e; line-height: 1.25;
+}
+.cmp-row2 small { font-size: 0.62rem; opacity: 0.72; margin-left: 2px; }
+.cmp-row2 .up { color: #69f0ae; }
+.cmp-row2 .dn { color: #ff8a80; }
+.cmp-row2 .flat { color: #8fa7b0; }
+.cmp-row2-v.up { color: #69f0ae; }
+.cmp-row2-v.dn { color: #ff8a80; }
+.cmp-row2-v.flat { color: #8fa7b0; }
+.cmp-offset {
+    font-size: 0.68rem; color: #ffcf9e;
+    font-family: 'SF Mono', Menlo, Consolas, monospace;
+}
+/* Side by side stacks two bands in one canvas, so the body needs the room
+   for both. One canvas keeps the grid, the cursor and the zoom handling in
+   a single code path. */
+.chart-block.cmp-split .chart-body { height: 196px; }
+
+/* ---------- Compare dialog ---------- */
+.cmp-panel { width: min(520px, 94vw); }
+.cmp-search {
+    width: 100%; box-sizing: border-box;
+    padding: 7px 9px; margin-bottom: 8px;
+    font-size: 0.85rem; color: #eaf6fb;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 5px;
+}
+.cmp-search:focus { outline: none; border-color: rgba(0, 229, 255, 0.55); }
+.cmp-list {
+    list-style: none; margin: 0; padding: 0;
+    max-height: 46vh; overflow-y: auto;
+}
+.cmp-list li {
+    display: flex; align-items: baseline; gap: 8px;
+    padding: 7px 9px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 0.82rem; color: #d6e6ee;
+}
+.cmp-list li:hover { background: rgba(0, 229, 255, 0.1); }
+.cmp-list li .cmp-li-sub {
+    margin-left: auto;
+    font-size: 0.7rem; color: #8fa7b0;
+    font-family: 'SF Mono', Menlo, Consolas, monospace;
+}
+.cmp-list .cmp-empty { color: #7c8b95; cursor: default; }
+.cmp-list .cmp-empty:hover { background: none; }
+
+.cmp-chosen {
+    display: flex; align-items: center; gap: 2px;
+    font-size: 0.9rem; font-weight: 600; color: #ffcf9e;
+    margin-bottom: 8px;
+}
+.cmp-change {
+    margin-left: auto;
+    font-size: 0.7rem; color: #bfeef7;
+    padding: 4px 9px;
+    border: 1px solid rgba(0, 229, 255, 0.28);
+    border-radius: 5px;
+    background: rgba(0, 229, 255, 0.06);
+    cursor: pointer;
+}
+.cmp-change:hover { background: rgba(0, 229, 255, 0.16); }
+
+.cmp-shared { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 10px; }
+.cmp-chip {
+    font-size: 0.68rem;
+    padding: 3px 7px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    color: #cfe3ec;
+}
+.cmp-shared .cmp-none { color: #ff8a80; border-color: rgba(255, 90, 90, 0.45); }
+
+.cmp-field {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 0.72rem; text-transform: uppercase;
+    letter-spacing: 0.05em; color: #8fa7b0;
+    margin-bottom: 8px;
+}
+.cmp-field select {
+    flex: 1;
+    padding: 6px 8px;
+    font-size: 0.82rem; color: #eaf6fb;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 5px;
+}
+
+.cmp-strip {
+    position: relative;
+    height: 96px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.03);
+    overflow: hidden;
+    cursor: ew-resize;
+    touch-action: none;
+}
+.cmp-strip canvas { width: 100%; height: 100%; display: block; }
+.cmp-striphint {
+    margin-top: 4px;
+    font-size: 0.66rem; color: #7c8b95;
+}
+
+.cmp-offrow {
+    display: flex; align-items: center; gap: 10px;
+    margin-top: 10px;
+}
+.cmp-auto {
+    font-size: 0.72rem; color: #bfeef7;
+    padding: 5px 11px;
+    border: 1px solid rgba(0, 229, 255, 0.28);
+    border-radius: 5px;
+    background: rgba(0, 229, 255, 0.06);
+    cursor: pointer;
+}
+.cmp-auto:hover { background: rgba(0, 229, 255, 0.16); }
+.cmp-offlabel {
+    margin-left: auto;
+    font-size: 0.66rem; text-transform: uppercase;
+    letter-spacing: 0.05em; color: #8fa7b0;
+}
+.cmp-offval {
+    font-family: 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 0.95rem; font-weight: 700; color: #ffcf9e;
+    min-width: 62px; text-align: right;
+}
+
+.cmp-opts { margin-top: 12px; }
+.cmp-seg { display: flex; gap: 0; margin-bottom: 10px; }
+.cmp-seg button {
+    flex: 1;
+    padding: 7px 10px;
+    font-size: 0.78rem; color: #9fb4c0;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    cursor: pointer;
+}
+.cmp-seg button:first-child { border-radius: 5px 0 0 5px; }
+.cmp-seg button:last-child { border-radius: 0 5px 5px 0; border-left: 0; }
+.cmp-seg button.on {
+    color: #00e5ff;
+    border-color: rgba(0, 229, 255, 0.4);
+    background: rgba(0, 229, 255, 0.12);
+}
+.cmp-check {
+    display: flex; align-items: center; gap: 7px;
+    font-size: 0.76rem; color: #cfe3ec;
+    cursor: pointer;
 }
 
 /* Customize dialog. */
