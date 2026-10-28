@@ -4549,10 +4549,16 @@
   // We drive a CSS variable on #stage so the grid track itself reflows; no
   // inline width on #charts means the flex/scroll behaviour inside is
   // unaffected, and the handle reads the same variable to find the edge.
+  // Below 900 the graphs move under the map, so the same handle drags the
+  // seam the other way and sets a height instead.
   (function setupSidebarResize() {
     const STORAGE_KEY = "inspector-sidebar-w";
+    const STORAGE_KEY_H = "inspector-charts-h";
     const DEFAULT_W = 360;
+    const MIN_H = 88;
     const stage = document.getElementById("stage");
+    const stacked = () => window.matchMedia("(max-width: 900px)").matches;
+    let dragging = false;
     // The default is also the floor: at 354 the toolbar can no longer hold
     // Trim, Customize and Compare on one line, and once a comparison is
     // running the stop button pushes that up again. Wide enough to leave
@@ -4561,6 +4567,32 @@
       const cap = Math.max(DEFAULT_W, Math.min(900, Math.floor(window.innerWidth * 0.6)));
       return { min: Math.min(DEFAULT_W, cap), max: cap };
     }
+    // Stacked, the floor is the toolbar plus a sliver of the first graph, so
+    // it always reads as a panel that can be pulled back up. The map keeps
+    // the rest of the short side, where it is already sharing with the
+    // dashboard and the playback bar.
+    function hLimits(toContent) {
+      const stageH = stage.getBoundingClientRect().height || window.innerHeight;
+      const roomy = Math.max(MIN_H, Math.round(stageH * 0.82));
+      if (!toContent) return { min: Math.min(MIN_H, roomy), max: roomy };
+      // --charts-h is a max-height, so the column still hugs content that
+      // does not fill it. Ending the drag where the content ends keeps the
+      // edge under the finger instead of letting it run on into nothing.
+      const content = Math.ceil(chartsAside.scrollHeight) || roomy;
+      return { min: Math.min(MIN_H, roomy), max: Math.max(MIN_H, Math.min(roomy, content)) };
+    }
+    // The map holds still for the length of a drag (see body.sidebar-resizing
+    // in the stylesheet), so there is nothing to resize until the release.
+    // The 2D chart canvases redraw from scratch and follow every move.
+    function reflow() {
+      requestAnimationFrame(() => {
+        resizeCharts();
+        if (!dragging) resizeMapNow();
+      });
+    }
+    function resizeMapNow() {
+      if (typeof map !== "undefined" && map && typeof map.resize === "function") map.resize();
+    }
     function applyW(w, store) {
       const { min, max } = limits();
       w = Math.round(Math.max(min, Math.min(max, w)));
@@ -4568,40 +4600,70 @@
       if (store !== false) {
         try { localStorage.setItem(STORAGE_KEY, String(w)); } catch (_) {}
       }
-      requestAnimationFrame(() => {
-        resizeCharts();
-        if (typeof map !== "undefined" && map && typeof map.resize === "function") map.resize();
-      });
+      reflow();
       return w;
+    }
+    function applyH(h, store, toContent) {
+      const { min, max } = hLimits(toContent);
+      h = Math.round(Math.max(min, Math.min(max, h)));
+      stage.style.setProperty("--charts-h", h + "px");
+      if (store !== false) {
+        try { localStorage.setItem(STORAGE_KEY_H, String(h)); } catch (_) {}
+      }
+      reflow();
+      return h;
     }
     function current() {
       const v = parseInt(stage.style.getPropertyValue("--charts-w"), 10);
       return v > 0 ? v : chartsAside.getBoundingClientRect().width || DEFAULT_W;
     }
-    try {
-      const stored = parseInt(localStorage.getItem(STORAGE_KEY) || "", 10);
-      if (stored && stored > 0) applyW(stored, false);
-    } catch (_) {}
+    function currentH() {
+      const v = parseInt(stage.style.getPropertyValue("--charts-h"), 10);
+      return v > 0 ? v : 0;
+    }
+    function stored(key) {
+      try {
+        const v = parseInt(localStorage.getItem(key) || "", 10);
+        return v > 0 ? v : 0;
+      } catch (_) { return 0; }
+    }
+    if (stored(STORAGE_KEY)) applyW(stored(STORAGE_KEY), false);
+    if (stored(STORAGE_KEY_H)) applyH(stored(STORAGE_KEY_H), false);
     // A width that fitted a wide window would eat a narrow one, so the
     // stored value is re-clamped rather than written over: widen the window
-    // again and the graphs go back to the size that was asked for.
+    // again and the graphs go back to the size that was asked for. The same
+    // goes for the height when the phone turns on its side.
     window.addEventListener("resize", () => {
       const { min, max } = limits();
       const w = current();
-      let want = w;
-      try {
-        const stored = parseInt(localStorage.getItem(STORAGE_KEY) || "", 10);
-        if (stored > 0) want = stored;
-      } catch (_) {}
-      const clamped = Math.max(min, Math.min(max, want));
+      const clamped = Math.max(min, Math.min(max, stored(STORAGE_KEY) || w));
       if (clamped !== w) applyW(clamped, false);
+      const h = currentH();
+      if (h) {
+        const hl = hLimits(false);
+        const ch = Math.max(hl.min, Math.min(hl.max, stored(STORAGE_KEY_H) || h));
+        if (ch !== h) applyH(ch, false);
+      }
     });
     let startX = 0;
+    let startY = 0;
     let startW = 0;
+    let startH = 0;
+    let vertical = false;
     sidebarResize.addEventListener("pointerdown", (e) => {
       if (e.button !== undefined && e.button !== 0) return;
+      vertical = stacked();
       startX = e.clientX;
-      startW = chartsAside.getBoundingClientRect().width;
+      startY = e.clientY;
+      const r = chartsAside.getBoundingClientRect();
+      startW = r.width;
+      startH = r.height;
+      // The track the map sits in is pinned to these for the drag, so the
+      // map is not reflowed while the graphs float over it.
+      stage.style.setProperty("--charts-w0", Math.round(r.width) + "px");
+      stage.style.setProperty("--charts-h0", Math.round(r.height) + "px");
+      dragging = true;
+      document.body.classList.remove("sidebar-settling");
       document.body.classList.add("sidebar-resizing");
       // Capture keeps the drag alive past the window edge and over the
       // map canvas, which otherwise swallows the move events.
@@ -4609,18 +4671,43 @@
       e.preventDefault();
     });
     sidebarResize.addEventListener("pointermove", (e) => {
-      if (!document.body.classList.contains("sidebar-resizing")) return;
-      // The column is on the right edge, so dragging left widens it.
-      applyW(startW + (startX - e.clientX));
+      if (!dragging) return;
+      // The graphs are on the far side of the seam either way, so dragging
+      // towards the map is what makes them bigger.
+      if (vertical) applyH(startH + (startY - e.clientY), true, true);
+      else applyW(startW + (startX - e.clientX));
     });
     const endDrag = (e) => {
-      if (!document.body.classList.contains("sidebar-resizing")) return;
-      document.body.classList.remove("sidebar-resizing");
+      if (!dragging) return;
+      dragging = false;
       try { sidebarResize.releasePointerCapture(e.pointerId); } catch (_) {}
+      // Back into the grid, which moves the map's edge once. Its observer
+      // picks that up; the settling class keeps the canvas covering the
+      // container until it has, then gets out of the way.
+      document.body.classList.add("sidebar-settling");
+      document.body.classList.remove("sidebar-resizing");
+      requestAnimationFrame(() => {
+        resizeCharts();
+        resizeMapNow();
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => document.body.classList.remove("sidebar-settling"));
+        });
+      });
     };
     sidebarResize.addEventListener("pointerup", endDrag);
     sidebarResize.addEventListener("pointercancel", endDrag);
-    sidebarResize.addEventListener("dblclick", () => applyW(DEFAULT_W));
+    // Back to the width it opens at, or, stacked, to the share of the
+    // window the layout picks: that one is a plain 40vh in CSS, so the
+    // reset is dropping the variable rather than naming a number.
+    sidebarResize.addEventListener("dblclick", () => {
+      if (stacked()) {
+        stage.style.removeProperty("--charts-h");
+        try { localStorage.removeItem(STORAGE_KEY_H); } catch (_) {}
+        reflow();
+      } else {
+        applyW(DEFAULT_W);
+      }
+    });
   })();
 
   refreshSectionUi();

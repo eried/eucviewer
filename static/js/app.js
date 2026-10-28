@@ -5932,7 +5932,15 @@ document.addEventListener("DOMContentLoaded", function () {
     // the default as the floor of that cap rather than its victim: on a
     // phone 60% is narrower than the panel has always been, and a resize
     // (every URL-bar nudge fires one) must not shrink it below that.
-    const cap = Math.max(PANEL_W_DEFAULT, Math.min(900, Math.floor(window.innerWidth * 0.6)));
+    const w = window.innerWidth;
+    // On a phone 60% of the window is narrower than the panel's own
+    // default, so that cap pinned it there and the drag had nowhere to go.
+    // It takes everything but the 32px tab and a 10px seam instead: the
+    // list gets the screen, and the handle stays out on the map rather
+    // than on the tab, taking touches meant for it.
+    const cap = w <= 700
+      ? Math.max(PANEL_W_DEFAULT, w - 42)
+      : Math.max(PANEL_W_DEFAULT, Math.min(900, Math.floor(w * 0.6)));
     return { min: Math.min(300, cap), max: cap };
   }
   function panelWidth() {

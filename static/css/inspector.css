@@ -393,6 +393,29 @@ body.sidebar-resizing #sidebar-resize span {
 body.sidebar-resizing #sidebar-resize { background: rgba(0, 229, 255, 0.18); }
 body.sidebar-resizing { user-select: none; cursor: col-resize; }
 body.sidebar-resizing * { cursor: col-resize !important; }
+/* The drag used to move the map's own edge on every pointer event, and a GL
+   canvas that changes size is cleared, repainted a frame or more later, and
+   has the terrain buffers rebuilt behind it. Dozens of those in a row is
+   the black flicker. So the map keeps the size it had for the length of the
+   drag and the graphs float over it, which is how the viewer's own panel
+   has always worked, and there is one reflow, on release.
+   The settling class covers that one: the canvas is stretched to the new
+   box for a couple of frames, so what fills it is the last painted frame
+   rather than a strip of bare container. */
+body.sidebar-resizing #stage { grid-template-columns: 1fr var(--charts-w0, 360px); }
+body.sidebar-resizing #charts {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: var(--charts-w, 360px);
+    z-index: 30;
+}
+body.sidebar-settling #map .maplibregl-canvas-container,
+body.sidebar-settling #map .maplibregl-canvas {
+    width: 100% !important;
+    height: 100% !important;
+}
 #charts::-webkit-scrollbar { width: 4px; }
 #charts::-webkit-scrollbar-thumb { background: #00e5ff33; border-radius: 2px; }
 
@@ -1494,10 +1517,54 @@ body.cmp-on .trim-track { height: 80px; }
 
 /* Responsive: stack charts under map on narrow screens */
 @media (max-width: 900px) {
-    #stage { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
-    #charts { max-height: 40vh; border-left: none; border-top: 1px solid rgba(0, 229, 255, 0.12); }
-    /* Graphs sit under the map here, so there is no vertical edge to drag. */
-    #sidebar-resize { display: none; }
+    /* The handle takes a row of its own between the two. In flow it sits
+       exactly on the seam, which an absolute offset cannot do here: the
+       column hugs content shorter than its allowance, so there is no
+       variable that says where its top edge ended up. */
+    #stage { grid-template-columns: 1fr; grid-template-rows: 1fr 9px auto; }
+    #map { grid-row: 1; }
+    #charts {
+        grid-row: 3;
+        max-height: var(--charts-h, 40vh);
+        border-left: none;
+        border-top: 1px solid rgba(0, 229, 255, 0.12);
+    }
+    #sidebar-resize {
+        position: static;
+        grid-row: 2;
+        width: auto;
+        height: 9px;
+        cursor: row-resize;
+    }
+    #sidebar-resize span { width: 30px; height: 3px; }
+    #sidebar-resize:hover span,
+    body.sidebar-resizing #sidebar-resize span { width: 44px; height: 3px; }
+    /* Same freeze the other way round. Out of the grid, the handle has to
+       be told where the seam is, and for the length of a drag the height is
+       clamped to the content, so the variable is exactly that. */
+    body.sidebar-resizing #stage {
+        grid-template-columns: 1fr;
+        grid-template-rows: 1fr 9px var(--charts-h0, 40vh);
+    }
+    body.sidebar-resizing #charts {
+        left: 0;
+        right: 0;
+        top: auto;
+        bottom: 0;
+        width: auto;
+        max-height: var(--charts-h, 40vh);
+    }
+    body.sidebar-resizing #sidebar-resize {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: auto;
+        bottom: var(--charts-h, 40vh);
+        width: auto;
+        z-index: 31;
+    }
+    body.sidebar-resizing { cursor: row-resize; }
+    body.sidebar-resizing * { cursor: row-resize !important; }
 
     #dash { padding: 8px 12px; }
     /* A trip that logs torque has a stats line wider than the phone. The

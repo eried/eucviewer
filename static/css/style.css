@@ -1903,10 +1903,10 @@ body.panel-resizing #trip-panel { transition: none; }
 /* Phones: backdrop blur is a mobile-GPU tax that can wedge the panel's
    slide into stale pixels; solid backgrounds keep the compositor honest. */
 @media (max-width: 700px) {
-    /* The panel is most of the screen here and cannot usefully be made
-       wider, so the handle goes rather than sit on the tab's edge taking
-       touches meant for it. */
-    #trip-panel.open #panel-resize { display: none; }
+    /* The panel reaches everything but the tab and the seam the handle
+       sits on, which is worth more than the 10px of map it costs. The grip
+       is drawn taller so a thumb can find that seam. */
+    #panel-resize span { height: 40px; }
     #panel-tab, #panel-body { backdrop-filter: none; }
     #panel-body { background: rgba(10, 10, 15, 0.97); }
     #panel-tab { background: rgba(10, 10, 15, 0.94); }
