@@ -783,7 +783,11 @@ body.cmp-on .trim-track { height: 80px; }
 .chart-block.cmp-split .chart-body { height: 196px; }
 
 /* ---------- Compare dialog ---------- */
-.cmp-panel { width: min(520px, 94vw); }
+/* Wider than the other dialogs: every row carries a date, a file name, the
+   distance and the duration, and at the shared width they ran into each
+   other. Written against .cd-panel too, which sets its own width further
+   down the file and would otherwise win on source order. */
+.cd-panel.cmp-panel { width: min(520px, 94vw); }
 .cmp-search {
     width: 100%; box-sizing: border-box;
     padding: 7px 9px; margin-bottom: 8px;
@@ -1115,7 +1119,7 @@ body.cmp-on .trim-track { height: 80px; }
 
 /* Touch-friendly sizing on phones. */
 @media (max-width: 760px) {
-    .cd-panel { width: 96vw; max-height: 90vh; }
+    .cd-panel, .cd-panel.cmp-panel { width: 96vw; max-height: 90vh; }
     .cd-row { padding: 11px 12px; gap: 12px; }
     .cd-switch { width: 40px; height: 24px; }
     .cd-knob::after { width: 20px; height: 20px; }
