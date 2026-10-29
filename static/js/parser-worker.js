@@ -167,6 +167,17 @@ function parseCsvText(text, name) {
   return track;
 }
 
+// A trip with fewer rows than it has metadata carries the leftovers in one
+// cell, joined by " | " (packExtraPairs in app.js). Splitting is only done
+// when every piece is one of our own keys, so a recorder's value that happens
+// to hold a pipe is left exactly as it was written.
+function extraEvents(raw) {
+  const s = String(raw);
+  if (s.indexOf("|") < 0) return [s];
+  const parts = s.split("|").map((x) => x.trim()).filter(Boolean);
+  return parts.every((x) => /^(wheel|trip)\.[a-z]+\s*=/i.test(x)) ? parts : [s];
+}
+
 // The viewer stores a user-set trip name in the same Extra column as the
 // wheel identity: a single `trip.name=<name>` event row. Reading it back here
 // means a renamed trip stays renamed through export / Dropbox round-trips with
@@ -178,8 +189,10 @@ function customNameFromExtraColumn(rows) {
   for (const r of rows) {
     const v = r[col];
     if (!v) continue;
-    const m = /^\s*trip\.name\s*=\s*(.+)$/i.exec(String(v));
-    if (m) return m[1].trim().slice(0, 60);
+    for (const ev of extraEvents(v)) {
+      const m = /^\s*trip\.name\s*=\s*(.+)$/i.exec(ev);
+      if (m) return m[1].trim().slice(0, 60);
+    }
   }
   return null;
 }
@@ -201,25 +214,27 @@ function wheelFromExtraColumn(rows) {
   const blocks = [];
   let current = null;
   for (let i = 0; i < rows.length; i++) {
-    const raw = rows[i][col];
-    if (!raw) continue;
-    const eq = raw.indexOf("=");
-    if (eq <= 0) continue;
-    const key = raw.slice(0, eq).trim();
-    if (!/^wheel\./.test(key)) continue;
-    const field = key.slice(6);
-    const value = raw.slice(eq + 1).trim();
-    if (field === "disconnected") { current = null; continue; }
-    if (!value) continue;
-    if (!current || ((field === "name" || field === "mac") && current[field] !== undefined)) {
-      current = { startRow: i };
-      blocks.push(current);
+    const cell = rows[i][col];
+    if (!cell) continue;
+    for (const raw of extraEvents(cell)) {
+      const eq = raw.indexOf("=");
+      if (eq <= 0) continue;
+      const key = raw.slice(0, eq).trim();
+      if (!/^wheel\./.test(key)) continue;
+      const field = key.slice(6);
+      const value = raw.slice(eq + 1).trim();
+      if (field === "disconnected") { current = null; continue; }
+      if (!value) continue;
+      if (!current || ((field === "name" || field === "mac") && current[field] !== undefined)) {
+        current = { startRow: i };
+        blocks.push(current);
+      }
+      if (field === "name") current.name = value;
+      else if (field === "mac") current.mac = value.replace(/[:\-]/g, "").toUpperCase();
+      else if (field === "model") current.model = value;
+      else if (field === "brand") current.make = value;
+      else if (field === "serial") current.serial = value;
     }
-    if (field === "name") current.name = value;
-    else if (field === "mac") current.mac = value.replace(/[:\-]/g, "").toUpperCase();
-    else if (field === "model") current.model = value;
-    else if (field === "brand") current.make = value;
-    else if (field === "serial") current.serial = value;
   }
   const named = blocks.filter((b) => b.name || b.mac || b.model);
   if (!named.length) return null;

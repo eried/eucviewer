@@ -1592,7 +1592,7 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function createParserWorker() {
-    return new Worker("static/js/parser-worker.js?v=25");
+    return new Worker("static/js/parser-worker.js?v=26");
   }
 
   function createRecentFilesUi() {
@@ -2318,6 +2318,43 @@ document.addEventListener("DOMContentLoaded", function () {
     if (t.wheels && t.wheels.length) return t.wheels;
     return t.wheel ? [t.wheel] : [];
   }
+  // One wheel can be written down in more detail on one trip than on another:
+  // EUC Planet names the full identity when it knows it and falls back to the
+  // bare BLE name ("Adventure-E0000298") when it does not, so the same wheel
+  // arrived as two, listed side by side under the same name. Identities that
+  // share a serial or a MAC are the same wheel. One carrying neither joins the
+  // wheel of that name when only one wheel answers to it; when several do,
+  // there is nothing to tell them apart with, so it stays on its own.
+  // Buckets are { w, items }; the fullest identity wins the merged bucket.
+  function foldWheelIdentities(buckets) {
+    const idOf = (w) => String((w && (w.serial || w.mac)) || "").trim().toLowerCase();
+    const nameOf = (w) => String((w && w.name) || "").trim().toLowerCase();
+    const score = (w) => (w.model ? 4 : 0) + (w.make ? 2 : 0) + (w.name ? 1 : 0) + (idOf(w) ? 1 : 0);
+    const byId = new Map();
+    const out = [];
+    const idless = [];
+    const join = (into, b) => {
+      into.items = into.items.concat(b.items);
+      if (score(b.w) > score(into.w)) into.w = b.w;
+    };
+    for (const b of buckets) {
+      const id = idOf(b.w);
+      if (!id) { idless.push(b); continue; }
+      const hit = byId.get(id);
+      if (hit) { join(hit, b); continue; }
+      const nb = { w: b.w, items: b.items.slice() };
+      byId.set(id, nb);
+      out.push(nb);
+    }
+    for (const b of idless) {
+      const nm = nameOf(b.w);
+      const hits = nm ? out.filter((o) => nameOf(o.w) === nm) : [];
+      if (hits.length === 1) join(hits[0], b);
+      else out.push({ w: b.w, items: b.items.slice() });
+    }
+    return out;
+  }
+
   function computeWheelGroups() {
     const byKey = new Map();
     const unknown = [];
@@ -2327,17 +2364,29 @@ document.addEventListener("DOMContentLoaded", function () {
       const ids = wheelIdsOf(allTracks[i]).filter((w) => labelOfWheel(w));
       if (!ids.length) { unknown.push(i); continue; }
       for (const w of ids) {
-        const label = labelOfWheel(w);
-        // Same key formula as analytics wheelKeyOf, so a wheel picked here
-        // can be handed to Forensics via ?wheel= and match there.
-        const key = label + "|" + (w.serial || w.mac || "");
-        if (!byKey.has(key)) byKey.set(key, { label, key, wheel: w, indices: [] });
+        // Bucket on the whole identity, not the label: telling the partial
+        // ones apart is what lets them be folded back together below.
+        const key = [labelOfWheel(w), w.serial || "", w.mac || "", w.name || ""].join("\u0000");
+        if (!byKey.has(key)) byKey.set(key, { w, items: [] });
         const g = byKey.get(key);
-        if (g.indices[g.indices.length - 1] !== i) g.indices.push(i);
+        if (g.items[g.items.length - 1] !== i) g.items.push(i);
       }
     }
-    const groups = [...byKey.values()];
-    // Two wheels of the same model (different serials): number them.
+    const groups = foldWheelIdentities([...byKey.values()]).map((b) => {
+      const label = labelOfWheel(b.w);
+      // Same key formula as analytics wheelKeyOf, so a wheel picked here
+      // can be handed to Forensics via ?wheel= and match there.
+      return {
+        label, key: label + "|" + (b.w.serial || b.w.mac || ""), wheel: b.w,
+        // A trip that carried two of the folded identities would be in here
+        // twice, which would read as a trip count nobody can account for.
+        indices: [...new Set(b.items)].sort((x, y) => x - y),
+      };
+    });
+    // Newest first (allTracks is sorted newest-first).
+    groups.sort((a, b) => Math.min(...a.indices) - Math.min(...b.indices));
+    // Two wheels of the same model (different serials): number them. After
+    // the sort, so the numbers run down the list in the order it reads.
     const counts = {};
     for (const g of groups) counts[g.label] = (counts[g.label] || 0) + 1;
     const seen = {};
@@ -2347,8 +2396,6 @@ document.addEventListener("DOMContentLoaded", function () {
         g.label += " #" + seen[g.label];
       }
     }
-    // Newest first (allTracks is sorted newest-first).
-    groups.sort((a, b) => Math.min(...a.indices) - Math.min(...b.indices));
     if (unknown.length) groups.push({ label: "Generic wheel", indices: unknown, unknown: true });
     return groups;
   }
@@ -4142,9 +4189,14 @@ document.addEventListener("DOMContentLoaded", function () {
     const t = allTracks[i];
     const groups = computeWheelGroups().filter((g) => !g.unknown);
     const cur = wheelLabelOf(t);
+    // Which group this trip is already in, rather than which label matches
+    // its own: two wheels of a model carry a "#1" the trip's label does not,
+    // and a trip written with a partial identity is folded in under the
+    // fuller one's name.
+    const curGi = groups.findIndex((g) => g.indices.indexOf(i) >= 0);
     let body = '<div class="tt-radios">';
     groups.forEach((g, gi) => {
-      const on = g.label === cur ? " checked" : "";
+      const on = gi === curGi ? " checked" : "";
       body += `<label class="tt-radio"><input type="radio" name="cw" value="g:${gi}"${on}><span>${escapeHtml(g.label)}</span></label>`;
     });
     body += `<label class="tt-radio"><input type="radio" name="cw" value="new"><span>New wheel…</span></label>`;
@@ -5008,7 +5060,7 @@ document.addEventListener("DOMContentLoaded", function () {
   function wheelExtraPairs(track) {
     const w = track && track.wheel;
     if (!w) return [];
-    const clean = (v) => String(v).replace(/[,"\r\n]+/g, " ").trim();
+    const clean = (v) => String(v).replace(/[,"|\r\n]+/g, " ").trim();
     const out = [];
     if (w.name) out.push("wheel.name=" + clean(w.name));
     if (w.mac) out.push("wheel.mac=" + clean(w.mac));
@@ -5022,15 +5074,31 @@ document.addEventListener("DOMContentLoaded", function () {
   // and wheel ride inside the CSV/XLSX itself and survive an export or Dropbox
   // round-trip (the parser reads them back; no separate metadata file).
   function extraMetaPairs(track) {
-    const clean = (v) => String(v).replace(/[,"\r\n]+/g, " ").trim();
+    const clean = (v) => String(v).replace(/[,"|\r\n]+/g, " ").trim();
     const out = [];
     if (track && track.customName) out.push("trip.name=" + clean(track.customName));
     return out.concat(wheelExtraPairs(track));
   }
 
+  // The Extra column carries those pairs one to a row, which quietly assumed
+  // every trip has more rows than it has identity. A trip of a few samples
+  // does not, and the pairs that did not fit were dropped on the floor: the
+  // wheel you had just given a short trip was gone again by the time it came
+  // back from Dropbox. What is left over now rides in the last cell, joined
+  // by " | ", which the parser splits out again. A trip with a row to spare
+  // per pair is written exactly as before.
+  function packExtraPairs(pairs, rows) {
+    if (!pairs.length || rows <= 0) return [];
+    if (pairs.length <= rows) return pairs;
+    const cells = pairs.slice(0, rows - 1);
+    cells.push(pairs.slice(rows - 1).join(" | "));
+    return cells;
+  }
+
   function trackToCSV(track) {
     const imp = UNITS.imperial;
     const wheelPairs = extraMetaPairs(track);
+    const extraCells = packExtraPairs(wheelPairs, track.timeseries.length);
     // Full telemetry export: every column the viewer carries, so a .csv export
     // or Dropbox round-trip loses nothing (older exports left PWM/Current/Power/
     // mileage empty and dropped GPS speed + G-Force). Columns resolve by header
@@ -5055,7 +5123,7 @@ document.addEventListener("DOMContentLoaded", function () {
         g(row, 4), g(row, 8), g(row, 3), g(row, 6), g(row, 7), g(row, 5),
         g(row, 12), g(row, 13), g(row, 14), g(row, 15), g(row, 16), g(row, 17)];
       if (imp) cols.push(...imperialVals(row[1], cum[i], row[3]));
-      if (wheelPairs.length) cols.push(i < wheelPairs.length ? wheelPairs[i] : "");
+      if (wheelPairs.length) cols.push(i < extraCells.length ? extraCells[i] : "");
       csv += cols.join(",") + "\n";
     }
     return csv;
@@ -5113,6 +5181,7 @@ document.addEventListener("DOMContentLoaded", function () {
                        "Total mileage", "Temperature", "Latitude", "Longitude", "Altitude", "GPS speed"];
     if (imp) headerRow.push(...IMPERIAL_COLS);
     const wheelPairs = extraMetaPairs(track);
+    const extraCells = packExtraPairs(wheelPairs, track.timeseries.length);
     if (wheelPairs.length) headerRow.push("Extra");
     const rows = [headerRow];
     const cum = imp ? exportCumKm(track) : null;
@@ -5126,7 +5195,7 @@ document.addEventListener("DOMContentLoaded", function () {
         r[12] || "",
       ];
       if (imp) cols.push(...imperialVals(r[1], cum[i], r[3]));
-      if (wheelPairs.length) cols.push(i < wheelPairs.length ? wheelPairs[i] : "");
+      if (wheelPairs.length) cols.push(i < extraCells.length ? extraCells[i] : "");
       rows.push(cols);
     }
     const ws = XLSXLib.utils.aoa_to_sheet(rows);
