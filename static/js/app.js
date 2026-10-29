@@ -2917,6 +2917,15 @@ document.addEventListener("DOMContentLoaded", function () {
       .catch((e) => { main.innerHTML = `<div class="dbx-listing"><div class="dbx-err">Couldn't reach Dropbox: ${escapeHtml(e.message || String(e))}</div></div>`; });
   }
 
+  // The name a trip's file goes by on both sides of the archive. Dropbox
+  // autorenames a move that would collide, so the "(1)" a second copy lands
+  // with is stripped: a trip coming back as trip.csv still matches the
+  // trip (1).csv already in the archive.
+  function archiveBaseName(name) {
+    return String(name || "").split("/").pop().toLowerCase()
+      .replace(/\.(csv|gpx|xlsx|dbb)$/i, "").replace(/ \(\d+\)$/, "").trim();
+  }
+
   async function gatherSyncState() {
     const DS = window.DropboxSource;
     const remote = await DS.listTripFiles().catch(() => []);
@@ -2926,6 +2935,14 @@ document.addEventListener("DOMContentLoaded", function () {
     const totalBytes = remote.reduce((s, f) => s + (f.size || 0), 0);
     let cacheStats = { count: 0, bytes: 0 };
     try { if (DS.cache && DS.cache.stats) cacheStats = await DS.cache.stats(); } catch (_) {}
+    // The EUC Planet app holds its own copy of every trip it recorded and
+    // uploads it again on its next sync, which quietly undoes an archive. A
+    // file in /trips with a twin in /trips/archive is one of those: it is
+    // called out as back rather than passing for a trip that was never
+    // archived, it stays out of Load all, and Synchronize returns it.
+    const archivedTwin = new Map();
+    for (const f of archived) archivedTwin.set(archiveBaseName(f.name), f);
+    const twinOf = (name) => archivedTwin.get(archiveBaseName(name)) || null;
     const localPaths = new Set();
     const rows = [];
     for (const t of allTracks) {
@@ -2938,16 +2955,20 @@ document.addEventListener("DOMContentLoaded", function () {
       if (t._archive) cat = "archive";
       else if (!path) cat = "new";
       else if (t._dirty) cat = "edited";
+      // A local edit is a decision and outranks the guess by name; the trip
+      // is only treated as back when nothing here has touched it.
+      else if (twinOf(path)) cat = "returned";
       rows.push({ kind: "local", cat, track: t, label: formatTripLabel(t) });
     }
     for (const f of remote) {
       if (localPaths.has(String(f.path).toLowerCase())) continue;
-      rows.push({ kind: "remote", cat: "remote", file: f, label: f.name });
+      const twin = twinOf(f.name);
+      rows.push({ kind: "remote", cat: twin ? "returned" : "remote", file: f, twin, label: f.name });
     }
     for (const f of archived) {
       rows.push({ kind: "archived", cat: "archived", file: f, label: f.name });
     }
-    const order = { archive: 0, edited: 1, new: 2, remote: 3, synced: 4, archived: 5 };
+    const order = { archive: 0, returned: 1, edited: 2, new: 3, remote: 4, synced: 5, archived: 6 };
     rows.sort((a, b) => (order[a.cat] - order[b.cat]) || String(a.label).localeCompare(String(b.label)));
     return { rows, account: DS.accountName(), totalBytes, cacheStats, archivedCount: archived.length };
   }
@@ -2961,10 +2982,11 @@ document.addEventListener("DOMContentLoaded", function () {
     archive: '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4.5" width="12" height="9" rx="1"/><path d="M1.5 4.5 3 2h10l1.5 2.5"/><path d="M6.3 8h3.4"/></svg>',
   };
   DBX_TAG_ICONS.archived = DBX_TAG_ICONS.archive;
-  const DBX_TAG_TIP = { new: "Not on Dropbox yet", edited: "Changed, its file will be updated", synced: "In sync", remote: "On Dropbox, not loaded here", archive: "Superseded; moves to /trips/archive and leaves here", archived: "In /trips/archive; Restore puts it back in /trips" };
+  DBX_TAG_ICONS.returned = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 7.5a5.5 5.5 0 1 1 1.6 3.9"/><path d="M2 4.5V8h3.5"/></svg>';
+  const DBX_TAG_TIP = { new: "Not on Dropbox yet", edited: "Changed, its file will be updated", synced: "In sync", remote: "On Dropbox, not loaded here", archive: "Superseded; moves to /trips/archive and leaves here", archived: "In /trips/archive; Restore puts it back in /trips", returned: "Archived here, but the EUC Planet app put a copy back in /trips" };
   // Local status shows in the meta text; the in-sync state is carried by its
   // (disabled) button instead, so it isn't said twice.
-  const DBX_META = { new: "New", edited: "Changed", archive: "Archive" };
+  const DBX_META = { new: "New", edited: "Changed", archive: "Archive", returned: "Back from the app" };
   function dbxFmtBytes(n) {
     if (!n) return "";
     const u = ["B", "KB", "MB", "GB"]; let i = 0, v = n;
@@ -2981,14 +3003,21 @@ document.addEventListener("DOMContentLoaded", function () {
   function renderSyncState(state, main) {
     const DS = window.DropboxSource;
     const uploadTracks = state.rows.filter((r) => r.kind === "local" && (r.cat === "new" || r.cat === "edited")).map((r) => r.track);
-    const archiveTracks = state.rows.filter((r) => r.kind === "local" && r.cat === "archive").map((r) => r.track);
-    const remoteFiles = state.rows.filter((r) => r.kind === "remote").map((r) => r.file);
-    const allLocal = state.rows.filter((r) => r.kind === "local" && r.cat !== "archive").map((r) => r.track);
+    // A local trip that came back counts as an archive again: the file moves
+    // out of /trips and the trip leaves here, which is runArchive's job.
+    const archiveTracks = state.rows.filter((r) => r.kind === "local" && (r.cat === "archive" || r.cat === "returned")).map((r) => r.track);
+    // Load all pulls the ones nobody archived. The returned rows stay out of
+    // it on purpose: dragging them back in is the thing being undone.
+    const remoteFiles = state.rows.filter((r) => r.kind === "remote" && r.cat === "remote").map((r) => r.file);
+    const returnedRows = state.rows.filter((r) => r.kind === "remote" && r.cat === "returned");
+    const allLocal = state.rows.filter((r) => r.kind === "local" && r.cat !== "archive" && r.cat !== "returned").map((r) => r.track);
     const nTrips = state.rows.filter((r) => r.kind !== "archived").length;
     // Upstream (send to Dropbox) is one control: a Synchronize button that does
     // upload + archive together, with a caret for the individual actions when
     // both apply. Downstream (Load) stays its own button.
-    const up = uploadTracks.length, arch = archiveTracks.length, upstream = up + arch;
+    const up = uploadTracks.length, back = returnedRows.length;
+    const arch = archiveTracks.length + back;
+    const upstream = up + arch;
     const bothUpstream = up > 0 && arch > 0;
     const subParts = [];
     if (up) subParts.push(`upload ${up}`);
@@ -3002,11 +3031,13 @@ document.addEventListener("DOMContentLoaded", function () {
         : DBX_META[r.cat];
       // Remote rows load into the viewer; new/changed local rows upload just
       // themselves; in-sync rows need no action.
-      const rowBtn = r.kind === "remote"
+      const rowBtn = (r.kind === "remote" && r.cat === "returned")
+        ? `<button type="button" class="dbx-row-arch dbx-row-rearchive" data-i="${i}" title="Move it back into /trips/archive">Archive</button>`
+        : r.kind === "remote"
         ? `<button type="button" class="dbx-row-open" data-i="${i}">Load</button>`
         : r.kind === "archived"
           ? `<button type="button" class="dbx-row-restore" data-i="${i}" title="Move back into /trips">Restore</button>`
-        : r.cat === "archive"
+        : (r.cat === "archive" || r.cat === "returned")
           ? `<button type="button" class="dbx-row-arch" data-i="${i}">Archive</button>`
           : (r.cat === "new" || r.cat === "edited")
             ? `<button type="button" class="dbx-row-sync" data-i="${i}">Upload</button>`
@@ -3154,11 +3185,16 @@ document.addEventListener("DOMContentLoaded", function () {
         if (s2) renderSyncState(s2, ui.main);
       });
     });
+    main.querySelectorAll(".dbx-row-rearchive").forEach((btn) => {
+      const r = state.rows[parseInt(btn.dataset.i)];
+      if (r && r.file) btn.addEventListener("click", () => runReArchive([r], ui));
+    });
     const loadBtn = main.querySelector("#dbx-load-remote");
     if (loadBtn) loadBtn.addEventListener("click", () => loadRemoteTrips(remoteFiles, ui));
-    // Synchronize = upload then archive in one pass.
+    // Synchronize = upload, then archive, then sweep back whatever the app
+    // returned, in one pass.
     const allBtn = main.querySelector("#dbx-do-all");
-    if (allBtn && upstream) allBtn.addEventListener("click", () => runSyncAndArchive(uploadTracks, archiveTracks, ui));
+    if (allBtn && upstream) allBtn.addEventListener("click", () => runSyncAndArchive(uploadTracks, archiveTracks, returnedRows, ui));
     // Caret splits it into the individual actions.
     const menu = main.querySelector("#dbx-sync-menu");
     const menuBtn = main.querySelector("#dbx-sync-menu-btn");
@@ -3179,7 +3215,10 @@ document.addEventListener("DOMContentLoaded", function () {
     const syncBtn = main.querySelector("#dbx-do-sync");
     if (syncBtn && uploadTracks.length) syncBtn.addEventListener("click", () => runSync(uploadTracks, ui));
     const archiveBtn = main.querySelector("#dbx-do-archive");
-    if (archiveBtn && archiveTracks.length) archiveBtn.addEventListener("click", () => runArchive(archiveTracks, ui));
+    if (archiveBtn && arch) archiveBtn.addEventListener("click", async () => {
+      if (archiveTracks.length) await runArchive(archiveTracks, ui);
+      if (returnedRows.length) await runReArchive(returnedRows, ui);
+    });
 
     // Responsive action labels: when the Synchronize and Load buttons can't
     // share one row, drop to compact text ("Upload 1" / "Load 353") so they fit
@@ -3417,9 +3456,69 @@ document.addEventListener("DOMContentLoaded", function () {
     if (firstErr) throw firstErr;
   }
 
-  async function runSyncAndArchive(uploadTracks, archiveTracks, ui) {
+  async function runSyncAndArchive(uploadTracks, archiveTracks, returnedRows, ui) {
     if (uploadTracks && uploadTracks.length) await runSync(uploadTracks, ui);
     if (archiveTracks && archiveTracks.length) await runArchive(archiveTracks, ui);
+    if (returnedRows && returnedRows.length) await runReArchive(returnedRows, ui);
+  }
+
+  // Put the trips the app sent back where they were put. The EUC Planet app
+  // keeps its own copy of every trip it recorded and uploads it again on its
+  // next sync, so archiving here is not a one-off: it is a sweep, and this is
+  // it. A copy that is byte for byte the one already in the archive is
+  // deleted rather than moved, because moving it in beside its twin would
+  // leave a "(1)" duplicate behind every single time.
+  async function runReArchive(rows, ui) {
+    const DS = window.DropboxSource;
+    const main = ui.main;
+    main.classList.add("dbx-locked");
+    const rowEl = (path) => main.querySelector(
+      `.dbx-row[data-path="${String(path || "").replace(/["\\]/g, "\\$&")}"]`);
+    rows.forEach((r) => {
+      const li = rowEl(r.file.path);
+      const b = li && li.querySelector(".dbx-row-rearchive");
+      if (b) { b.disabled = true; b.innerHTML = '<span class="dbx-spinner sm"></span>'; }
+    });
+    armStopButton(main, "Stop archiving");
+    let done = 0, err = null;
+    for (const r of rows) {
+      if (dbxStopRequested) break;
+      const li = rowEl(r.file.path);
+      if (li) li.scrollIntoView({ block: "nearest" });
+      try {
+        const twin = r.twin;
+        const same = twin && twin.contentHash && twin.contentHash === r.file.contentHash;
+        if (same && DS.deleteFile) {
+          await DS.deleteFile(r.file.path);
+        } else {
+          const base = String(r.file.path).split("/").pop() || r.file.name;
+          await DS.moveFile(r.file.path, DS.TRIPS_PATH + "/archive/" + base);
+        }
+        if (DS.cache && DS.cache.remove) await DS.cache.remove(r.file.path).catch(() => {});
+        done++;
+        if (li) { const b = li.querySelector(".dbx-row-rearchive"); if (b) b.innerHTML = "✓"; }
+      } catch (e) {
+        // Already out of /trips is the state this was after, so it counts.
+        const msg = String((e && e.message) || e);
+        if (/not_found|from_lookup|path_lookup/i.test(msg)) { done++; continue; }
+        err = err || e;
+      }
+    }
+    main.classList.remove("dbx-locked");
+    const s = await gatherSyncState().catch(() => null);
+    if (s) renderSyncState(s, main);
+    const st = main.querySelector(".dbx-status");
+    if (st) {
+      if (err) {
+        const msg = String(err.message || err);
+        st.classList.add("dbx-err");
+        st.innerHTML = /missing_scope/.test(msg)
+          ? `Enable <code>files.content.write</code> in your Dropbox App Console, then reconnect.`
+          : "Archive failed: " + escapeHtml(msg);
+      } else if (dbxStopRequested) {
+        st.textContent = "Stopped. " + done + " of " + rows.length + " archived.";
+      }
+    }
   }
 
   async function runSync(uploadTracks, ui) {

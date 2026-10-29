@@ -307,6 +307,14 @@
     return rpc("/2/files/move_v2", { from_path: fromPath, to_path: toPath, autorename: true });
   }
 
+  // Delete a file in the app folder. Used for one case only: a trip the EUC
+  // Planet app pushed back into /trips that is byte for byte the copy already
+  // sitting in /trips/archive. Moving that in beside its twin would leave a
+  // "(1)" duplicate behind on every sync the app ever runs.
+  async function deleteFile(path) {
+    return rpc("/2/files/delete_v2", { path });
+  }
+
   // Read + parse a small JSON file from the app folder. Returns null when the
   // file doesn't exist yet (the common first-run case), so callers can treat
   // "no sidecar" and "empty sidecar" the same.
@@ -477,6 +485,7 @@
     downloadBlob,
     uploadFile,
     moveFile,
+    deleteFile,
     readJson,
     signOut,
     maybeHandleCallback,

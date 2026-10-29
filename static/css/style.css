@@ -1631,6 +1631,10 @@ body.panel-resizing #trip-panel { transition: none; }
 #dbx-sync-modal .dbx-row.cat-edited .dbx-row-tag { background: rgba(255, 180, 60, 0.2); color: #ffcf87; }
 #dbx-sync-modal .dbx-row.cat-archive .dbx-row-tag { background: rgba(180, 120, 235, 0.22); color: #d3b3f5; }
 #dbx-sync-modal .dbx-row.cat-archived .dbx-row-tag { background: rgba(180, 120, 235, 0.16); color: #b89ad6; }
+/* Archived here, then pushed back into /trips by the EUC Planet app. It is on
+   its way to the archive again, so it wears the archive colour; the circling
+   arrow and the tooltip say which of the two it is. */
+#dbx-sync-modal .dbx-row.cat-returned .dbx-row-tag { background: rgba(180, 120, 235, 0.22); color: #d3b3f5; }
 #dbx-sync-modal .dbx-row.cat-archived .dbx-row-name { opacity: 0.7; }
 /* The changed row's tag is a one-click undo (revert); the archive row's tag
    cancels the archive (keeps the trip). */
@@ -1641,6 +1645,7 @@ body.panel-resizing #trip-panel { transition: none; }
 #dbx-sync-modal .dbx-row-open,
 #dbx-sync-modal .dbx-row-sync,
 #dbx-sync-modal .dbx-row-arch,
+#dbx-sync-modal .dbx-row-restore,
 #dbx-sync-modal .dbx-row-done {
     min-width: 64px; text-align: center;
     padding: 0.25rem 0.7rem; border-radius: 6px; font: inherit; font-size: 0.74rem; font-weight: 600;
@@ -1651,10 +1656,12 @@ body.panel-resizing #trip-panel { transition: none; }
 }
 #dbx-sync-modal .dbx-row-open:hover,
 #dbx-sync-modal .dbx-row-sync:hover { background: rgba(0, 97, 255, 0.32); color: #fff; }
-#dbx-sync-modal .dbx-row-arch {
+#dbx-sync-modal .dbx-row-arch,
+#dbx-sync-modal .dbx-row-restore {
     background: rgba(180, 120, 235, 0.15); color: #d3b3f5; border: 1px solid rgba(180, 120, 235, 0.35); cursor: pointer;
 }
-#dbx-sync-modal .dbx-row-arch:hover { background: rgba(180, 120, 235, 0.32); color: #fff; }
+#dbx-sync-modal .dbx-row-arch:hover,
+#dbx-sync-modal .dbx-row-restore:hover { background: rgba(180, 120, 235, 0.32); color: #fff; }
 #dbx-sync-modal .dbx-row-done {
     background: rgba(255, 255, 255, 0.04); color: rgba(224, 232, 240, 0.4);
     border: 1px solid rgba(255, 255, 255, 0.1); cursor: default;
