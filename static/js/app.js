@@ -2991,6 +2991,8 @@ document.addEventListener("DOMContentLoaded", function () {
     for (const f of archived) archivedTwin.set(archiveBaseName(f.name), f);
     const twinOf = (name) => archivedTwin.get(archiveBaseName(name)) || null;
     const localPaths = new Set();
+    const remoteByPath = new Map();
+    for (const f of remote) remoteByPath.set(String(f.path).toLowerCase(), f);
     const rows = [];
     for (const t of allTracks) {
       const path = t.dropboxPath ? String(t.dropboxPath).toLowerCase() : null;
@@ -3005,7 +3007,12 @@ document.addEventListener("DOMContentLoaded", function () {
       // A local edit is a decision and outranks the guess by name; the trip
       // is only treated as back when nothing here has touched it.
       else if (twinOf(path)) cat = "returned";
-      rows.push({ kind: "local", cat, track: t, label: formatTripLabel(t) });
+      const row = { kind: "local", cat, track: t, label: formatTripLabel(t) };
+      // A returned local carries its file in /trips and its twin in the
+      // archive, so putting it away again can delete a copy that is byte for
+      // byte the one already there instead of moving it in beside it.
+      if (cat === "returned") { row.file = remoteByPath.get(path) || null; row.twin = twinOf(path); }
+      rows.push(row);
     }
     for (const f of remote) {
       if (localPaths.has(String(f.path).toLowerCase())) continue;
@@ -3055,6 +3062,10 @@ document.addEventListener("DOMContentLoaded", function () {
     const archiveTracks = state.rows.filter((r) => r.kind === "local" && (r.cat === "archive" || r.cat === "returned")).map((r) => r.track);
     // Load all pulls the ones nobody archived. The returned rows stay out of
     // it on purpose: dragging them back in is the thing being undone.
+    // Twin per returned local, so archiving one can tell an identical copy
+    // from a changed one without asking Dropbox again.
+    const localTwins = new Map();
+    state.rows.forEach((r) => { if (r.kind === "local" && r.twin) localTwins.set(r.track, r); });
     const remoteFiles = state.rows.filter((r) => r.kind === "remote" && r.cat === "remote").map((r) => r.file);
     const returnedRows = state.rows.filter((r) => r.kind === "remote" && r.cat === "returned");
     const allLocal = state.rows.filter((r) => r.kind === "local" && r.cat !== "archive" && r.cat !== "returned").map((r) => r.track);
@@ -3199,7 +3210,7 @@ document.addEventListener("DOMContentLoaded", function () {
     });
     main.querySelectorAll(".dbx-row-arch").forEach((btn) => {
       const r = state.rows[parseInt(btn.dataset.i)];
-      if (r && r.track) btn.addEventListener("click", () => runArchive([r.track], ui));
+      if (r && r.track) btn.addEventListener("click", () => runArchive([r.track], ui, localTwins));
     });
     main.querySelectorAll(".dbx-row-unarchive").forEach((btn) => {
       const r = state.rows[parseInt(btn.dataset.i)];
@@ -3241,7 +3252,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // Synchronize = upload, then archive, then sweep back whatever the app
     // returned, in one pass.
     const allBtn = main.querySelector("#dbx-do-all");
-    if (allBtn && upstream) allBtn.addEventListener("click", () => runSyncAndArchive(uploadTracks, archiveTracks, returnedRows, ui));
+    if (allBtn && upstream) allBtn.addEventListener("click", () => runSyncAndArchive(uploadTracks, archiveTracks, returnedRows, ui, localTwins));
     // Caret splits it into the individual actions.
     const menu = main.querySelector("#dbx-sync-menu");
     const menuBtn = main.querySelector("#dbx-sync-menu-btn");
@@ -3263,7 +3274,7 @@ document.addEventListener("DOMContentLoaded", function () {
     if (syncBtn && uploadTracks.length) syncBtn.addEventListener("click", () => runSync(uploadTracks, ui));
     const archiveBtn = main.querySelector("#dbx-do-archive");
     if (archiveBtn && arch) archiveBtn.addEventListener("click", async () => {
-      if (archiveTracks.length) await runArchive(archiveTracks, ui);
+      if (archiveTracks.length) await runArchive(archiveTracks, ui, localTwins);
       if (returnedRows.length) await runReArchive(returnedRows, ui);
     });
 
@@ -3503,9 +3514,9 @@ document.addEventListener("DOMContentLoaded", function () {
     if (firstErr) throw firstErr;
   }
 
-  async function runSyncAndArchive(uploadTracks, archiveTracks, returnedRows, ui) {
+  async function runSyncAndArchive(uploadTracks, archiveTracks, returnedRows, ui, localTwins) {
     if (uploadTracks && uploadTracks.length) await runSync(uploadTracks, ui);
-    if (archiveTracks && archiveTracks.length) await runArchive(archiveTracks, ui);
+    if (archiveTracks && archiveTracks.length) await runArchive(archiveTracks, ui, localTwins);
     if (returnedRows && returnedRows.length) await runReArchive(returnedRows, ui);
   }
 
@@ -3679,7 +3690,7 @@ document.addEventListener("DOMContentLoaded", function () {
   // Archive superseded source trips: move each Dropbox file into /trips/archive
   // (out of EUC Planet's /trips listing) and drop it from the local library.
   // Trips with no Dropbox origin just leave locally; there's nothing to move.
-  async function runArchive(archiveTracks, ui) {
+  async function runArchive(archiveTracks, ui, localTwins) {
     const DS = window.DropboxSource;
     const main = ui.main;
     main.classList.add("dbx-locked");
@@ -3702,8 +3713,19 @@ document.addEventListener("DOMContentLoaded", function () {
       if (li) li.scrollIntoView({ block: "nearest" });
       try {
         if (t.dropboxPath) {
-          const base = String(t.dropboxPath).split("/").pop() || "trip.csv";
-          await DS.moveFile(t.dropboxPath, DS.TRIPS_PATH + "/archive/" + base);
+          // Back from the app and untouched since: the archive already holds
+          // this exact file, so the copy in /trips is deleted. Moving it in
+          // would autorename, and the app returns it after every sync, so the
+          // archive would collect a "(1)", then a "(2)", for ever.
+          const info = localTwins && localTwins.get(t);
+          const same = info && info.twin && info.file && info.twin.contentHash
+            && info.twin.contentHash === info.file.contentHash;
+          if (same && DS.deleteFile) {
+            await DS.deleteFile(t.dropboxPath);
+          } else {
+            const base = String(t.dropboxPath).split("/").pop() || "trip.csv";
+            await DS.moveFile(t.dropboxPath, DS.TRIPS_PATH + "/archive/" + base);
+          }
         }
       } catch (e) {
         // Another browser (or another tab) got there first: the source is
@@ -3711,7 +3733,7 @@ document.addEventListener("DOMContentLoaded", function () {
         // it done instead of stopping. Anything else is a real error and it
         // costs only that trip, because the rest of the batch still runs.
         const msg = String((e && e.message) || e);
-        if (!/not_found|from_lookup/i.test(msg)) { err = err || e; continue; }
+        if (!/not_found|from_lookup|path_lookup/i.test(msg)) { err = err || e; continue; }
       }
       removed.add(t);
       archived++;
