@@ -4488,25 +4488,55 @@ document.addEventListener("DOMContentLoaded", function () {
       analyticsBtn.removeAttribute("href");
       analyticsBtn.title = `${MIN_FORENSICS_TRIPS} trips required for the whole-history analysis (you have ${allTracks.length})`;
     }
-    analyticsBtn.addEventListener("click", async (e) => {
-      if (allTracks.length < MIN_FORENSICS_TRIPS) { e.preventDefault(); return; }
-      if (!allTracks.length) return;
-      // The IDB write started by handleFile() may not have landed yet,
-      // and the new tab would open against an empty currentSession.
-      // Block the native target=_blank, await the write, then open it
-      // ourselves so the analytics page always sees fresh state.
-      e.preventDefault();
+    // Forensics follows one wheel over its life. Asked for every wheel at
+    // once it still answers, but range, Wh/km, the sag and the temperature
+    // rise are then averages over different machines, which is an analysis
+    // of nothing. So opening it unscoped asks which wheel first, with the
+    // whole library still one click away for anyone who meant it.
+    const pickableWheels = wheelGroups.filter((g) => !g.unknown);
+    function askForensicsScope(onPick) {
+      let body = '<div class="tt-hint">Forensics follows one wheel over its life: how its range, its Wh/km, its voltage sag and its heat have moved. Every wheel at once averages different machines together.</div>';
+      body += '<div class="tt-radios">';
+      pickableWheels.forEach((g, gi) => {
+        body += `<label class="tt-radio"><input type="radio" name="fs" value="${gi}"${gi === 0 ? " checked" : ""}>` +
+          `<span>${escapeHtml(g.label)}</span><span class="tt-count">${g.indices.length}</span></label>`;
+      });
+      body += `<label class="tt-radio"><input type="radio" name="fs" value="all">` +
+        `<span>All wheels anyway</span><span class="tt-count">${allTracks.length}</span></label>`;
+      body += "</div>";
+      const cancel = ttBtn("Cancel", "tt-ghost"); cancel.addEventListener("click", ttmodClose);
+      const open = ttBtn("Open", "tt-primary");
+      ttmodShow("FORENSICS", "Which wheel?", "", body, [cancel, open]);
+      open.addEventListener("click", () => {
+        const v = (ttmod.querySelector('input[name="fs"]:checked') || {}).value;
+        if (v === undefined) return;
+        ttmodClose();
+        onPick(v === "all" ? null : pickableWheels[parseInt(v)]);
+      });
+    }
+    // The IDB write started by handleFile() may not have landed yet, and the
+    // new tab would open against an empty currentSession. Hence the await,
+    // and hence opening the tab here rather than letting target=_blank do it.
+    async function openForensics(wheel) {
       const label = analyticsBtn.querySelector(".analytics-label");
       const orig = label.textContent;
       label.textContent = "Preparing…";
       analyticsBtn.style.pointerEvents = "none";
       try { await pendingSessionWrite; } catch (_) {}
-      const scope = forensicsWheel
-        ? "?wheel=" + encodeURIComponent(forensicsWheel.unknown ? "__unknown__" : forensicsWheel.key)
+      const scope = wheel
+        ? "?wheel=" + encodeURIComponent(wheel.unknown ? "__unknown__" : wheel.key)
         : "";
       window.open("analytics.html" + scope, "_blank", "noopener");
       label.textContent = orig;
       analyticsBtn.style.pointerEvents = "";
+    }
+    analyticsBtn.addEventListener("click", (e) => {
+      if (allTracks.length < MIN_FORENSICS_TRIPS) { e.preventDefault(); return; }
+      if (!allTracks.length) return;
+      e.preventDefault();
+      // A wheel is already chosen, or there is only one to choose: just go.
+      if (forensicsWheel || pickableWheels.length < 2) openForensics(forensicsWheel);
+      else askForensicsScope(openForensics);
     });
     wheelRow.appendChild(wheelEl);
     wheelRow.appendChild(analyticsBtn);

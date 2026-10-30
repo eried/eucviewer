@@ -884,6 +884,9 @@ body.panel-resizing #trip-panel { transition: none; }
 }
 .tt-radio:hover { background: rgba(0, 229, 255, 0.05); }
 .tt-radio input { accent-color: #00e5ff; }
+/* Trip count on the right of a wheel row: it is a fact about the choice,
+   not part of its name, so it keeps its distance and its own column. */
+.tt-radio .tt-count { margin-left: auto; color: #7a8a99; font-variant-numeric: tabular-nums; }
 .tt-newrow { padding: 2px 8px 8px 30px; }
 .tt-newrow.hidden { display: none; }
 .tt-newrow input {
