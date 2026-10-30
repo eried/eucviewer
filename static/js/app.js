@@ -2299,15 +2299,10 @@ document.addEventListener("DOMContentLoaded", function () {
   // track.wheel). EUC Planet and DarknessBot files record nothing about
   // the wheel, so those trips group as "Generic wheel" until their
   // recorder starts writing identity.
-  function labelOfWheel(w) {
-    if (!w) return null;
-    // Some wheels report the brand inside the model ("InMotion P6"); don't
-    // double it up in the label.
-    const modelHasMake = w.make && w.model &&
-      w.model.toLowerCase().startsWith(w.make.toLowerCase());
-    const label = modelHasMake ? w.model : [w.make, w.model].filter(Boolean).join(" ");
-    return label || w.name || (w.mac ? "Wheel " + w.mac : null);
-  }
+  // Naming, keying and folding a wheel live in wheel-identity.js, because
+  // Forensics has to spell the key exactly the same way for ?wheel= to match.
+  const WI = window.WheelIdentity;
+  const labelOfWheel = (w) => WI.labelOfWheel(w);
   function wheelLabelOf(t) {
     return labelOfWheel(t && t.wheel);
   }
@@ -2318,43 +2313,6 @@ document.addEventListener("DOMContentLoaded", function () {
     if (t.wheels && t.wheels.length) return t.wheels;
     return t.wheel ? [t.wheel] : [];
   }
-  // One wheel can be written down in more detail on one trip than on another:
-  // EUC Planet names the full identity when it knows it and falls back to the
-  // bare BLE name ("Adventure-E0000298") when it does not, so the same wheel
-  // arrived as two, listed side by side under the same name. Identities that
-  // share a serial or a MAC are the same wheel. One carrying neither joins the
-  // wheel of that name when only one wheel answers to it; when several do,
-  // there is nothing to tell them apart with, so it stays on its own.
-  // Buckets are { w, items }; the fullest identity wins the merged bucket.
-  function foldWheelIdentities(buckets) {
-    const idOf = (w) => String((w && (w.serial || w.mac)) || "").trim().toLowerCase();
-    const nameOf = (w) => String((w && w.name) || "").trim().toLowerCase();
-    const score = (w) => (w.model ? 4 : 0) + (w.make ? 2 : 0) + (w.name ? 1 : 0) + (idOf(w) ? 1 : 0);
-    const byId = new Map();
-    const out = [];
-    const idless = [];
-    const join = (into, b) => {
-      into.items = into.items.concat(b.items);
-      if (score(b.w) > score(into.w)) into.w = b.w;
-    };
-    for (const b of buckets) {
-      const id = idOf(b.w);
-      if (!id) { idless.push(b); continue; }
-      const hit = byId.get(id);
-      if (hit) { join(hit, b); continue; }
-      const nb = { w: b.w, items: b.items.slice() };
-      byId.set(id, nb);
-      out.push(nb);
-    }
-    for (const b of idless) {
-      const nm = nameOf(b.w);
-      const hits = nm ? out.filter((o) => nameOf(o.w) === nm) : [];
-      if (hits.length === 1) join(hits[0], b);
-      else out.push({ w: b.w, items: b.items.slice() });
-    }
-    return out;
-  }
-
   function computeWheelGroups() {
     const byKey = new Map();
     const unknown = [];
@@ -2366,18 +2324,16 @@ document.addEventListener("DOMContentLoaded", function () {
       for (const w of ids) {
         // Bucket on the whole identity, not the label: telling the partial
         // ones apart is what lets them be folded back together below.
-        const key = [labelOfWheel(w), w.serial || "", w.mac || "", w.name || ""].join("\u0000");
+        const key = WI.bucketKey(w);
         if (!byKey.has(key)) byKey.set(key, { w, items: [] });
         const g = byKey.get(key);
         if (g.items[g.items.length - 1] !== i) g.items.push(i);
       }
     }
-    const groups = foldWheelIdentities([...byKey.values()]).map((b) => {
+    const groups = WI.foldWheelIdentities([...byKey.values()]).map((b) => {
       const label = labelOfWheel(b.w);
-      // Same key formula as analytics wheelKeyOf, so a wheel picked here
-      // can be handed to Forensics via ?wheel= and match there.
       return {
-        label, key: label + "|" + (b.w.serial || b.w.mac || ""), wheel: b.w,
+        label, key: WI.groupKey(label, b.w), wheel: b.w,
         // A trip that carried two of the folded identities would be in here
         // twice, which would read as a trip count nobody can account for.
         indices: [...new Set(b.items)].sort((x, y) => x - y),
@@ -2599,6 +2555,7 @@ document.addEventListener("DOMContentLoaded", function () {
   const ICON = {
     video: `<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2.5 11.5 A6 6 0 1 1 13.5 11.5"/><line x1="8" y1="11" x2="11.2" y2="6.2"/><circle cx="8" cy="11" r="1.2" fill="currentColor" stroke="none"/></svg>`,
     inspect: `<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="7" cy="7" r="4.5"/><line x1="10.4" y1="10.4" x2="14" y2="14"/></svg>`,
+    compare: `<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 5.5h10M10 3l3 2.5-3 2.5M13.5 10.5h-10M6 8l-3 2.5 3 2.5"/></svg>`,
     wheel: `<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="6"/><circle cx="8" cy="8" r="1.6"/><path d="M8 2v2M8 12v2M2 8h2M12 8h2"/></svg>`,
     back: `<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 3 5 8 9 13"/></svg>`,
     split: `<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="4" cy="4" r="2"/><circle cx="4" cy="12" r="2"/><line x1="5.6" y1="5.4" x2="14" y2="11.5"/><line x1="5.6" y1="10.6" x2="14" y2="4.5"/></svg>`,
@@ -2649,7 +2606,8 @@ document.addEventListener("DOMContentLoaded", function () {
     const canArchive = canArchiveTrip(t);
     m.innerHTML =
       `<a class="ttm-item" href="video.html?i=${i}" target="_blank" rel="noopener">${ICON.video}Make video</a>` +
-      `<a class="ttm-item" href="inspector.html?i=${i}" target="_blank" rel="noopener">${ICON.inspect}Inspect / Compare</a>` +
+      `<a class="ttm-item" href="inspector.html?i=${i}" target="_blank" rel="noopener">${ICON.inspect}Inspect</a>` +
+      `<a class="ttm-item" href="inspector.html?i=${i}&compare=1" target="_blank" rel="noopener">${ICON.compare}Compare with&hellip;</a>` +
       `<div class="ttm-sep"></div>` +
       `<button type="button" class="ttm-item" data-act="rename">${ICON.rename}Rename trip…</button>` +
       `<button type="button" class="ttm-item" data-act="wheel">${ICON.wheel}Change wheel…</button>` +

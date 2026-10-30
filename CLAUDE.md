@@ -33,10 +33,21 @@ to mirroring into that repo, ignore them.)
   it flows through the normal `handleFile` parse + recents pipeline. The Dropbox app needs
   these redirect URIs registered in the App Console: `https://eucviewer.ried.no/` and any
   local-dev origins (e.g. `http://localhost:8000/`).
+- `wheel-identity.js` is the one place a wheel is named, keyed and folded, loaded by
+  `index.html` and `analytics.html` before their own script. `labelOfWheel` (brand inside the
+  model is not doubled; falls back to BLE name, then `Wheel <mac>`), `groupKey` (what the
+  viewer puts in `?wheel=` and Forensics matches, so it must never differ between pages),
+  `bucketKey` (the whole identity, which is what makes folding possible) and
+  `foldWheelIdentities`. The fold exists because EUC Planet writes the identity as fully as
+  it knows it at the time: most trips carry brand + model + MAC, some carry only the BLE name
+  ("Adventure-E0000298"). Identities sharing a serial or MAC are one wheel; one carrying
+  neither joins the wheel of that name only when exactly one wheel answers to it, and the
+  fullest identity names the merged group. Before this, one wheel listed as three.
 - `inspector.html` + `inspector.js` is a standalone page. It reads the `?i=<index>` query param,
   fetches tracks from IndexedDB (store `eucplanet-trip-viewer/currentSession` key `"tracks"`),
   falls back to `localStorage["dbb_tracks"]`, then drives a MapLibre terrain map + 5 canvas
-  charts + SVG dashboard + playback loop.
+  charts + SVG dashboard + playback loop. `?compare=1` (the trip menu's "Compare with…") opens
+  the compare picker on load and leaves the ride paused.
 - `analytics.html` + `analytics.js` is the whole-history analysis page ("Analyze history" in the
   trip-panel footer). Loads tracks the same way the inspector does, computes per-trip metrics
   (estimated range from battery delta, Wh/km, avg speed/current, internal-resistance proxy from
@@ -131,6 +142,17 @@ displayed date updates automatically on each deploy — no manual version bump n
   `inspector.html?i=...` (relative), and the button is in `app.js` → `buildTripItem()`.
 - Web Worker `new Worker("static/js/parser-worker.js")` needs http(s), not `file://`.
 - MapLibre terrain: DEM source uses `encoding: "terrarium"` and `maxzoom: 15`.
+- The wheel and the custom name ride out in the CSV/XLSX **Extra** column, one `key=value` per
+  row, which assumed every trip has more rows than it has metadata. Very short trips do not, so
+  `packExtraPairs()` joins the leftovers into the last cell with `" | "` and the worker's
+  `extraEvents()` splits them back, only when every piece matches `^(wheel|trip)\.[a-z]+\s*=`,
+  so a recorder's value containing a pipe is left alone. `clean()` strips `|` from what we write.
+- The EUC Planet app keeps its own copy of every trip it recorded and re-uploads it on its next
+  sync, which undoes an archive. A file in `/trips` with a twin in `/trips/archive` is therefore
+  tagged `returned` ("Back from the app"): kept out of Load all, given its own Archive button,
+  included in Synchronize. A copy identical to its twin (`content_hash`) is **deleted**, not
+  moved, or autorename would leave a `(1)` behind on every sweep. This is a mop, not a cure:
+  only deleting the trip in the app stops it coming back.
 
 ## Don't forget
 

@@ -1,6 +1,10 @@
 (async function () {
   "use strict";
 
+  // Naming, keying and folding a wheel live in wheel-identity.js, shared with
+  // the viewer: ?wheel= only matches if both pages spell the key the same.
+  const WI = window.WheelIdentity;
+
   // Imperial unit toggle: drives display labels and converters everywhere
   // values are shown. Timezone-based: imperial only when the OS timezone is
   // in the US, US territories, Liberia or Myanmar. navigator.language is
@@ -750,15 +754,12 @@
   function wheelKeyOf(t) {
     const w = t && t.wheel;
     if (!w) return null;
-    // Some wheels report the brand inside the model ("InMotion P6"); don't
-    // double it up in the label.
-    const modelHasMake = w.make && w.model &&
-      w.model.toLowerCase().startsWith(w.make.toLowerCase());
-    const label = (modelHasMake ? w.model : [w.make, w.model].filter(Boolean).join(" "))
-      || w.name || (w.mac ? "Wheel " + w.mac : null);
+    // Naming and keying live in wheel-identity.js, which the viewer uses too:
+    // the key is what ?wheel= hands over, so the two must agree exactly.
+    const label = WI.labelOfWheel(w);
     // The raw identity rides along so same-wheel identities written with
-    // different amounts of detail can be folded together (foldWheelIdentities).
-    return label ? { key: label + "|" + (w.serial || w.mac || ""), label, w } : null;
+    // different amounts of detail can be folded together.
+    return label ? { key: WI.groupKey(label, w), label, w } : null;
   }
 
   function computeTripMetrics(t) {
@@ -1441,62 +1442,22 @@
   // Wheel groups from real identity only: metrics with the same wheel
   // key share a group, everything unattributed lands in "Generic wheel".
   // Each metric gets its group index in m.wheelGi.
-  // One wheel can be written down in more detail on one trip than on another:
-  // EUC Planet names the full identity when it knows it and falls back to the
-  // bare BLE name ("Adventure-E0000298") when it does not, so the same wheel
-  // arrived as two, listed side by side under the same name. Identities that
-  // share a serial or a MAC are the same wheel. One carrying neither joins the
-  // wheel of that name when only one wheel answers to it; when several do,
-  // there is nothing to tell them apart with, so it stays on its own.
-  // Buckets are { w, items }; the fullest identity wins the merged bucket.
-  function foldWheelIdentities(buckets) {
-    const idOf = (w) => String((w && (w.serial || w.mac)) || "").trim().toLowerCase();
-    const nameOf = (w) => String((w && w.name) || "").trim().toLowerCase();
-    const score = (w) => (w.model ? 4 : 0) + (w.make ? 2 : 0) + (w.name ? 1 : 0) + (idOf(w) ? 1 : 0);
-    const byId = new Map();
-    const out = [];
-    const idless = [];
-    const join = (into, b) => {
-      into.items = into.items.concat(b.items);
-      if (score(b.w) > score(into.w)) into.w = b.w;
-    };
-    for (const b of buckets) {
-      const id = idOf(b.w);
-      if (!id) { idless.push(b); continue; }
-      const hit = byId.get(id);
-      if (hit) { join(hit, b); continue; }
-      const nb = { w: b.w, items: b.items.slice() };
-      byId.set(id, nb);
-      out.push(nb);
-    }
-    for (const b of idless) {
-      const nm = nameOf(b.w);
-      const hits = nm ? out.filter((o) => nameOf(o.w) === nm) : [];
-      if (hits.length === 1) join(hits[0], b);
-      else out.push({ w: b.w, items: b.items.slice() });
-    }
-    return out;
-  }
-
   const wheelGroups = (() => {
     const byKey = new Map();
     const unknown = [];
     for (const m of datedFull) {
       if (m.wheel) {
         const w = m.wheel.w || {};
-        const key = [m.wheel.label, w.serial || "", w.mac || "", w.name || ""].join("\u0000");
+        const key = WI.bucketKey(w);
         if (!byKey.has(key)) byKey.set(key, { w, items: [] });
         byKey.get(key).items.push(m);
       } else {
         unknown.push(m);
       }
     }
-    const groups = foldWheelIdentities([...byKey.values()]).map((b) => {
-      const w = b.w;
-      const modelHasMake = w.make && w.model && w.model.toLowerCase().startsWith(w.make.toLowerCase());
-      const label = (modelHasMake ? w.model : [w.make, w.model].filter(Boolean).join(" "))
-        || w.name || (w.mac ? "Wheel " + w.mac : "Wheel");
-      return { key: label + "|" + (w.serial || w.mac || ""), label, members: b.items };
+    const groups = WI.foldWheelIdentities([...byKey.values()]).map((b) => {
+      const label = WI.labelOfWheel(b.w) || "Wheel";
+      return { key: WI.groupKey(label, b.w), label, members: b.items };
     });
     const counts = {};
     for (const g of groups) counts[g.label] = (counts[g.label] || 0) + 1;

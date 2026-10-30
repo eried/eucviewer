@@ -4267,6 +4267,14 @@
       if (!dialog.classList.contains("hidden") && !setupView.classList.contains("hidden")) fitStrip();
     });
     searchEl.addEventListener("input", renderList);
+
+    // The viewer's "Compare with" entry lands here with ?compare=1: open the
+    // picker straight away, and leave the ride standing, because the visit is
+    // about choosing the other trip, not about watching this one.
+    if (params.get("compare") === "1") {
+      autoplayCancelled = true;
+      requestAnimationFrame(() => btn.click());
+    }
   })();
 
   // ---------- Trim dialog ----------
