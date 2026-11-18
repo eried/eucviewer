@@ -439,20 +439,6 @@ body.src-modal-open #upload-box #source-instructions { pointer-events: auto; }
     text-transform: uppercase;
 }
 
-.recent-clear {
-    border: none;
-    background: transparent;
-    color: #6ea9b2;
-    cursor: pointer;
-    font-size: 0.72rem;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-}
-
-.recent-clear:hover {
-    color: #00e5ff;
-}
-
 .recent-files-empty {
     color: #6b7f86;
     font-size: 0.82rem;
@@ -2002,6 +1988,24 @@ body:has(#upload-overlay:not(.hidden)) #map-controls {
     z-index: 1010;
 }
 body:has(#upload-overlay:not(.hidden)) #map-controls .map-only { display: none !important; }
+/* And the other way round: rows that only make sense before a map is up. */
+#map-controls .start-only { display: none; }
+body:has(#upload-overlay:not(.hidden)) #map-controls .start-only { display: flex; }
+/* A plain action in the cogwheel, the same shape as the selects around it. */
+.menu-btn {
+    background: rgba(0, 0, 0, 0.55);
+    color: #8fa7b0;
+    border: 1px solid rgba(0, 229, 255, 0.22);
+    border-radius: 5px;
+    padding: 3px 6px;
+    font-size: 0.78rem;
+    font-family: inherit;
+    text-align: center;
+    cursor: pointer;
+    transition: color 0.12s, border-color 0.12s;
+}
+.menu-btn:hover { color: #00e5ff; border-color: #00e5ff; }
+.menu-btn:disabled { opacity: 0.5; cursor: not-allowed; color: #8fa7b0; border-color: rgba(0, 229, 255, 0.22); }
 #map-controls.collapsed { padding: 4px; }
 #map-controls .setting-hint {
     color: #6a828c;
@@ -2009,13 +2013,15 @@ body:has(#upload-overlay:not(.hidden)) #map-controls .map-only { display: none !
     line-height: 1.35;
     margin-top: -2px;
 }
-#map-controls label {
+#map-controls label,
+#map-controls .menu-row {
     display: flex;
     align-items: center;
     gap: 8px;
     justify-content: space-between;
 }
-#map-controls label > span {
+#map-controls label > span,
+#map-controls .menu-row > span {
     color: #8fa7b0;
     letter-spacing: 0.04em;
     text-transform: uppercase;
@@ -2038,6 +2044,7 @@ body:has(#upload-overlay:not(.hidden)) #map-controls .map-only { display: none !
    else's 120, and since the column is right-aligned that shows up as a
    ragged left edge. */
 #map-controls select,
+#map-controls .menu-btn,
 #map-controls .units-toggle {
     flex: 0 0 124px;
     width: 124px;

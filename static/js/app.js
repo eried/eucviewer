@@ -1573,14 +1573,15 @@ document.addEventListener("DOMContentLoaded", function () {
     section.innerHTML = `
       <div class="recent-files-header">
         <span>${i18n("Recent files")}</span>
-        <button type="button" class="recent-clear hidden">${i18n("Clear")}</button>
       </div>
       <div class="recent-files-empty">${i18n("No recent parsed files yet.")}</div>
       <div class="recent-files-list hidden"></div>
     `;
     uploadBox.appendChild(section);
 
-    const clearBtn = section.querySelector(".recent-clear");
+    // Clear lives in the start screen's cogwheel, out of the way of the
+    // list it empties.
+    const clearBtn = document.getElementById("recent-clear");
     clearBtn.addEventListener("click", async () => {
       await clearRecentFiles();
       await renderRecentFiles();
@@ -1861,14 +1862,14 @@ document.addEventListener("DOMContentLoaded", function () {
         recentUi.section.classList.add("hidden");
         recentUi.list.classList.add("hidden");
         recentUi.empty.classList.add("hidden");
-        recentUi.clearBtn.classList.add("hidden");
+        recentUi.clearBtn.disabled = true;
         return;
       }
 
       recentUi.section.classList.remove("hidden");
       recentUi.empty.classList.add("hidden");
       recentUi.list.classList.remove("hidden");
-      recentUi.clearBtn.classList.remove("hidden");
+      recentUi.clearBtn.disabled = false;
 
       const dropboxGlyph = `<svg class="recent-file-source" viewBox="0 0 24 24" width="11" height="11" aria-hidden="true" title="${escapeHtml(i18n("From Dropbox"))}"><path fill="currentColor" d="M6 2 0 6l6 4 6-4-6-4zm12 0-6 4 6 4 6-4-6-4zM0 14l6 4 6-4-6-4-6 4zm18-4-6 4 6 4 6-4-6-4zM6 19l6 4 6-4-6-4-6 4z"/></svg>`;
       const stripExt = (n) => (n || "").replace(/\.(dbb|csv|gpx|xlsx)$/i, "");

@@ -6,7 +6,7 @@
     <title>EUC Planet Trip Viewer</title>
     <link rel="icon" href="static/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="static/css/style.css?v=129" />
+    <link rel="stylesheet" href="static/css/style.css?v=130" />
     <script type="text/javascript">
         (function(c,l,a,r,i,t,y){
             c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
@@ -27,6 +27,12 @@
                 <span data-i18n>Language</span>
                 <select id="lang-select" aria-label="Language" data-i18n-attrs="aria-label"></select>
             </label>
+            <!-- A div, not a label: a label would pass a click on the words
+                 on to the button, and this one deletes things. -->
+            <div class="menu-row start-only">
+                <span data-i18n>Recent files</span>
+                <button type="button" id="recent-clear" class="menu-btn" disabled data-i18n>Clear</button>
+            </div>
             <label class="map-only">
                 <span data-i18n>Distance</span>
                 <div class="units-toggle" role="radiogroup" aria-label="Distance and speed" data-i18n-attrs="aria-label">
@@ -232,7 +238,7 @@
     <script src="static/js/wheel-identity.js?v=1"></script>
     <script src="static/js/units.js?v=3"></script>
     <script src="static/js/i18n.js?v=4"></script>
-    <script src="static/js/app.js?v=229"></script>
+    <script src="static/js/app.js?v=230"></script>
     <script src="static/js/dropbox-source.js?v=14"></script>
     <script src="static/js/source-hints.js?v=41"></script>
 </body>
