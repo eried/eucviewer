@@ -7,6 +7,8 @@
 
   // Units are decided and converted in units.js, shared by every page.
   const UNITS = window.EucUnits.UNITS;
+  // Every string the rider reads goes through this (i18n.js).
+  const i18n = window.EucI18n.t;
   // Temperature *differences* scale by 9/5 but must not get the +32 offset.
   const tempDelta = (c) => UNITS.tempDelta(c);
 
@@ -15,7 +17,10 @@
   // one-time pass converts the fixed strings around them for imperial
   // users. The anomaly threshold inputs stay km/h on purpose (their
   // stored values are metric).
-  if (UNITS.miles || UNITS.fahrenheit) {
+  // It runs after i18n.js has translated the markup, and works in any
+  // language because translations keep unit symbols in Latin letters
+  // (tools/i18n_extract.py checks that they do).
+  if (UNITS.miles || UNITS.fahrenheit || UNITS.feet) {
     // Each quantity on its own flag: miles on the road with Celsius (the UK)
     // converts the distances and leaves the temperatures alone.
     const conv = (s) => {
@@ -28,8 +33,6 @@
       if (UNITS.fahrenheit) s = s
         .replace(/(\d+(?:\.\d+)?)\s*°C/g, (_, n) => `${Math.round(n * 9 / 5 + 32)} °F`)
         .replace(/°C/g, "°F");
-      if (UNITS.climbUnit === "ft/mi") s = s
-        .replace(/meters of altitude gain per km/g, "feet of altitude gain per mi");
       if (UNITS.miles) s = s
         .replace(/Wh\/km/g, "Wh/mi")
         .replace(/km\/%/g, "mi/%")
@@ -46,11 +49,23 @@
     document.querySelectorAll("#lifetime-bar .stat-card[title], #topbar .info-icon[title]").forEach((el) => {
       el.setAttribute("title", conv(el.getAttribute("title") || ""));
     });
+    // The one unit that is spelled out in words, so no pattern can find it
+    // once the page is translated. The symbol says it in every language.
+    const climbAxes = document.getElementById("climb-axes");
+    if (climbAxes && UNITS.climbUnit === "ft/mi") climbAxes.textContent = "(ft/mi)";
     const accelCard = document.getElementById("lf-accel40");
     if (accelCard) {
       const lbl = accelCard.parentElement.querySelector(".sl");
       if (lbl) lbl.innerHTML = conv(lbl.innerHTML);
     }
+  }
+
+  // The acceleration card's label is rewritten once there is data; until
+  // then it is the markup's English, so say it in the rider's language now.
+  {
+    const card = document.getElementById("lf-accel40");
+    const lbl = card && card.parentElement.querySelector(".sl");
+    if (lbl) lbl.textContent = i18n("Best 0 → {speed} {unit}", { speed: Math.round(UNITS.speed(40)), unit: UNITS.speedUnit });
   }
 
   // ---------- DOM ----------
@@ -167,7 +182,7 @@
   function applyLayout(layout) {
     document.body.setAttribute("data-layout", layout);
     const btn = document.getElementById("layout-toggle");
-    if (btn) btn.title = layout === "tabs" ? "Switch to one-page layout" : "Switch to tabbed layout";
+    if (btn) btn.title = layout === "tabs" ? i18n("Switch to one-page layout") : i18n("Switch to tabbed layout");
     try { localStorage.setItem(LAYOUT_KEY, layout); } catch (_) {}
     if (typeof renderAll === "function") renderAll();
   }
@@ -190,7 +205,7 @@
     document.body.setAttribute("data-layout", saved);
     const btn = document.getElementById("layout-toggle");
     if (btn) {
-      btn.title = saved === "tabs" ? "Switch to one-page layout" : "Switch to tabbed layout";
+      btn.title = saved === "tabs" ? i18n("Switch to one-page layout") : i18n("Switch to tabbed layout");
       btn.addEventListener("click", () => {
         const current = document.body.getAttribute("data-layout") || "tabs";
         applyLayout(current === "tabs" ? "single" : "tabs");
@@ -268,7 +283,7 @@
     tracks = loadFromLocalStorage();
   }
   if (!tracks || !Array.isArray(tracks) || !tracks.length) {
-    showError("No trips found. Open the main viewer, load your trips, then come back here.");
+    showError(i18n("No trips found. Open the main viewer, load your trips, then come back here."));
     return;
   }
 
@@ -738,7 +753,7 @@
       date,
       wheel: wheelKeyOf(t),
       dateStr: date ? localDateStr(date) : null,
-      label: t.date || (date ? fmtTripLabel(date) : (t.name || "Trip")),
+      label: t.date || (date ? fmtTripLabel(date) : (t.name || i18n("Trip"))),
       distKm: tripDistanceKm(t),
       durH: 0,
       battStart: null, battEnd: null, battDelta: null,
@@ -1396,7 +1411,7 @@
   const dated = tripMetrics.filter((m) => m.date).sort((a, b) => a.date - b.date);
   const undatedCount = tripMetrics.length - dated.length;
   if (!dated.length) {
-    showError("None of the loaded trips carry a date, so a history timeline can't be built.");
+    showError(i18n("None of the loaded trips carry a date, so a history timeline can't be built."));
     return;
   }
   // Epoch position 0..1 for the old→new colour ramp on scatter charts.
@@ -1435,7 +1450,7 @@
         g.label += " #" + seen[g.label];
       }
     }
-    if (unknown.length && groups.length) groups.push({ label: "Generic wheel", members: unknown, unknown: true });
+    if (unknown.length && groups.length) groups.push({ label: i18n("Generic wheel"), members: unknown, unknown: true });
     groups.forEach((g, gi) => { for (const m of g.members) m.wheelGi = gi; });
     return groups.map((g) => ({ label: g.label, count: g.members.length, key: g.key, unknown: g.unknown }));
   })();
@@ -1452,7 +1467,7 @@
   const wheelScopeSel = document.getElementById("scope-wheel");
   if (wheelScopeSel && wheelGroups.length > 1) {
     document.getElementById("scope-wheel-row").classList.remove("hidden");
-    wheelScopeSel.innerHTML = '<option value="-1">All wheels (' + datedFull.length + ")</option>" +
+    wheelScopeSel.innerHTML = '<option value="-1">' + i18n("All wheels ({n})", { n: datedFull.length }) + "</option>" +
       wheelGroups.map((g, gi) => '<option value="' + gi + '">' + g.label + " (" + g.count + ")</option>").join("");
     // The viewer's Forensics button hands over its wheel-filter pick via
     // ?wheel=<key> (same key formula both sides; __unknown__ = the
@@ -1472,7 +1487,7 @@
     // Trip counts live on the Scope button, so the subtitle stays km + dates.
     let sub = `${UNITS.dist(totalKm).toFixed(0)} ${UNITS.distUnit} · ` +
               `${subtitleFmt.format(lo)} – ${subtitleFmt.format(hi)}`;
-    if (undatedCount) sub += ` · ${undatedCount} undated skipped`;
+    if (undatedCount) sub = i18n("{summary} · {n} undated skipped", { summary: sub, n: undatedCount });
     subtitleEl.textContent = sub;
   }
   let dateRangeStart = datedFull[0].date;
@@ -1500,8 +1515,8 @@
         if (!h2) return;
         tag = document.createElement("span");
         tag.className = "mixed-note";
-        tag.textContent = "⚠ mixed wheels";
-        tag.title = "All wheels are in scope, so this metric blends different wheels (battery, motor and range differ per wheel). Pick one wheel in Scope for a clean read.";
+        tag.textContent = i18n("⚠ mixed wheels");
+        tag.title = i18n("All wheels are in scope, so this metric blends different wheels (battery, motor and range differ per wheel). Pick one wheel in Scope for a clean read.");
         h2.insertBefore(tag, h2.querySelector(".sec-meta"));
       } else if (!want && tag) {
         tag.remove();
@@ -1531,8 +1546,8 @@
     dated.forEach((m, i) => { m.epoch = dated.length > 1 ? i / (dated.length - 1) : 0.5; });
     const all = minV === 0 && maxV === 100 && wheelGi < 0;
     drSummary.textContent = all
-      ? "All trips (" + datedFull.length + ")"
-      : sub.length + " of " + datedFull.length + " trips";
+      ? i18n("All trips ({n})", { n: datedFull.length })
+      : i18n("{n} of {total} trips", { n: sub.length, total: datedFull.length });
     if (typeof renderAll === "function") renderAll();
   }
   function debounce(fn, ms) {
@@ -1559,7 +1574,7 @@
   drFill.style.width = "100%";
   drLo.textContent = drFmt.format(datedFull[0].date);
   drHi.textContent = drFmt.format(datedFull[datedFull.length - 1].date);
-  drSummary.textContent = "All trips (" + datedFull.length + ")";
+  drSummary.textContent = i18n("All trips ({n})", { n: datedFull.length });
   // A ?wheel= preselect must scope the very first render too; renderAll
   // isn't defined yet, so filter `dated` directly (the date range is
   // still full-width here).
@@ -1570,7 +1585,7 @@
     dated.length = 0;
     Array.prototype.push.apply(dated, sub);
     dated.forEach((m, i) => { m.epoch = dated.length > 1 ? i / (dated.length - 1) : 0.5; });
-    drSummary.textContent = sub.length + " of " + datedFull.length + " trips";
+    drSummary.textContent = i18n("{n} of {total} trips", { n: sub.length, total: datedFull.length });
   }
 
   // Scope: a modal dialog behind a small button near the page title.
@@ -1598,8 +1613,8 @@
     // The button carries the trip count (the subtitle no longer does).
     const span = scopeToggle.querySelector("span");
     if (span) span.textContent = active
-      ? "Scoped (" + dated.length + " of " + datedFull.length + ")"
-      : "Scope (" + datedFull.length + " trip" + (datedFull.length === 1 ? "" : "s") + ")";
+      ? i18n("Scoped ({n} of {total})", { n: dated.length, total: datedFull.length })
+      : (datedFull.length === 1 ? i18n("Scope ({n} trip)", { n: datedFull.length }) : i18n("Scope ({n} trips)", { n: datedFull.length }));
   }
 
   // Print: switch to a light-on-white theme, force single-page layout so
@@ -1615,14 +1630,14 @@
     const iso = (d) => { const t = new Date(d); return isNaN(t) ? "" : t.toISOString().slice(0, 10); };
     const lo = n ? iso(dated[0].date) : "";
     const hi = n ? iso(dated[n - 1].date) : "";
-    const parts = ["EUC wheel forensics"];
+    const parts = [i18n("EUC wheel forensics")];
     const sel = document.getElementById("scope-wheel");
     if (sel && sel.value !== "-1" && sel.selectedOptions[0]) {
       // Drop the trailing count the option carries: it is in the title already.
       parts.push(sel.selectedOptions[0].textContent.replace(/\s*\(\d+\)\s*$/, "").trim());
     }
-    if (lo && hi) parts.push(lo === hi ? lo : lo + " to " + hi);
-    parts.push(n + (n === 1 ? " trip" : " trips"));
+    if (lo && hi) parts.push(lo === hi ? lo : i18n("{from} to {to}", { from: lo, to: hi }));
+    parts.push(n === 1 ? i18n("{n} trip", { n }) : i18n("{n} trips", { n }));
     return parts.join(" - ");
   }
 
@@ -1884,7 +1899,7 @@
     const wKey = (k) => wSrc === "era5" ? k : wSrc + ":" + k;
     const clusters = weatherClusters();
     if (!clusters.length) {
-      weatherStatus.textContent = "No GPS data in these trips.";
+      weatherStatus.textContent = i18n("No GPS data in these trips.");
       weatherStatus.className = "error";
       return;
     }
@@ -1892,7 +1907,7 @@
     weatherStatus.className = "";
     let done = 0, failed = 0;
     for (const c of clusters) {
-      weatherStatus.textContent = `Fetching ${++done}/${clusters.length}…`;
+      weatherStatus.textContent = i18n("Fetching {done}/{total}…", { done: ++done, total: clusters.length });
       const cached = (await readWeatherCache(wKey(c.key))) || { days: {} };
       // A day is missing if absent, or cached before wind was collected (the
       // wind term needs windMs, so those days refetch once to backfill it).
@@ -2011,18 +2026,18 @@
       missing++;
     }
     if (covered === 0 && missing === 0) {
-      weatherBtn.textContent = "Add weather data";
+      weatherBtn.textContent = i18n("Add weather data");
       weatherBtn.disabled = noGps === dated.length;
       weatherStatus.textContent = failedClusters
-        ? "Couldn't reach the weather service"
-        : (tooRecent ? tooRecent + " recent trip" + (tooRecent === 1 ? "" : "s") + " not in the archive yet" : "");
+        ? i18n("Couldn't reach the weather service")
+        : (tooRecent ? (tooRecent === 1 ? i18n("{n} recent trip not in the archive yet", { n: tooRecent }) : i18n("{n} recent trips not in the archive yet", { n: tooRecent })) : "");
       weatherStatus.className = failedClusters ? "error" : "";
       return;
     }
     if (covered === 0) {
-      weatherBtn.textContent = "Add weather data";
+      weatherBtn.textContent = i18n("Add weather data");
       weatherBtn.disabled = false;
-      weatherStatus.textContent = failedClusters ? "Couldn't reach the weather service" : "";
+      weatherStatus.textContent = failedClusters ? i18n("Couldn't reach the weather service") : "";
       weatherStatus.className = failedClusters ? "error" : "";
       return;
     }
@@ -2033,7 +2048,7 @@
     const refreshBtn = document.getElementById("weather-refresh-btn");
     if (refreshBtn) {
       refreshBtn.title = tooRecent
-        ? tooRecent + " trip" + (tooRecent === 1 ? "" : "s") + " from the last few days isn't in the archive yet. Open-Meteo's historical data lags about 5 days. Click to try again."
+        ? (tooRecent === 1 ? i18n("{n} trip from the last few days isn't in the archive yet. Open-Meteo's historical data lags about 5 days. Click to try again.", { n: tooRecent }) : i18n("{n} trips from the last few days isn't in the archive yet. Open-Meteo's historical data lags about 5 days. Click to try again.", { n: tooRecent }))
         : "";
     }
     // Caveats (trips too recent for the archive, trips without GPS, failed
@@ -2048,20 +2063,20 @@
       note.title = has ? extras.join("\n") : "";
     }
     if (missing > 0) {
-      weatherBtn.textContent = "Add weather for " + missing + " more";
+      weatherBtn.textContent = i18n("Add weather for {n} more", { n: missing });
       weatherBtn.disabled = false;
       const extras = [];
-      if (tooRecent) extras.push(tooRecent + " from the last few days; Open-Meteo archive lags ~5 days");
-      if (noGps) extras.push(noGps + " without GPS");
-      if (failedClusters) extras.push(failedClusters + " location" + (failedClusters > 1 ? "s" : "") + " failed to fetch");
-      setWeatherStatus(covered + " of " + dated.length + " trips ready", extras);
+      if (tooRecent) extras.push(i18n("{n} from the last few days; Open-Meteo archive lags ~5 days", { n: tooRecent }));
+      if (noGps) extras.push(i18n("{n} without GPS", { n: noGps }));
+      if (failedClusters) extras.push(failedClusters > 1 ? i18n("{n} locations failed to fetch", { n: failedClusters }) : i18n("{n} location failed to fetch", { n: failedClusters }));
+      setWeatherStatus(i18n("{n} of {total} trips ready", { n: covered, total: dated.length }), extras);
     } else {
-      weatherBtn.textContent = "Weather " + covered + "/" + dated.length;
-      weatherBtn.title = "Weather added for " + covered + " of " + dated.length + " trips";
+      weatherBtn.textContent = i18n("Weather {n}/{total}", { n: covered, total: dated.length });
+      weatherBtn.title = i18n("Weather added for {n} of {total} trips", { n: covered, total: dated.length });
       weatherBtn.disabled = true;
       const extras = [];
-      if (tooRecent) extras.push(tooRecent + " from the last few days; Open-Meteo archive lags ~5 days");
-      if (noGps) extras.push(noGps + " without GPS");
+      if (tooRecent) extras.push(i18n("{n} from the last few days; Open-Meteo archive lags ~5 days", { n: tooRecent }));
+      if (noGps) extras.push(i18n("{n} without GPS", { n: noGps }));
       setWeatherStatus("", extras);
     }
   }
@@ -2517,7 +2532,7 @@
     // sitting just above the plot (below the HTML title band) instead of
     // at the very top where the title used to overlap and clip it.
     ctx.font = FONT;
-    const newW = ctx.measureText("new").width;
+    const newW = ctx.measureText(i18n("new")).width;
     const lw = 60, lx = w - pad.right - newW - 6 - lw, ly = pad.top - 12;
     for (let i = 0; i < lw; i++) {
       ctx.fillStyle = epochColor(i / lw);
@@ -2526,9 +2541,9 @@
     ctx.fillStyle = "rgba(255,255,255,0.55)";
     ctx.textAlign = "right";
     ctx.textBaseline = "middle";
-    ctx.fillText("old", lx - 4, ly + 2);
+    ctx.fillText(i18n("old"), lx - 4, ly + 2);
     ctx.textAlign = "left";
-    ctx.fillText("new", lx + lw + 4, ly + 2);
+    ctx.fillText(i18n("new"), lx + lw + 4, ly + 2);
 
     canvas._an = { type: "scatter", drawn, opts };
   }
@@ -2582,13 +2597,13 @@
       syncCrosshair(best);
       const bin = an.bins[best];
       const totalKmIn = bin.trips.reduce((s, m) => s + (m.distKm || 0), 0);
-      let html = `<b>${bin.label}</b> · ${bin.trips.length} trip${bin.trips.length === 1 ? "" : "s"}`;
+      let html = `<b>${bin.label}</b> · ${bin.trips.length === 1 ? i18n("{n} trip", { n: bin.trips.length }) : i18n("{n} trips", { n: bin.trips.length })}`;
       if (totalKmIn > 0) html += ` · ${UNITS.dist(totalKmIn).toFixed(0)} ${UNITS.distUnit}`;
       for (const s of an.series) {
         const st = s.stats[best];
         if (!st || st.med == null) continue;
         html += `<br>${s.label}: <b>${fmtVal(st.med, s.dp)}</b> ${s.unit || ""}`;
-        if (s.band && st.p25 != null) html += ` <span style="color:#888">(IQR ${fmtVal(st.p25, s.dp)}–${fmtVal(st.p75, s.dp)})</span>`;
+        if (s.band && st.p25 != null) html += ` <span style="color:#888">${i18n("(IQR {lo}–{hi})", { lo: fmtVal(st.p25, s.dp), hi: fmtVal(st.p75, s.dp) })}</span>`;
         if (st.n != null) html += ` <span style="color:#666">n=${st.n}</span>`;
       }
       showTooltip(html, e.clientX, e.clientY);
@@ -2600,7 +2615,7 @@
       if (b.count === 0) { hideTooltip(); return; }
       // Range readout uses the unit baked in by the histogram caller.
       const html = `<b>${fmtVal(b.from)}</b>–<b>${fmtVal(b.to)}</b> ${an.unit || ""}<br>` +
-                   `<b>${b.count}</b> trip${b.count === 1 ? "" : "s"}`;
+                   (b.count === 1 ? i18n("<b>{n}</b> trip", { n: b.count }) : i18n("<b>{n}</b> trips", { n: b.count }));
       showTooltip(html, e.clientX, e.clientY);
     } else if (an.type === "bars") {
       hideAllCrosshairs();
@@ -2965,7 +2980,7 @@
     {
       const lbl = document.querySelector("#lf-accel40 + .sl");
       if (lbl && bestAccelTarget) {
-        lbl.textContent = `Best 0 → ${Math.round(UNITS.speed(bestAccelTarget))} ${UNITS.speedUnit}`;
+        lbl.textContent = i18n("Best 0 → {speed} {unit}", { speed: Math.round(UNITS.speed(bestAccelTarget)), unit: UNITS.speedUnit });
       }
     }
     setStat("lf-anomalies", anomCount, "");
@@ -3009,12 +3024,16 @@
     if (r0 && r1) {
       const pct = fmtPct(r0, r1);
       const dispA = UNITS.dist(r0), dispB = UNITS.dist(r1);
+      const rangeVars = { pct: Math.abs(pct).toFixed(0), a: dispA.toFixed(1), b: dispB.toFixed(1), unit: UNITS.distUnit, temp: UNITS.temp(20).toFixed(0), tempUnit: UNITS.tempUnit };
       out.push({
         kind: pct < -5 ? "warn" : pct > 5 ? "good" : "info",
-        html: `Estimated range ${pct >= 0 ? "up" : "down"} <b>${Math.abs(pct).toFixed(0)}%</b> ` +
-              `from your first third of trips (<b>${dispA.toFixed(1)} ${UNITS.distUnit}</b>) ` +
-              `to your last third (<b>${dispB.toFixed(1)} ${UNITS.distUnit}</b>)` +
-              (useNorm ? `, normalized to ${UNITS.temp(20).toFixed(0)} ${UNITS.tempUnit} for this comparison.` : ". Add weather to factor out temperature."),
+        html: useNorm
+          ? (pct >= 0
+            ? i18n("Estimated range up <b>{pct}%</b> from your first third of trips (<b>{a} {unit}</b>) to your last third (<b>{b} {unit}</b>), normalized to {temp} {tempUnit} for this comparison.", rangeVars)
+            : i18n("Estimated range down <b>{pct}%</b> from your first third of trips (<b>{a} {unit}</b>) to your last third (<b>{b} {unit}</b>), normalized to {temp} {tempUnit} for this comparison.", rangeVars))
+          : (pct >= 0
+            ? i18n("Estimated range up <b>{pct}%</b> from your first third of trips (<b>{a} {unit}</b>) to your last third (<b>{b} {unit}</b>). Add weather to factor out temperature.", rangeVars)
+            : i18n("Estimated range down <b>{pct}%</b> from your first third of trips (<b>{a} {unit}</b>) to your last third (<b>{b} {unit}</b>). Add weather to factor out temperature.", rangeVars)),
       });
     }
 
@@ -3027,9 +3046,10 @@
       out.push({
         kind: pct > 15 ? "warn" : pct < -10 ? "good" : "info",
         html: Math.abs(pct) < 4
-          ? `Internal resistance is holding steady: <b>${(ir0 * 1000).toFixed(0)} mΩ</b> in your first third of trips vs <b>${(ir1 * 1000).toFixed(0)} mΩ</b> in your last third. No aging signal.`
-          : `Internal resistance ${pct >= 0 ? "rose" : "fell"} from <b>${(ir0 * 1000).toFixed(0)} mΩ</b> ` +
-            `in your first third of trips to <b>${(ir1 * 1000).toFixed(0)} mΩ</b> in your last third (${pct >= 0 ? "+" : ""}${pct.toFixed(0)}%).`,
+          ? i18n("Internal resistance is holding steady: <b>{a} mΩ</b> in your first third of trips vs <b>{b} mΩ</b> in your last third. No aging signal.", { a: (ir0 * 1000).toFixed(0), b: (ir1 * 1000).toFixed(0) })
+          : (pct >= 0
+            ? i18n("Internal resistance rose from <b>{a} mΩ</b> in your first third of trips to <b>{b} mΩ</b> in your last third ({pct}%).", { a: (ir0 * 1000).toFixed(0), b: (ir1 * 1000).toFixed(0), pct: "+" + pct.toFixed(0) })
+            : i18n("Internal resistance fell from <b>{a} mΩ</b> in your first third of trips to <b>{b} mΩ</b> in your last third ({pct}%).", { a: (ir0 * 1000).toFixed(0), b: (ir1 * 1000).toFixed(0), pct: pct.toFixed(0) })),
       });
     }
 
@@ -3041,9 +3061,9 @@
       const dA = e0 / UNITS.dist(1), dB = e1 / UNITS.dist(1);
       out.push({
         kind: pct > 8 ? "warn" : pct < -5 ? "good" : "info",
-        html: `Energy use ${pct >= 0 ? "up" : "down"} <b>${Math.abs(pct).toFixed(0)}%</b> ` +
-              `from <b>${dA.toFixed(1)} Wh/${UNITS.distUnit}</b> in your first third of trips ` +
-              `to <b>${dB.toFixed(1)} Wh/${UNITS.distUnit}</b> in your last third.`,
+        html: pct >= 0
+          ? i18n("Energy use up <b>{pct}%</b> from <b>{a} Wh/{unit}</b> in your first third of trips to <b>{b} Wh/{unit}</b> in your last third.", { pct: Math.abs(pct).toFixed(0), a: dA.toFixed(1), b: dB.toFixed(1), unit: UNITS.distUnit })
+          : i18n("Energy use down <b>{pct}%</b> from <b>{a} Wh/{unit}</b> in your first third of trips to <b>{b} Wh/{unit}</b> in your last third.", { pct: Math.abs(pct).toFixed(0), a: dA.toFixed(1), b: dB.toFixed(1), unit: UNITS.distUnit }),
       });
     }
 
@@ -3055,17 +3075,22 @@
     if (tempSlopeKm != null) {
       const slopeDisp = UNITS.dist(tempSlopeKm) / UNITS.tempDelta(1);
       const ambients = dated.map((m) => m.ambientC).filter((v) => v != null).sort((a, b) => a - b);
-      let envTxt = "";
+      let envTxt = null;
       if (ambients.length >= 10) {
         const lo = ambients[Math.floor(ambients.length * 0.05)];
         const hi = ambients[Math.floor(ambients.length * 0.95)];
-        envTxt = `, measured between <b>${Math.round(UNITS.temp(lo))}</b> and <b>${Math.round(UNITS.temp(hi))} ${UNITS.tempUnit}</b> ambient`;
+        envTxt = { lo: Math.round(UNITS.temp(lo)), hi: Math.round(UNITS.temp(hi)) };
       }
+      const tempVars = { tempUnit: UNITS.tempUnit, km: Math.abs(slopeDisp * 10).toFixed(1), unit: UNITS.distUnit, lo: envTxt ? envTxt.lo : "", hi: envTxt ? envTxt.hi : "" };
       out.push({
         kind: "info",
-        html: `Every <b>10 ${UNITS.tempUnit}</b> drop in ambient costs about ` +
-              `<b>${Math.abs(slopeDisp * 10).toFixed(1)}</b> ${UNITS.distUnit} of range${envTxt}` +
-              (multiFit ? ` (speed and climb factored out).` : `.`),
+        html: envTxt
+          ? (multiFit
+            ? i18n("Every <b>10 {tempUnit}</b> drop in ambient costs about <b>{km}</b> {unit} of range, measured between <b>{lo}</b> and <b>{hi} {tempUnit}</b> ambient (speed and climb factored out).", tempVars)
+            : i18n("Every <b>10 {tempUnit}</b> drop in ambient costs about <b>{km}</b> {unit} of range, measured between <b>{lo}</b> and <b>{hi} {tempUnit}</b> ambient.", tempVars))
+          : (multiFit
+            ? i18n("Every <b>10 {tempUnit}</b> drop in ambient costs about <b>{km}</b> {unit} of range (speed and climb factored out).", tempVars)
+            : i18n("Every <b>10 {tempUnit}</b> drop in ambient costs about <b>{km}</b> {unit} of range.", tempVars)),
       });
     }
     // Speed sensitivity (multivariate slope, isolated effect). A positive
@@ -3085,16 +3110,20 @@
           hiK = sp[Math.floor(sp.length * 0.95)];
         }
       }
-      const env = loK != null
-        ? ` inside your usual <b>${Math.round(UNITS.speed(loK))}–${Math.round(UNITS.speed(hiK))} ${UNITS.speedUnit}</b> trip averages`
-        : "";
+      const env = loK != null;
+      const speedVars = { unit: UNITS.speedUnit, km: Math.abs(slopeDisp * 5).toFixed(1), distUnit: UNITS.distUnit, lo: env ? Math.round(UNITS.speed(loK)) : "", hi: env ? Math.round(UNITS.speed(hiK)) : "" };
       const why = slopeDisp >= 0
-        ? ` That is trip mix (less time crawling), not free speed; the in-ride cost curve on the Range tab shows the price of actually riding faster.`
+        ? " " + i18n("That is trip mix (less time crawling), not free speed; the in-ride cost curve on the Range tab shows the price of actually riding faster.")
         : "";
       out.push({
         kind: slopeDisp < -0.5 ? "warn" : "info",
-        html: `Trips with a <b>5 ${UNITS.speedUnit}</b> faster average ${sign} about ` +
-              `<b>${Math.abs(slopeDisp * 5).toFixed(1)}</b> ${UNITS.distUnit} of range${env}.${why}`,
+        html: (env
+          ? (sign === "gain"
+            ? i18n("Trips with a <b>5 {unit}</b> faster average gain about <b>{km}</b> {distUnit} of range inside your usual <b>{lo}–{hi} {unit}</b> trip averages.", speedVars)
+            : i18n("Trips with a <b>5 {unit}</b> faster average lose about <b>{km}</b> {distUnit} of range inside your usual <b>{lo}–{hi} {unit}</b> trip averages.", speedVars))
+          : (sign === "gain"
+            ? i18n("Trips with a <b>5 {unit}</b> faster average gain about <b>{km}</b> {distUnit} of range.", speedVars)
+            : i18n("Trips with a <b>5 {unit}</b> faster average lose about <b>{km}</b> {distUnit} of range.", speedVars))) + why,
       });
     }
     // Climb sensitivity (multivariate slope, isolated effect). Anchor the
@@ -3115,11 +3144,10 @@
       const lossKm = -slopePerMperKm * exampleClimbMperKm;
       const lossDisp = UNITS.dist(Math.abs(lossKm));
       const r2 = Math.max(0, Math.min(1, multiFit ? multiFit.r2 : 0));
-      const trustNote = r2 < 0.3 ? " Model fit is loose (R²=" + r2.toFixed(2) + "), so treat this as a ballpark." : "";
+      const trustNote = r2 < 0.3 ? " " + i18n("Model fit is loose (R²={r2}), so treat this as a ballpark.", { r2: r2.toFixed(2) }) : "";
       out.push({
         kind: lossKm > 1 ? "warn" : "info",
-        html: `Climbing at your steepest typical rate (<b>${exampleDispRate.toFixed(0)} ${exampleUnit}</b>, about <b>${examplePctGrade}%</b> grade) ` +
-              `costs about <b>${lossDisp.toFixed(1)} ${UNITS.distUnit}</b> of full-charge range.${trustNote}`,
+        html: i18n("Climbing at your steepest typical rate (<b>{rate} {rateUnit}</b>, about <b>{grade}%</b> grade) costs about <b>{loss} {unit}</b> of full-charge range.", { rate: exampleDispRate.toFixed(0), rateUnit: exampleUnit, grade: examplePctGrade, loss: lossDisp.toFixed(1), unit: UNITS.distUnit }) + trustNote,
       });
     }
     // Model sanity check at the user's own MEDIAN conditions, with the
@@ -3148,10 +3176,9 @@
         const tag = ` <span class="model-quality">(n=${multiFit.n} · R²=${r2.toFixed(2)})</span>`;
         out.push({
           kind: agree ? "info" : "warn",
-          html: `Range model check: at your median conditions (<i>${conds}</i>) it predicts ` +
-                `<b>${UNITS.dist(predKm).toFixed(0)} ± ${UNITS.dist(sigma).toFixed(0)} ${UNITS.distUnit}</b>, ` +
-                `and your trips actually delivered a median of <b>${UNITS.dist(obsMed).toFixed(0)} ${UNITS.distUnit}</b>` +
-                (agree ? `.` : `; outside the band, so treat the model's slopes with care.`) + tag,
+          html: (agree
+            ? i18n("Range model check: at your median conditions (<i>{conds}</i>) it predicts <b>{pred} ± {sigma} {unit}</b>, and your trips actually delivered a median of <b>{obs} {unit}</b>.", { conds: conds, pred: UNITS.dist(predKm).toFixed(0), sigma: UNITS.dist(sigma).toFixed(0), obs: UNITS.dist(obsMed).toFixed(0), unit: UNITS.distUnit })
+            : i18n("Range model check: at your median conditions (<i>{conds}</i>) it predicts <b>{pred} ± {sigma} {unit}</b>, and your trips actually delivered a median of <b>{obs} {unit}</b>; outside the band, so treat the model's slopes with care.", { conds: conds, pred: UNITS.dist(predKm).toFixed(0), sigma: UNITS.dist(sigma).toFixed(0), obs: UNITS.dist(obsMed).toFixed(0), unit: UNITS.distUnit })) + tag,
         });
       }
     }
@@ -3170,7 +3197,7 @@
         const label = new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric" }).format(new Date(y, mo, 1));
         out.push({
           kind: "info",
-          html: `Most active month: <b>${label}</b> with <b>${UNITS.dist(best.v).toFixed(0)}</b> ${UNITS.distUnit}.`,
+          html: i18n("Most active month: <b>{month}</b> with <b>{dist}</b> {unit}.", { month: label, dist: UNITS.dist(best.v).toFixed(0), unit: UNITS.distUnit }),
         });
       }
     }
@@ -3196,7 +3223,7 @@
   // suffixes that look odd in a report.
   function tripLink(label, tripIdx) {
     if (tripIdx == null || !isFinite(tripIdx)) return label;
-    return `<a class="ta-link-inline" href="inspector.html?i=${tripIdx}" target="_blank" rel="noopener" title="Open this ride in the inspector">${label}</a>`;
+    return `<a class="ta-link-inline" href="inspector.html?i=${tripIdx}" target="_blank" rel="noopener" title="${i18n("Open this ride in the inspector")}">${label}</a>`;
   }
   function setTakeaway(id, parts, kind) {
     const el = document.getElementById(id);
@@ -3319,8 +3346,8 @@
 
     // Legend.
     drawLegend(ctx, w, pad.top, pad.left, [
-      { color: "rgba(179,136,255,0.85)", label: "Distance per group (" + UNITS.distUnit + ")" },
-      { color: "#69f0ae", label: "Cumulative (" + UNITS.distUnit + ")" },
+      { color: "rgba(179,136,255,0.85)", label: i18n("Distance per group ({unit})", { unit: UNITS.distUnit }) },
+      { color: "#69f0ae", label: i18n("Cumulative ({unit})", { unit: UNITS.distUnit }) },
     ]);
 
     // Hover.
@@ -3329,8 +3356,8 @@
       bins,
       pad, cw, ch, w, h, xAt,
       series: [
-        { stats: distPerBin.map((v, i) => ({ med: v, n: bins[i].trips.length })), label: "Distance", unit: UNITS.distUnit, dp: 1, color: "#b388ff" },
-        { stats: cum.map((v, i) => ({ med: v, n: bins[i].trips.length })), label: "Cumulative", unit: UNITS.distUnit, dp: 1, color: "#69f0ae" },
+        { stats: distPerBin.map((v, i) => ({ med: v, n: bins[i].trips.length })), label: i18n("Distance"), unit: UNITS.distUnit, dp: 1, color: "#b388ff" },
+        { stats: cum.map((v, i) => ({ med: v, n: bins[i].trips.length })), label: i18n("Cumulative"), unit: UNITS.distUnit, dp: 1, color: "#69f0ae" },
       ],
     };
     // Swap the getter so we report metric units.
@@ -3408,7 +3435,7 @@
     // Axis title (top-left)
     ctx.fillStyle = "rgba(255,255,255,0.55)";
     ctx.textAlign = "left";
-    ctx.fillText(opts.yLabel || "trips", pad.left + 4, 4);
+    ctx.fillText(opts.yLabel || i18n("trips"), pad.left + 4, 4);
     ctx.textAlign = "right";
     ctx.fillText(opts.xLabel || "", w - pad.right, pad.top + ch + 6);
 
@@ -3468,7 +3495,7 @@
       type: "trend",
       bins,
       pad, cw, ch, w, h, xAt,
-      series: [{ stats: perBin.map((v) => ({ med: v })), label: "Charges", unit: "", dp: 0, color: "#00e5ff" }],
+      series: [{ stats: perBin.map((v) => ({ med: v })), label: i18n("Charges"), unit: "", dp: 0, color: "#00e5ff" }],
     };
   }
 
@@ -3548,9 +3575,9 @@
     }
     // Legend: greener = healthier
     drawLegend(ctx, w, pad.top, pad.left, [
-      { color: "#69f0ae", label: "Gentle (started >50%)" },
-      { color: "#ffd740", label: "Mid (20–50%)" },
-      { color: "#ff5252", label: "Deep (below 20%)" },
+      { color: "#69f0ae", label: i18n("Gentle (started >50%)") },
+      { color: "#ffd740", label: i18n("Mid (20–50%)") },
+      { color: "#ff5252", label: i18n("Deep (below 20%)") },
     ]);
     // Y-axis title
     ctx.save();
@@ -3559,7 +3586,7 @@
     ctx.fillStyle = "rgba(255,255,255,0.45)";
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
-    ctx.fillText("state of charge", 0, 0);
+    ctx.fillText(i18n("state of charge"), 0, 0);
     ctx.restore();
   }
 
@@ -3575,9 +3602,9 @@
     });
     const series = [
       { stats: medians.map((s) => s ? { med: UNITS.speed(s.med) } : null),
-        color: "#7cc7ff", label: "Median top speed", unit: UNITS.speedUnit, band: false, dp: 1 },
+        color: "#7cc7ff", label: i18n("Median top speed"), unit: UNITS.speedUnit, band: false, dp: 1 },
       { stats: maxes.map((s) => s ? { med: UNITS.speed(s.med) } : null),
-        color: "#ff5252", label: "Max top speed", unit: UNITS.speedUnit, band: false, dp: 1 },
+        color: "#ff5252", label: i18n("Max top speed"), unit: UNITS.speedUnit, band: false, dp: 1 },
     ];
     drawTrendChart(canvas, bins, series, { rolling: false, zeroBase: false });
   }
@@ -3644,8 +3671,8 @@
       ctx.save();
       const lx = 12, ly = 32, lineH = 13; // below the y-axis title
       const items = [];
-      if (modelPredict) items.push({ label: "model (multi)", color: "rgba(179,136,255,0.95)", width: 2.2, dash: null });
-      if (univariate) items.push({ label: modelPredict ? "this view" : "fit", color: opts.fitColor || "rgba(255,241,118,0.75)", width: 1.4, dash: [4, 3] });
+      if (modelPredict) items.push({ label: i18n("model (multi)"), color: "rgba(179,136,255,0.95)", width: 2.2, dash: null });
+      if (univariate) items.push({ label: modelPredict ? i18n("this view") : i18n("fit"), color: opts.fitColor || "rgba(255,241,118,0.75)", width: 1.4, dash: [4, 3] });
       // Soft background pill so the legend stays legible on dotty areas.
       ctx.font = "10px ui-monospace, SFMono-Regular, Consolas, monospace";
       let maxW = 0;
@@ -3676,9 +3703,9 @@
         x: UNITS.temp(m.ambientC),
         y: UNITS.dist(m.estRangeKm),
         epoch: m.epoch,
-        meta: `<b>${m.label}</b><br>Range: <b>${fmtVal(UNITS.dist(m.estRangeKm), 1)}</b> ${UNITS.distUnit}` +
-              `<br>Ambient: <b>${fmtVal(UNITS.temp(m.ambientC), 1)}</b> ${UNITS.tempUnit}` +
-              `<br>Battery used: <b>${fmtVal(m.battDelta, 1)}</b>%`,
+        meta: `<b>${m.label}</b><br>${i18n("Range: <b>{v}</b> {unit}", { v: fmtVal(UNITS.dist(m.estRangeKm), 1), unit: UNITS.distUnit })}` +
+              `<br>${i18n("Ambient: <b>{v}</b> {unit}", { v: fmtVal(UNITS.temp(m.ambientC), 1), unit: UNITS.tempUnit })}` +
+              `<br>${i18n("Battery used: <b>{v}</b>%", { v: fmtVal(m.battDelta, 1) })}`,
       });
     }
     let modelLine = null;
@@ -3690,8 +3717,8 @@
       };
     }
     drawRangeFactorScatter(canvas, rangeTempHost, pts, {
-      xLabel: "ambient (" + UNITS.tempUnit + ")",
-      yLabel: "est. range (" + UNITS.distUnit + ")",
+      xLabel: i18n("ambient ({unit})", { unit: UNITS.tempUnit }),
+      yLabel: i18n("est. range ({unit})", { unit: UNITS.distUnit }),
       fitColor: "rgba(255,241,118,0.75)",
       modelLine,
     });
@@ -3706,9 +3733,9 @@
         x: UNITS.speed(m.avgMovingSpeed),
         y: UNITS.dist(m.estRangeKm),
         epoch: m.epoch,
-        meta: `<b>${m.label}</b><br>Range: <b>${fmtVal(UNITS.dist(m.estRangeKm), 1)}</b> ${UNITS.distUnit}` +
-              `<br>Avg speed: <b>${fmtVal(UNITS.speed(m.avgMovingSpeed), 1)}</b> ${UNITS.speedUnit}` +
-              `<br>Battery used: <b>${fmtVal(m.battDelta, 1)}</b>%`,
+        meta: `<b>${m.label}</b><br>${i18n("Range: <b>{v}</b> {unit}", { v: fmtVal(UNITS.dist(m.estRangeKm), 1), unit: UNITS.distUnit })}` +
+              `<br>${i18n("Avg speed: <b>{v}</b> {unit}", { v: fmtVal(UNITS.speed(m.avgMovingSpeed), 1), unit: UNITS.speedUnit })}` +
+              `<br>${i18n("Battery used: <b>{v}</b>%", { v: fmtVal(m.battDelta, 1) })}`,
       });
     }
     let modelLine = null;
@@ -3720,8 +3747,8 @@
       };
     }
     drawRangeFactorScatter(canvas, host, pts, {
-      xLabel: "avg speed (" + UNITS.speedUnit + ")",
-      yLabel: "est. range (" + UNITS.distUnit + ")",
+      xLabel: i18n("avg speed ({unit})", { unit: UNITS.speedUnit }),
+      yLabel: i18n("est. range ({unit})", { unit: UNITS.distUnit }),
       fitColor: "rgba(124,199,255,0.8)",
       modelLine,
     });
@@ -3738,10 +3765,10 @@
         x: UNITS.climb(climbPerKm),
         y: UNITS.dist(m.estRangeKm),
         epoch: m.epoch,
-        meta: `<b>${m.label}</b><br>Range: <b>${fmtVal(UNITS.dist(m.estRangeKm), 1)}</b> ${UNITS.distUnit}` +
-              `<br>Climb rate: <b>${fmtVal(UNITS.climb(climbPerKm), 1)}</b> ${UNITS.climbUnit}` +
-              `<br>Total climb: <b>${fmtVal(UNITS.alt(m.climbM), 0)}</b> ${UNITS.altUnit}` +
-              `<br>Battery used: <b>${fmtVal(m.battDelta, 1)}</b>%`,
+        meta: `<b>${m.label}</b><br>${i18n("Range: <b>{v}</b> {unit}", { v: fmtVal(UNITS.dist(m.estRangeKm), 1), unit: UNITS.distUnit })}` +
+              `<br>${i18n("Climb rate: <b>{v}</b> {unit}", { v: fmtVal(UNITS.climb(climbPerKm), 1), unit: UNITS.climbUnit })}` +
+              `<br>${i18n("Total climb: <b>{v}</b> {unit}", { v: fmtVal(UNITS.alt(m.climbM), 0), unit: UNITS.altUnit })}` +
+              `<br>${i18n("Battery used: <b>{v}</b>%", { v: fmtVal(m.battDelta, 1) })}`,
       });
     }
     let modelLine = null;
@@ -3754,7 +3781,7 @@
     }
     drawRangeFactorScatter(canvas, host, pts, {
       xLabel: UNITS.climbUnit,
-      yLabel: "est. range (" + UNITS.distUnit + ")",
+      yLabel: i18n("est. range ({unit})", { unit: UNITS.distUnit }),
       fitColor: "rgba(255,160,0,0.8)",
       modelLine,
     });
@@ -3853,20 +3880,20 @@
     // overlay that lives in the top-right corner).
     ctx.fillStyle = "rgba(255,255,255,0.55)";
     ctx.textAlign = "left";
-    ctx.fillText("est. full-charge range (" + UNITS.distUnit + ")", pad.left + 4, 4);
+    ctx.fillText(i18n("est. full-charge range ({unit})", { unit: UNITS.distUnit }), pad.left + 4, 4);
     ctx.fillStyle = "rgba(105,240,174,0.9)";
     ctx.fillRect(pad.left + 4, 21, 8, 8);
     ctx.fillStyle = "rgba(255,255,255,0.65)";
-    ctx.fillText("sweet spot", pad.left + 16, 20);
+    ctx.fillText(i18n("sweet spot"), pad.left + 16, 20);
     canvas._an = {
       type: "bars",
       pad, w, h,
       xToBin: (mx) => Math.floor((mx - pad.left) / barW),
       bins: rows.map((r, i) => ({
         html: `<b>${Math.round(UNITS.speed(r.from))}–${Math.round(UNITS.speed(r.to))} ${UNITS.speedUnit}</b>` +
-              `<br>Full charge at this pace: <b>${Math.round(vals[i])} ${UNITS.distUnit}</b>` +
-              `<br>Battery cost: <b>${(r.pctPerKm / UNITS.dist(1)).toFixed(2)}</b> %/${UNITS.distUnit}` +
-              `<br>Sampled from <b>${Math.round(UNITS.dist(r.km))} ${UNITS.distUnit}</b> of riding`,
+              `<br>${i18n("Full charge at this pace: <b>{v} {unit}</b>", { v: Math.round(vals[i]), unit: UNITS.distUnit })}` +
+              `<br>${i18n("Battery cost: <b>{v}</b> %/{unit}", { v: (r.pctPerKm / UNITS.dist(1)).toFixed(2), unit: UNITS.distUnit })}` +
+              `<br>${i18n("Sampled from <b>{v} {unit}</b> of riding", { v: Math.round(UNITS.dist(r.km)), unit: UNITS.distUnit })}`,
       })),
     };
     return true;
@@ -3891,11 +3918,11 @@
       if (m.idleStops) { idle[0] += m.idleStops[0]; idle[1] += m.idleStops[1]; idle[2] += m.idleStops[2]; }
     }
     const defs = [
-      { key: "stopped",  label: "standing still", midKmh: 0 },
-      { key: "balance",  label: "balancing",      loK: 0.5, hiK: 3,  midKmh: 1.75 },
-      { key: "walk",     label: "walking pace",   loK: 3,   hiK: 7,  midKmh: 5 },
-      { key: "slowride", label: "slow riding",    loK: 7,   hiK: 12, midKmh: 9.5 },
-      { key: "cruise",   label: `cruise ${Math.round(UNITS.speed(20))}–${Math.round(UNITS.speed(30))} ${UNITS.speedUnit}`, loK: 20, hiK: 30, midKmh: 25 },
+      { key: "stopped",  label: i18n("standing still"), midKmh: 0 },
+      { key: "balance",  label: i18n("balancing"),      loK: 0.5, hiK: 3,  midKmh: 1.75 },
+      { key: "walk",     label: i18n("walking pace"),   loK: 3,   hiK: 7,  midKmh: 5 },
+      { key: "slowride", label: i18n("slow riding"),    loK: 7,   hiK: 12, midKmh: 9.5 },
+      { key: "cruise",   label: i18n("cruise {lo}–{hi} {unit}", { lo: Math.round(UNITS.speed(20)), hi: Math.round(UNITS.speed(30)), unit: UNITS.speedUnit }), loK: 20, hiK: 30, midKmh: 25 },
     ];
     const rows = [];
     for (const d of defs) {
@@ -3982,7 +4009,7 @@
     ctx.fillStyle = "rgba(255,255,255,0.55)";
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
-    ctx.fillText("battery % per hour", pad.left + 4, 4);
+    ctx.fillText(i18n("battery % per hour"), pad.left + 4, 4);
     canvas._an = {
       type: "hbars",
       pad, w, h,
@@ -3990,14 +4017,15 @@
       bins: rows.map((r) => {
         const perKm = r.midKmh > 0 ? (r.pctPerH / r.midKmh / UNITS.dist(1)).toFixed(2) + " %/" + UNITS.distUnit : null;
         const battTxt = r.pctPerH < 0.2
-          ? "<b>&lt; 0.2 %/h</b> (below gauge noise)"
-          : `<b>${r.pctPerH.toFixed(2)} %/h</b>`;
+          ? i18n("Battery: <b>&lt; 0.2 %/h</b> (below gauge noise)")
+          : i18n("Battery: <b>{v} %/h</b>", { v: r.pctPerH.toFixed(2) });
         return {
           html: `<b>${r.label}${r.key === "cruise" ? "" : speedBand(r)}</b>` +
-                `<br>Battery: ${battTxt}` +
-                (perKm ? `<br>Per distance: <b>${perKm}</b>` : "") +
-                `<br>Sampled: <b>${r.hours.toFixed(1)} h</b>` +
-                (r.stops ? ` across <b>${r.stops}</b> stops of 2+ min` : ""),
+                `<br>${battTxt}` +
+                (perKm ? `<br>${i18n("Per distance: <b>{v}</b>", { v: perKm })}` : "") +
+                `<br>` + (r.stops
+                  ? i18n("Sampled: <b>{h} h</b> across <b>{stops}</b> stops of 2+ min", { h: r.hours.toFixed(1), stops: r.stops })
+                  : i18n("Sampled: <b>{h} h</b>", { h: r.hours.toFixed(1) })),
         };
       }),
     };
@@ -4197,7 +4225,7 @@
     if (!fitA) {
       // No model at all; the modal still opens so Import DNA stays reachable.
       calcEls.verdict.className = "calc-verdict";
-      calcEls.verdict.textContent = "No range model yet. Use a saved Wheel DNA file (arrow icon in the title bar), or add weather data so trips telemetry can train one.";
+      calcEls.verdict.textContent = i18n("No range model yet. Use a saved Wheel DNA file (arrow icon in the title bar), or add weather data so trips telemetry can train one.");
       calcEls.battUse.textContent = "—";
       calcEls.battArr.textContent = "—";
       calcEls.time.textContent = "—";
@@ -4217,7 +4245,7 @@
     const fitHasWind = !!(fitA.beta && fitA.beta.w != null);
     if (calcEls.wind) {
       calcEls.wind.disabled = !fitHasWind;
-      calcEls.wind.title = fitHasWind ? "" : "No wind term in this model yet. Re-add weather data so trips pick up archive wind (needs about 90 usable rides), or use a Wheel DNA file that has one.";
+      calcEls.wind.title = fitHasWind ? "" : i18n("No wind term in this model yet. Re-add weather data so trips pick up archive wind (needs about 90 usable rides), or use a Wheel DNA file that has one.");
     }
     // Dynamic distance-slider ceiling: a bit beyond the optimistic max range
     // for the *current* battery + speed + temp + climb. We don't know the
@@ -4261,12 +4289,12 @@
     if (rtInfo) {
       const locked = weatherLocked && weatherLocked.cells && weatherLocked.cells.length;
       const legMin = Math.round(timeH * 60);
-      rtInfo.title = "Same distance, climb and wind reversed.\n" + (locked
-        ? `Conditions come from the forecast hours after you arrive (${legMin} min out, ${legMin} min back) on the reversed bearing.`
-        : "Wind only flips sign and the temperature is reused, so a ride past an hour drifts. Lock a forecast with a picked route for per-leg conditions.");
+      rtInfo.title = i18n("Same distance, climb and wind reversed.") + "\n" + (locked
+        ? i18n("Conditions come from the forecast hours after you arrive ({min} min out, {min} min back) on the reversed bearing.", { min: legMin })
+        : i18n("Wind only flips sign and the temperature is reused, so a ride past an hour drifts. Lock a forecast with a picked route for per-leg conditions."));
     }
     const legA = calcLegBatt(distKm, sKmh, legCond.tA, climbMperKm, sigma, legCond.wA);
-    if (!legA) { calcEls.verdict.textContent = "Model not ready."; return; }
+    if (!legA) { calcEls.verdict.textContent = i18n("Model not ready."); return; }
     const fmtDur = (h) => {
       if (!isFinite(h) || h <= 0) return "—";
       const totalMin = Math.round(h * 60);
@@ -4302,17 +4330,16 @@
     const arrTotalPess = B - totalPess;
     let cls = "", msg = "";
     if (arrTotalPess >= 25) {
-      msg = `You'll make it with margin to spare: <b>${arrTotalPess.toFixed(0)}%</b> left in the pessimistic case.`;
+      msg = i18n("You'll make it with margin to spare: <b>{pct}%</b> left in the pessimistic case.", { pct: arrTotalPess.toFixed(0) });
     } else if (arrTotalPess >= 10) {
       cls = "warn";
-      msg = `Tight: pessimistic arrival is only <b>${arrTotalPess.toFixed(0)}%</b>. Slower speed or a flatter route helps.`;
+      msg = i18n("Tight: pessimistic arrival is only <b>{pct}%</b>. Slower speed or a flatter route helps.", { pct: arrTotalPess.toFixed(0) });
     } else if (arrTotalPess >= 0) {
       cls = "warn";
-      msg = `Very thin margin: pessimistic arrival is <b>${arrTotalPess.toFixed(0)}%</b>.`;
+      msg = i18n("Very thin margin: pessimistic arrival is <b>{pct}%</b>.", { pct: arrTotalPess.toFixed(0) });
     } else {
       cls = "bad";
-      msg = `Won't make it in the pessimistic case: short by <b>${Math.abs(arrTotalPess).toFixed(0)}%</b>. ` +
-            `Neutral needs <b>${totalNeut.toFixed(0)}%</b> vs your <b>${B}%</b> on hand.`;
+      msg = i18n("Won't make it in the pessimistic case: short by <b>{short}%</b>. Neutral needs <b>{need}%</b> vs your <b>{have}%</b> on hand.", { short: Math.abs(arrTotalPess).toFixed(0), need: totalNeut.toFixed(0), have: B });
     }
     calcEls.verdict.className = "calc-verdict" + (cls ? " " + cls : "");
     calcEls.verdict.innerHTML = msg;
@@ -4325,7 +4352,7 @@
         const fitN = activeFit();
         const loD = Math.round(UNITS.speed(fitN.sLoKmh));
         const hiD = Math.round(UNITS.speed(fitN.sHiKmh));
-        noteEl.innerHTML = `Your trips average ${loD}&ndash;${hiD} ${UNITS.speedUnit}. Beyond that the estimate follows your in-ride cost-of-speed curve, thinner data.`;
+        noteEl.innerHTML = i18n("Your trips average {lo}&ndash;{hi} {unit}. Beyond that the estimate follows your in-ride cost-of-speed curve, thinner data.", { lo: loD, hi: hiD, unit: UNITS.speedUnit });
         noteEl.classList.remove("hidden");
       } else {
         noteEl.classList.add("hidden");
@@ -4414,7 +4441,7 @@
       ctx.beginPath(); ctx.moveTo(px, padT); ctx.lineTo(px, padT + H); ctx.stroke();
       ctx.setLineDash([]);
       ctx.fillStyle = "#ddd"; ctx.textAlign = "center"; ctx.textBaseline = "bottom";
-      ctx.fillText(isRound ? "round-trip end" : "destination", px, padT + 12);
+      ctx.fillText(isRound ? i18n("round-trip end") : i18n("destination"), px, padT + 12);
     }
     // Turnaround marker (vertical at plannedDist for round trip).
     if (isRound) {
@@ -4424,7 +4451,7 @@
       ctx.beginPath(); ctx.moveTo(px, padT); ctx.lineTo(px, padT + H); ctx.stroke();
       ctx.setLineDash([]);
       ctx.fillStyle = "#7cc7ff"; ctx.textAlign = "center"; ctx.textBaseline = "bottom";
-      ctx.fillText("turn around", px, padT + 12);
+      ctx.fillText(i18n("turn around"), px, padT + 12);
     }
     // Zero-battery axis line.
     ctx.strokeStyle = "rgba(255,82,82,0.4)";
@@ -4510,9 +4537,9 @@
 
     // Mini legend top-left.
     const legend = [
-      { lbl: "optimistic", color: "#69f0ae" },
-      { lbl: "neutral",    color: "#ffffff" },
-      { lbl: "pessimistic",color: "#ffa000" },
+      { lbl: i18n("optimistic"), color: "#69f0ae" },
+      { lbl: i18n("neutral"),    color: "#ffffff" },
+      { lbl: i18n("pessimistic"),color: "#ffa000" },
     ];
     ctx.font = "10px ui-monospace, SFMono-Regular, Consolas, monospace";
     ctx.textAlign = "left"; ctx.textBaseline = "middle";
@@ -4580,10 +4607,10 @@
     const remOpt  = yToKm(opt,  state.legA.opt,  slopeOpt2);
     const timeH = state.sKmh > 0 ? xVal / state.sKmh : 0;
     const tipHtml = `
-      <div class="ctt-head">at ${UNITS.dist(xVal).toFixed(1)} ${UNITS.distUnit} (${formatRideTime(timeH)})</div>
-      <div class="ctt-row"><span class="ctt-key">battery</span>
+      <div class="ctt-head">${i18n("at {d} {unit} ({time})", { d: UNITS.dist(xVal).toFixed(1), unit: UNITS.distUnit, time: formatRideTime(timeH) })}</div>
+      <div class="ctt-row"><span class="ctt-key">${i18n("battery")}</span>
         <span><span class="ctt-pess">${pess.toFixed(0)}%</span> <span class="ctt-neut">${neut.toFixed(0)}%</span> <span class="ctt-opt">${opt.toFixed(0)}%</span></span></div>
-      <div class="ctt-row"><span class="ctt-key">range left</span>
+      <div class="ctt-row"><span class="ctt-key">${i18n("range left")}</span>
         <span><span class="ctt-pess">${UNITS.dist(remPess).toFixed(1)}</span> <span class="ctt-neut">${UNITS.dist(remNeut).toFixed(1)}</span> <span class="ctt-opt">${UNITS.dist(remOpt).toFixed(1)} ${UNITS.distUnit}</span></span></div>
     `;
     tip.innerHTML = tipHtml;
@@ -4880,7 +4907,7 @@
     if (leafletRouteLine)   { leafletMap.removeLayer(leafletRouteLine);   leafletRouteLine   = null; }
     pendingRoute = null;
     document.getElementById("calc-map-apply").disabled = true;
-    document.getElementById("calc-map-status").textContent = "Click the start point on the map.";
+    document.getElementById("calc-map-status").textContent = i18n("Click the start point on the map.");
     ["cms-distance", "cms-ascent", "cms-descent", "cms-net"].forEach((id) => { document.getElementById(id).textContent = "—"; });
     const c = document.getElementById("cms-profile").getContext("2d");
     c.clearRect(0, 0, 300, 200);
@@ -4893,14 +4920,14 @@
         L.circleMarker(e.latlng, { radius: 10, color: "#ffffff", weight: 3, opacity: 0.95, fillColor: "#1b8a5a", fillOpacity: 1 }),
         L.circleMarker(e.latlng, { radius: 3.5, color: "#ffffff", weight: 0, fillColor: "#ffffff", fillOpacity: 1 }),
       ]).addTo(leafletMap);
-      document.getElementById("calc-map-status").textContent = "Click the destination point.";
+      document.getElementById("calc-map-status").textContent = i18n("Click the destination point.");
     } else if (!leafletEnd) {
       leafletEnd = e.latlng;
       leafletEndMarker = L.layerGroup([
         L.circleMarker(e.latlng, { radius: 10, color: "#ffffff", weight: 3, opacity: 0.95, fillColor: "#c14b00", fillOpacity: 1 }),
         L.circleMarker(e.latlng, { radius: 3.5, color: "#ffffff", weight: 0, fillColor: "#ffffff", fillOpacity: 1 }),
       ]).addTo(leafletMap);
-      document.getElementById("calc-map-status").textContent = "Fetching route…";
+      document.getElementById("calc-map-status").textContent = i18n("Fetching route…");
       fetchRoute(leafletStart, leafletEnd);
     } else {
       // Third click resets and starts over.
@@ -4928,7 +4955,7 @@
         inner,
       ]).addTo(leafletMap);
       leafletMap.fitBounds(inner.getBounds(), { padding: [20, 20] });
-      document.getElementById("calc-map-status").textContent = "Sampling elevation…";
+      document.getElementById("calc-map-status").textContent = i18n("Sampling elevation…");
       // Downsample to ≤ 80 points for elevation lookup (open-meteo elevation
       // accepts a batch via repeated lat/lon params).
       const N = Math.min(80, coords.length);
@@ -4977,11 +5004,11 @@
       document.getElementById("cms-descent").textContent = `${UNITS.alt(des).toFixed(0)} ${UNITS.altUnit}`;
       document.getElementById("cms-net").textContent = `${netClimb >= 0 ? "+" : ""}${UNITS.alt(netClimb).toFixed(0)} ${UNITS.altUnit}`;
       drawElevationProfile(profile);
-      document.getElementById("calc-map-status").textContent = "Press Apply to lock these values into the calculator.";
+      document.getElementById("calc-map-status").textContent = i18n("Press Apply to lock these values into the calculator.");
       document.getElementById("calc-map-apply").disabled = false;
     } catch (err) {
       console.warn("Route fetch failed:", err);
-      document.getElementById("calc-map-status").textContent = "Couldn't fetch the route. Try two nearby points or check your connection.";
+      document.getElementById("calc-map-status").textContent = i18n("Couldn't fetch the route. Try two nearby points or check your connection.");
     }
   }
   function haversineKm(lat1, lon1, lat2, lon2) {
@@ -5008,7 +5035,7 @@
       ctx.fillStyle = "#888";
       ctx.font = "10px ui-monospace, SFMono-Regular, Consolas, monospace";
       ctx.textAlign = "center"; ctx.textBaseline = "middle";
-      ctx.fillText("Elevation data unavailable for this route", cssW / 2, cssH / 2);
+      ctx.fillText(i18n("Elevation data unavailable for this route"), cssW / 2, cssH / 2);
       return;
     }
     const xMin = profile[0].km, xMax = profile[profile.length - 1].km;
@@ -5207,14 +5234,14 @@
       lon = mid[0]; lat = mid[1]; locLabel = "route midpoint";
     } else if (locSel.value === "custom") {
       const v = document.getElementById("calc-weather-latlon").value.split(/[\s,]+/).map(Number);
-      if (v.length < 2 || !isFinite(v[0]) || !isFinite(v[1])) { status.textContent = "Enter a valid lat, lon."; if (refreshBtn) refreshBtn.classList.remove("is-loading"); return; }
+      if (v.length < 2 || !isFinite(v[0]) || !isFinite(v[1])) { status.textContent = i18n("Enter a valid lat, lon."); if (refreshBtn) refreshBtn.classList.remove("is-loading"); return; }
       lat = v[0]; lon = v[1]; locLabel = `${lat.toFixed(2)}, ${lon.toFixed(2)}`;
     } else {
       const c = pickRecentCenter();
-      if (!c) { status.textContent = "No trip location found, pick custom lat/lon."; if (refreshBtn) refreshBtn.classList.remove("is-loading"); return; }
+      if (!c) { status.textContent = i18n("No trip location found, pick custom lat/lon."); if (refreshBtn) refreshBtn.classList.remove("is-loading"); return; }
       lat = c[0]; lon = c[1]; locLabel = "where you usually ride";
     }
-    status.textContent = "Fetching forecast…";
+    status.textContent = i18n("Fetching forecast…");
     try {
       const date = dateEl.value;
       // Forecast source: Open-Meteo's best_match (default) or a forced model
@@ -5240,7 +5267,7 @@
           wSpds.push(det.wind_speed != null ? det.wind_speed : null); // already m/s
           wDirs.push(det.wind_from_direction != null ? det.wind_from_direction : null);
         }
-        if (!temps.length) throw new Error("MET Norway has no hourly data for that date (hourly ~3 days out, ~10 days total).");
+        if (!temps.length) throw new Error(i18n("MET Norway has no hourly data for that date (hourly ~3 days out, ~10 days total)."));
       } else {
         const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}&hourly=temperature_2m,wind_speed_10m,wind_direction_10m&start_date=${date}&end_date=${date}&timezone=auto` +
           (src !== "best_match" ? `&models=${src}` : "");
@@ -5257,7 +5284,7 @@
           wSpds.push(rawW[i] != null ? rawW[i] / 3.6 : null); // km/h to m/s
           wDirs.push(rawD[i] != null ? rawD[i] : null);
         }
-        if (!temps.length) throw new Error("No hourly forecast for that date from this source (max +14 days).");
+        if (!temps.length) throw new Error(i18n("No hourly forecast for that date from this source (max +14 days)."));
       }
       const [sh, sm] = startEl.value.split(":").map(Number);
       const [eh, em] = endEl.value.split(":").map(Number);
@@ -5286,7 +5313,7 @@
         }
         cells.push({ h, t: temps[i], w: wSpds[i], wd: wDirs[i], inRide: inside });
       }
-      if (!n) { status.textContent = "Ride window outside forecast hours."; return; }
+      if (!n) { status.textContent = i18n("Ride window outside forecast hours."); return; }
       const avg = sum / n;
       // Headwind needs a travel direction, which only a picked route gives.
       const bearingDeg = routeBearingDeg();
@@ -5303,11 +5330,11 @@
       // Stash the cells so we can re-render highlighting without re-fetching.
       lastForecastCells = cells;
       renderForecastCells();
-      status.textContent = "Click an hour to set the start time.";
+      status.textContent = i18n("Click an hour to set the start time.");
       document.getElementById("calc-weather-apply").disabled = false;
     } catch (err) {
       console.warn("Forecast fetch failed:", err);
-      status.textContent = "Couldn't fetch the forecast: " + (err.message || err);
+      status.textContent = i18n("Couldn't fetch the forecast: {error}", { error: err.message || err });
     } finally {
       if (refreshBtn) refreshBtn.classList.remove("is-loading");
     }
@@ -5374,7 +5401,7 @@
       const windLine = (c.w != null && c.wd != null)
         ? `<div class="wh-wind"><span class="wh-wind-arrow" style="transform:rotate(${Math.round((c.wd + 180) % 360)}deg)">&uarr;</span>${c.w.toFixed(0)}</div>`
         : "";
-      const tip = c.h < cutH ? "Already past" : `Set start time to ${String(c.h).padStart(2, "0")}:00`;
+      const tip = c.h < cutH ? i18n("Already past") : i18n("Set start time to {time}", { time: `${String(c.h).padStart(2, "0")}:00` });
       return `<div class="${cls.join(" ")}" data-hour="${c.h}" title="${tip}"><div>${String(c.h).padStart(2, "0")}h</div><div>${UNITS.temp(c.t).toFixed(0)}${UNITS.tempUnit}</div>${windLine}</div>`;
     }).join("");
     // Wind summary: magnitude of the vector average; when a route gives us a
@@ -5388,17 +5415,17 @@
       if (bearingDeg2 != null) {
         const bR2 = bearingDeg2 * Math.PI / 180;
         const hw = (wU / wN) * Math.sin(bR2) + (wV / wN) * Math.cos(bR2);
-        windSummary = `<div class="cw-stat"><span>Wind</span><b>${mag.toFixed(1)} m/s</b>` +
-          `<i>${hw >= 0 ? "head" : "tail"} ${Math.abs(hw).toFixed(1)}</i></div>`;
+        windSummary = `<div class="cw-stat"><span>${i18n("Wind")}</span><b>${mag.toFixed(1)} m/s</b>` +
+          `<i>${hw >= 0 ? i18n("head {v}", { v: Math.abs(hw).toFixed(1) }) : i18n("tail {v}", { v: Math.abs(hw).toFixed(1) })}</i></div>`;
       } else {
-        windSummary = `<div class="cw-stat"><span>Wind</span><b>${mag.toFixed(1)} m/s</b>` +
-          `<i>pick a route to aim it</i></div>`;
+        windSummary = `<div class="cw-stat"><span>${i18n("Wind")}</span><b>${mag.toFixed(1)} m/s</b>` +
+          `<i>${i18n("pick a route to aim it")}</i></div>`;
       }
     }
     resultBox.innerHTML =
       `<div class="cw-stats">` +
-        `<div class="cw-stat"><span>Ride window</span><b>${UNITS.temp(avg).toFixed(1)} ${UNITS.tempUnit}</b>` +
-        `<i>avg over ${n} ${n === 1 ? "hour" : "hours"}</i></div>` +
+        `<div class="cw-stat"><span>${i18n("Ride window")}</span><b>${UNITS.temp(avg).toFixed(1)} ${UNITS.tempUnit}</b>` +
+        `<i>${n === 1 ? i18n("avg over {n} hour", { n }) : i18n("avg over {n} hours", { n })}</i></div>` +
         windSummary +
       `</div><div class="calc-weather-hours">${cellsHtml}</div>`;
     resultBox.querySelectorAll(".wh-cell").forEach((el) => {
@@ -5444,7 +5471,7 @@
     weatherLocked = null;
     pendingWeather = null;
     document.getElementById("calc-weather-apply").disabled = true;
-    document.getElementById("calc-weather-result").innerHTML = '<div class="calc-weather-empty">Forecast preview will appear here.</div>';
+    document.getElementById("calc-weather-result").innerHTML = '<div class="calc-weather-empty">' + i18n("Forecast preview will appear here.") + '</div>';
     refreshLockUI();
     updateCalculator();
   }
@@ -5457,8 +5484,8 @@
       calcEls.btn.classList.remove("hidden");
       calcEls.btn.removeAttribute("disabled");
       calcEls.btn.title = (dnaActive && importedDna)
-        ? `Plan a ride using the Wheel DNA file "${importedDna.wheel || "?"}".`
-        : `Plan a ride with the range model fitted from ${fit.n} of your rides.`;
+        ? i18n("Plan a ride using the Wheel DNA file \"{wheel}\".", { wheel: importedDna.wheel || "?" })
+        : i18n("Plan a ride with the range model fitted from {n} of your rides.", { n: fit.n });
       wireCalculator();
     } else {
       // No trips-based model, but the calculator still opens: the Model row
@@ -5475,9 +5502,9 @@
       const have = dated.filter((m) => hasRangeClimb(m) && m.ambientC != null).length;
       const anyAmbient = dated.some((m) => m.ambientC != null);
       if (!anyAmbient) {
-        calcEls.btn.title = `No trips model yet: click "Add weather data" so rides get an ambient temperature, it unlocks at ${needed} rides with range + speed + climb + ambient (this scope has ${withoutAmbient} with range + speed + climb). You can also use a saved Wheel DNA file inside.`;
+        calcEls.btn.title = i18n("No trips model yet: click \"Add weather data\" so rides get an ambient temperature, it unlocks at {needed} rides with range + speed + climb + ambient (this scope has {have} with range + speed + climb). You can also use a saved Wheel DNA file inside.", { needed, have: withoutAmbient });
       } else {
-        calcEls.btn.title = `No trips model yet: ${have} of the ${needed} rides it needs have range + speed + ambient + climb in this scope. You can also use a saved Wheel DNA file inside.`;
+        calcEls.btn.title = i18n("No trips model yet: {have} of the {needed} rides it needs have range + speed + ambient + climb in this scope. You can also use a saved Wheel DNA file inside.", { have, needed });
       }
     }
   }
@@ -5519,7 +5546,7 @@
     if (chip) {
       const showChip = dnaActive && importedDna;
       chip.classList.toggle("hidden", !showChip);
-      if (showChip) chip.textContent = "\u{1F9EC} " + (importedDna.wheel || "Imported");
+      if (showChip) chip.textContent = "\u{1F9EC} " + (importedDna.wheel || i18n("Imported"));
     }
     const tripsBtn = document.getElementById("cmd-trips");
     if (!tripsBtn) return;
@@ -5530,20 +5557,21 @@
     tripsBtn.disabled = !multiFit;
     tripsBtn.classList.toggle("on", !!multiFit && !dnaActive);
     tripsSub.textContent = multiFit
-      ? `Model from trips telemetry (n=${multiFit.n})`
-      : "No model from trips telemetry in this scope";
+      ? i18n("Model from trips telemetry (n={n})", { n: multiFit.n })
+      : i18n("No model from trips telemetry in this scope");
     tripsBtn.title = multiFit
-      ? `R² ${multiFit.r2 != null ? multiFit.r2.toFixed(2) : "?"}, ${multiFit.tier || "basic"} tier`
-      : "Not enough usable rides to fit a model here";
+      ? i18n("R² {r2}, {tier} tier", { r2: multiFit.r2 != null ? multiFit.r2.toFixed(2) : "?", tier: multiFit.tier || "basic" })
+      : i18n("Not enough usable rides to fit a model here");
     // The loaded profile is its own row; the import action below always stays,
     // and a new file silently replaces whatever sits here.
     dnaBtn.classList.toggle("hidden", !importedDna);
     dnaBtn.classList.toggle("on", !!importedDna && dnaActive);
     if (importedDna) {
-      dnaSub.textContent = `${importedDna.wheel || "Wheel DNA"}` +
+      dnaSub.textContent = `${importedDna.wheel || i18n("Wheel DNA")}` +
         (importedDna.totalKm != null ? ` · ${importedDna.totalKm} km` : "");
-      dnaMeta.textContent = `Wheel DNA v${importedDna.version || 1}` +
-        (importedDna.generated ? `, exported ${importedDna.generated}` : "");
+      dnaMeta.textContent = importedDna.generated
+        ? i18n("Wheel DNA v{v}, exported {date}", { v: importedDna.version || 1, date: importedDna.generated })
+        : i18n("Wheel DNA v{v}", { v: importedDna.version || 1 });
     }
   }
   function persistDna() {
@@ -5619,7 +5647,7 @@
             calcSetSliderRanges();
             updateCalculator();
             closeDlg();
-          } catch (_) { alert("That doesn't look like a Wheel DNA file."); }
+          } catch (_) { alert(i18n("That doesn't look like a Wheel DNA file.")); }
         };
         rd.readAsText(f);
       });
@@ -5678,7 +5706,7 @@
     {
       const totalKm = bins.reduce((s, b) => s + b.trips.reduce((ss, m) => ss + m.distKm, 0), 0);
       document.getElementById("activity-meta").textContent =
-        `${bins.length} groups · ${UNITS.dist(totalKm).toFixed(0)} ${UNITS.distUnit} total`;
+        i18n("{n} groups · {d} {unit} total", { n: bins.length, d: UNITS.dist(totalKm).toFixed(0), unit: UNITS.distUnit });
       drawActivityChart(document.getElementById("chart-activity"), bins);
       // Headline numbers under the chart: biggest group + average pace.
       let peak = null;
@@ -5690,8 +5718,8 @@
       const parts = [];
       // No link on this one: 241 km in a month is a SUM across many trips,
       // pointing at a single ride misrepresents what's being said.
-      if (peak) parts.push(`Biggest group: <b>${peak.label}</b> with <b>${UNITS.dist(peak.km).toFixed(0)}</b> ${UNITS.distUnit}`);
-      if (nonEmpty) parts.push(`Active in <b>${nonEmpty}</b> of ${bins.length} groups (avg <b>${UNITS.dist(totalKm / nonEmpty).toFixed(0)}</b> ${UNITS.distUnit} per active group)`);
+      if (peak) parts.push(i18n("Biggest group: <b>{label}</b> with <b>{d}</b> {unit}", { label: peak.label, d: UNITS.dist(peak.km).toFixed(0), unit: UNITS.distUnit }));
+      if (nonEmpty) parts.push(i18n("Active in <b>{n}</b> of {total} groups (avg <b>{d}</b> {unit} per active group)", { n: nonEmpty, total: bins.length, d: UNITS.dist(totalKm / nonEmpty).toFixed(0), unit: UNITS.distUnit }));
       setTakeaway("activity-takeaway", parts);
     }
 
@@ -5700,7 +5728,7 @@
       const usable = dated.filter((m) => m.estRangeKm != null).length;
       const meta = document.getElementById("range-meta");
       if (!usable) {
-        setSectionEmpty("range", "No trips used at least " + minBattUse + "% battery. Lower the threshold, or these exports may carry no battery level.");
+        setSectionEmpty("range", i18n("No trips used at least {pct}% battery. Lower the threshold, or these exports may carry no battery level.", { pct: minBattUse }));
         meta.textContent = "";
         rangeTempHost.classList.add("hidden");
         setTakeaway("range-takeaway", []);
@@ -5711,23 +5739,23 @@
         const series = [{
           stats: rangeStats,
           color: normalizeCheck.checked ? COLORS.rangeNorm : COLORS.range,
-          label: normalizeCheck.checked ? "Est. range (20 °C norm.)" : "Est. full range",
+          label: normalizeCheck.checked ? i18n("Est. range (20 °C norm.)") : i18n("Est. full range"),
           unit: UNITS.distUnit, band: true, dp: 1,
         }];
         drawTrendChart(document.getElementById("chart-range"), bins, series, { rolling, zeroBase: false, weatherGradient: weatherLoaded });
-        let metaTxt = usable + " of " + dated.length + " trips usable";
+        let metaTxt = i18n("{n} of {total} trips usable", { n: usable, total: dated.length });
         if (tempFit) {
           const slopeDisp = UNITS.dist(tempFit.slope) / UNITS.tempDelta(1);
-          metaTxt += ` · temp sensitivity ${fmtVal(slopeDisp, 2)} ${UNITS.distUnit}/${UNITS.tempUnit}`;
+          metaTxt = i18n("{n} of {total} trips usable · temp sensitivity {slope} {unit}/{tempUnit}", { n: usable, total: dated.length, slope: fmtVal(slopeDisp, 2), unit: UNITS.distUnit, tempUnit: UNITS.tempUnit });
         }
         meta.textContent = metaTxt;
         // Takeaway: peak / trough range by group.
         const rangeMetric = (m) => m.estRangeKm == null ? null : UNITS.dist(normalizedRange(m));
         const { peak, trough } = statsPeakTrough(rangeStats, bins, null, rangeMetric);
         const trendParts = [];
-        if (peak) trendParts.push(`Best range: <b>${peak.v.toFixed(0)} ${UNITS.distUnit}</b> in <b>${tripLink(peak.label, peak.tripIdx)}</b>`);
-        if (trough && peak && trough.label !== peak.label) trendParts.push(`Lowest: <b>${trough.v.toFixed(0)} ${UNITS.distUnit}</b> in <b>${tripLink(trough.label, trough.tripIdx)}</b>`);
-        if (!normalizeCheck.checked && !tempFit) trendParts.push('Enrich with weather to control for temperature');
+        if (peak) trendParts.push(i18n("Best range: <b>{v} {unit}</b> in <b>{when}</b>", { v: peak.v.toFixed(0), unit: UNITS.distUnit, when: tripLink(peak.label, peak.tripIdx) }));
+        if (trough && peak && trough.label !== peak.label) trendParts.push(i18n("Lowest: <b>{v} {unit}</b> in <b>{when}</b>", { v: trough.v.toFixed(0), unit: UNITS.distUnit, when: tripLink(trough.label, trough.tripIdx) }));
+        if (!normalizeCheck.checked && !tempFit) trendParts.push(i18n("Enrich with weather to control for temperature"));
         setTakeaway("range-takeaway", trendParts);
         if (weatherLoaded) {
           drawRangeTempScatter(document.getElementById("chart-range-temp"));
@@ -5739,13 +5767,14 @@
             // Show the per-degree cost and the 10-degree headline so readers
             // who think in big swings get the practical number too.
             const perStep = Math.abs(slopeDisp);
-            const tag = multiFit ? " (after factoring out speed + climb)" : "";
             setTakeaway("range-temp-takeaway", [
-              `Each <b>1 ${UNITS.tempUnit}</b> colder costs about <b>${perStep.toFixed(2)} ${UNITS.distUnit}</b> of range${tag}`,
-              `A <b>10 ${UNITS.tempUnit}</b> swing is worth <b>${(perStep * 10).toFixed(1)} ${UNITS.distUnit}</b>`,
+              multiFit
+                ? i18n("Each <b>1 {tempUnit}</b> colder costs about <b>{v} {unit}</b> of range (after factoring out speed + climb)", { tempUnit: UNITS.tempUnit, v: perStep.toFixed(2), unit: UNITS.distUnit })
+                : i18n("Each <b>1 {tempUnit}</b> colder costs about <b>{v} {unit}</b> of range", { tempUnit: UNITS.tempUnit, v: perStep.toFixed(2), unit: UNITS.distUnit }),
+              i18n("A <b>10 {tempUnit}</b> swing is worth <b>{v} {unit}</b>", { tempUnit: UNITS.tempUnit, v: (perStep * 10).toFixed(1), unit: UNITS.distUnit }),
             ]);
           } else {
-            setTakeaway("range-temp-takeaway", ["Not enough trips with both battery use and ambient temp to fit a slope yet"]);
+            setTakeaway("range-temp-takeaway", [i18n("Not enough trips with both battery use and ambient temp to fit a slope yet")]);
           }
         } else {
           rangeTempHost.classList.add("hidden");
@@ -5760,18 +5789,23 @@
         const speedSlopeKm = multiFit ? multiFit.speedSlope : (speedFit ? speedFit.slope : null);
         if (speedSlopeKm != null) {
           const slopeDisp = UNITS.dist(speedSlopeKm) / UNITS.speed(1);
-          const sign = slopeDisp < 0 ? "loses" : "gains";
           const perStep = Math.abs(slopeDisp);
-          const tag = multiFit ? " (after factoring out temperature + climb)" : "";
+          const costVars = { speedUnit: UNITS.speedUnit, v: perStep.toFixed(2), unit: UNITS.distUnit };
           const parts = [
-            `Across whole trips, each <b>1 ${UNITS.speedUnit}</b> faster average ${sign} about <b>${perStep.toFixed(2)} ${UNITS.distUnit}</b> of range${tag}`,
+            slopeDisp < 0
+              ? (multiFit
+                ? i18n("Across whole trips, each <b>1 {speedUnit}</b> faster average loses about <b>{v} {unit}</b> of range (after factoring out temperature + climb)", costVars)
+                : i18n("Across whole trips, each <b>1 {speedUnit}</b> faster average loses about <b>{v} {unit}</b> of range", costVars))
+              : (multiFit
+                ? i18n("Across whole trips, each <b>1 {speedUnit}</b> faster average gains about <b>{v} {unit}</b> of range (after factoring out temperature + climb)", costVars)
+                : i18n("Across whole trips, each <b>1 {speedUnit}</b> faster average gains about <b>{v} {unit}</b> of range", costVars)),
           ];
           if (slopeDisp > 0) {
             parts.push(speedCostRows.length >= 3
-              ? `That is trip mix, not free speed: a faster average means less time crawling. The in-ride chart below shows the real cost per band`
-              : `That is trip mix, not free speed: a faster average usually means less time in the expensive stop-and-go zone`);
+              ? i18n("That is trip mix, not free speed: a faster average means less time crawling. The in-ride chart below shows the real cost per band")
+              : i18n("That is trip mix, not free speed: a faster average usually means less time in the expensive stop-and-go zone"));
           } else {
-            parts.push(`Going <b>5 ${UNITS.speedUnit}</b> harder is worth −<b>${(perStep * 5).toFixed(1)} ${UNITS.distUnit}</b>`);
+            parts.push(i18n("Going <b>5 {speedUnit}</b> harder is worth −<b>{v} {unit}</b>", { speedUnit: UNITS.speedUnit, v: (perStep * 5).toFixed(1), unit: UNITS.distUnit }));
           }
           setTakeaway("range-speed-takeaway", parts, slopeDisp < 0 ? "warn" : null);
         } else {
@@ -5788,15 +5822,15 @@
           while (lo > 0 && speedCostRows[lo - 1].pctPerKm <= bestPct * 1.03) lo--;
           while (hi < speedCostRows.length - 1 && speedCostRows[hi + 1].pctPerKm <= bestPct * 1.03) hi++;
           const parts = [
-            `Sweet spot: <b>${Math.round(UNITS.speed(speedCostRows[lo].from))}–${Math.round(UNITS.speed(speedCostRows[hi].to))} ${UNITS.speedUnit}</b>, a full charge is good for about <b>${Math.round(UNITS.dist(speedCostRows[bestIdx].rangeKm))} ${UNITS.distUnit}</b>`,
+            i18n("Sweet spot: <b>{from}–{to} {speedUnit}</b>, a full charge is good for about <b>{d} {unit}</b>", { from: Math.round(UNITS.speed(speedCostRows[lo].from)), to: Math.round(UNITS.speed(speedCostRows[hi].to)), speedUnit: UNITS.speedUnit, d: Math.round(UNITS.dist(speedCostRows[bestIdx].rangeKm)), unit: UNITS.distUnit }),
           ];
           if (lo > 0) {
             const slow = speedCostRows[0];
-            parts.push(`Below <b>${Math.round(UNITS.speed(slow.to))} ${UNITS.speedUnit}</b> each ${UNITS.distUnit} costs <b>${Math.round((slow.pctPerKm / bestPct - 1) * 100)}%</b> more battery`);
+            parts.push(i18n("Below <b>{v} {speedUnit}</b> each {unit} costs <b>{pct}%</b> more battery", { v: Math.round(UNITS.speed(slow.to)), speedUnit: UNITS.speedUnit, unit: UNITS.distUnit, pct: Math.round((slow.pctPerKm / bestPct - 1) * 100) }));
           }
           if (hi < speedCostRows.length - 1) {
             const fast = speedCostRows[speedCostRows.length - 1];
-            parts.push(`Above <b>${Math.round(UNITS.speed(fast.from))} ${UNITS.speedUnit}</b> drag adds <b>${Math.round((fast.pctPerKm / bestPct - 1) * 100)}%</b>`);
+            parts.push(i18n("Above <b>{v} {speedUnit}</b> drag adds <b>{pct}%</b>", { v: Math.round(UNITS.speed(fast.from)), speedUnit: UNITS.speedUnit, pct: Math.round((fast.pctPerKm / bestPct - 1) * 100) }));
           }
           setTakeaway("speed-cost-takeaway", parts);
         } else {
@@ -5811,10 +5845,11 @@
           const slope = UNITS.dist(climbSlopeKmPerMperKm) / UNITS.climb(1);
           const perStep = Math.abs(slope);
           const unit = UNITS.climbUnit;
-          const tag = multiFit ? " (after factoring out temperature + speed)" : "";
           setTakeaway("range-climb-takeaway", [
-            `Each <b>1 ${unit}</b> of climbing costs about <b>${perStep.toFixed(3)} ${UNITS.distUnit}</b> of range${tag}`,
-            `A <b>100 ${unit}</b> climb rate costs <b>${(perStep * 100).toFixed(1)} ${UNITS.distUnit}</b> of range`,
+            multiFit
+              ? i18n("Each <b>1 {climbUnit}</b> of climbing costs about <b>{v} {unit}</b> of range (after factoring out temperature + speed)", { climbUnit: unit, v: perStep.toFixed(3), unit: UNITS.distUnit })
+              : i18n("Each <b>1 {climbUnit}</b> of climbing costs about <b>{v} {unit}</b> of range", { climbUnit: unit, v: perStep.toFixed(3), unit: UNITS.distUnit }),
+            i18n("A <b>100 {climbUnit}</b> climb rate costs <b>{v} {unit}</b> of range", { climbUnit: unit, v: (perStep * 100).toFixed(1), unit: UNITS.distUnit }),
           ], slope < 0 ? "warn" : null);
         } else {
           setTakeaway("range-climb-takeaway", []);
@@ -5828,7 +5863,7 @@
       if (dists.length >= 5) {
         drawHistogram(document.getElementById("chart-dist-hist"), dists, {
           xLabel: UNITS.distUnit,
-          yLabel: "trips",
+          yLabel: i18n("trips"),
           nBins: 18,
           colorTop: "rgba(179,136,255,0.9)",
           colorBot: "rgba(179,136,255,0.18)",
@@ -5848,13 +5883,16 @@
         const longestTrip = dated.filter((m) => m.distKm > 0).reduce((best, m) => (!best || m.distKm > best.distKm) ? m : best, null);
         const medTrip = closestTo(med)?.m;
         const longestLabel = longestTrip && longestTrip.date ? dateFmt2.format(longestTrip.date) : `${max.toFixed(1)} ${UNITS.distUnit}`;
-        const medSuffix = medTrip && medTrip.date ? ` (e.g. ${tripLink(dateFmt2.format(medTrip.date), medTrip.tripIdx)})` : "";
         setTakeaway("dist-hist-takeaway", [
-          `Median ride: <b>${med.toFixed(1)} ${UNITS.distUnit}</b>${medSuffix}`,
-          `Top 10% beyond: <b>${p90.toFixed(1)} ${UNITS.distUnit}</b>`,
-          `Longest: <b>${max.toFixed(1)} ${UNITS.distUnit}</b>` + (longestTrip ? ` on <b>${tripLink(longestLabel, longestTrip.tripIdx)}</b>` : ""),
+          medTrip && medTrip.date
+            ? i18n("Median ride: <b>{v} {unit}</b> (e.g. {when})", { v: med.toFixed(1), unit: UNITS.distUnit, when: tripLink(dateFmt2.format(medTrip.date), medTrip.tripIdx) })
+            : i18n("Median ride: <b>{v} {unit}</b>", { v: med.toFixed(1), unit: UNITS.distUnit }),
+          i18n("Top 10% beyond: <b>{v} {unit}</b>", { v: p90.toFixed(1), unit: UNITS.distUnit }),
+          longestTrip
+            ? i18n("Longest: <b>{v} {unit}</b> on <b>{when}</b>", { v: max.toFixed(1), unit: UNITS.distUnit, when: tripLink(longestLabel, longestTrip.tripIdx) })
+            : i18n("Longest: <b>{v} {unit}</b>", { v: max.toFixed(1), unit: UNITS.distUnit }),
         ]);
-        document.getElementById("dist-hist-meta").textContent = dists.length + " trips";
+        document.getElementById("dist-hist-meta").textContent = i18n("{n} trips", { n: dists.length });
       } else {
         setTakeaway("dist-hist-takeaway", []);
       }
@@ -5864,13 +5902,13 @@
     {
       const meta = document.getElementById("charging-meta");
       if (!charges.length) {
-        setSectionEmpty("charging", "No charging events detected. Either you charge after every trip (so no battery jump between rides) or trips lack battery data.");
+        setSectionEmpty("charging", i18n("No charging events detected. Either you charge after every trip (so no battery jump between rides) or trips lack battery data."));
         meta.textContent = "";
         setTakeaway("charging-takeaway", []);
         setTakeaway("charge-window-takeaway", []);
       } else {
         setSectionActive("charging");
-        meta.textContent = charges.length + " charges detected";
+        meta.textContent = i18n("{n} charges detected", { n: charges.length });
         // Count charges per calendar/cumulative bin
         const perBin = bins.map((b) => 0);
         for (const c of charges) {
@@ -5896,9 +5934,9 @@
         // "2475%" reads as a typo without context.
         const fullCharges = (totalCharged / 100).toFixed(1);
         setTakeaway("charging-takeaway", [
-          `Typical top-up: <b>${medFrom.toFixed(0)}%</b> &rarr; <b>${medTo.toFixed(0)}%</b> (adds <b>${medGain.toFixed(0)}%</b>)`,
-          `<b>${charges.length}</b> sessions logged &middot; total energy added ≈ <b>${fullCharges}</b> full charges`,
-          `<b>${gentle}</b> gentle (from &gt;50%) &middot; <b>${deep}</b> deep (from &le;20%)`,
+          i18n("Typical top-up: <b>{from}%</b> &rarr; <b>{to}%</b> (adds <b>{gain}%</b>)", { from: medFrom.toFixed(0), to: medTo.toFixed(0), gain: medGain.toFixed(0) }),
+          i18n("<b>{n}</b> sessions logged &middot; total energy added ≈ <b>{full}</b> full charges", { n: charges.length, full: fullCharges }),
+          i18n("<b>{gentle}</b> gentle (from &gt;50%) &middot; <b>{deep}</b> deep (from &le;20%)", { gentle, deep }),
         ], deep > gentle ? "warn" : null);
         drawChargeWindows(document.getElementById("chart-charge-window"), charges);
         // Trailing window of recent charges as the takeaway
@@ -5906,8 +5944,8 @@
         const recentMedFrom = median(recent.map((c) => c.from));
         const recentMedTo = median(recent.map((c) => c.to));
         setTakeaway("charge-window-takeaway", [
-          `Last 10 charges: typically <b>${recentMedFrom.toFixed(0)}%</b> &rarr; <b>${recentMedTo.toFixed(0)}%</b>`,
-          `Lowest start of any charge: <b>${Math.min.apply(null, charges.map((c) => c.from)).toFixed(0)}%</b>`,
+          i18n("Last 10 charges: typically <b>{from}%</b> &rarr; <b>{to}%</b>", { from: recentMedFrom.toFixed(0), to: recentMedTo.toFixed(0) }),
+          i18n("Lowest start of any charge: <b>{v}%</b>", { v: Math.min.apply(null, charges.map((c) => c.from)).toFixed(0) }),
         ]);
       }
     }
@@ -5917,13 +5955,13 @@
       const meta = document.getElementById("speed-meta");
       const tops = dated.map((m) => m.topSpeedKmh).filter((v) => v != null);
       if (tops.length < 5) {
-        setSectionEmpty("speed", "Not enough trips with top-speed data.");
+        setSectionEmpty("speed", i18n("Not enough trips with top-speed data."));
         meta.textContent = "";
         setTakeaway("topspeed-takeaway", []);
         setTakeaway("speed-hist-takeaway", []);
       } else {
         setSectionActive("speed");
-        meta.textContent = tops.length + " trips with top-speed data";
+        meta.textContent = i18n("{n} trips with top-speed data", { n: tops.length });
         drawTopSpeedChart(document.getElementById("chart-topspeed"), bins);
         const lifeTop = Math.max.apply(null, tops);
         const lifeTopTrip = dated.find((m) => m.topSpeedKmh === lifeTop);
@@ -5932,15 +5970,16 @@
           ? new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(lifeTopTrip.date)
           : null;
         setTakeaway("topspeed-takeaway", [
-          `All-time top: <b>${UNITS.speed(lifeTop).toFixed(1)} ${UNITS.speedUnit}</b>` +
-            (lifeTopLabel ? ` on <b>${tripLink(lifeTopLabel, lifeTopTrip ? lifeTopTrip.tripIdx : null)}</b>` : ""),
-          `Median peak per ride: <b>${UNITS.speed(medTop).toFixed(1)} ${UNITS.speedUnit}</b>`,
+          lifeTopLabel
+            ? i18n("All-time top: <b>{v} {unit}</b> on <b>{when}</b>", { v: UNITS.speed(lifeTop).toFixed(1), unit: UNITS.speedUnit, when: tripLink(lifeTopLabel, lifeTopTrip ? lifeTopTrip.tripIdx : null) })
+            : i18n("All-time top: <b>{v} {unit}</b>", { v: UNITS.speed(lifeTop).toFixed(1), unit: UNITS.speedUnit }),
+          i18n("Median peak per ride: <b>{v} {unit}</b>", { v: UNITS.speed(medTop).toFixed(1), unit: UNITS.speedUnit }),
         ]);
         // Speed histogram
         const topsDisp = tops.map((v) => UNITS.speed(v));
         drawHistogram(document.getElementById("chart-speed-hist"), topsDisp, {
           xLabel: UNITS.speedUnit,
-          yLabel: "trips",
+          yLabel: i18n("trips"),
           nBins: 16,
           colorTop: "rgba(255,82,82,0.9)",
           colorBot: "rgba(255,82,82,0.18)",
@@ -5950,8 +5989,8 @@
         const p75 = sorted[Math.floor(sorted.length * 0.75)];
         const lifeTopDisp = UNITS.speed(lifeTop);
         setTakeaway("speed-hist-takeaway", [
-          `Comfort zone: <b>${p25.toFixed(0)}</b>&ndash;<b>${p75.toFixed(0)} ${UNITS.speedUnit}</b>`,
-          `Hot threshold (max ever): <b>${lifeTopDisp.toFixed(1)} ${UNITS.speedUnit}</b>`,
+          i18n("Comfort zone: <b>{from}</b>&ndash;<b>{to} {unit}</b>", { from: p25.toFixed(0), to: p75.toFixed(0), unit: UNITS.speedUnit }),
+          i18n("Hot threshold (max ever): <b>{v} {unit}</b>", { v: lifeTopDisp.toFixed(1), unit: UNITS.speedUnit }),
         ]);
       }
     }
@@ -5966,7 +6005,7 @@
       const usable60 = dated.filter((m) => m.accel60 != null).length;
       const useTarget = usable40 >= 10 ? 40 : (usable25 >= 5 ? 25 : null);
       if (!useTarget) {
-        setSectionEmpty("accel", "Not enough trips with valid acceleration runs to compute a trend.");
+        setSectionEmpty("accel", i18n("Not enough trips with valid acceleration runs to compute a trend."));
         meta.textContent = "";
         setTakeaway("accel40-takeaway", []);
       } else {
@@ -5976,11 +6015,11 @@
         // Thresholds are defined in km/h; show them in the user's units
         // (40 km/h reads as 25 mph for imperial riders).
         const spdLabel = (kmh) => `${Math.round(UNITS.speed(kmh))} ${UNITS.speedUnit}`;
-        meta.textContent = `${usable} trips with 0 to ${spdLabel(useTarget)} runs`;
+        meta.textContent = i18n("{n} trips with 0 to {speed} runs", { n: usable, speed: spdLabel(useTarget) });
         const stats = binStats(bins, (m) => m[field], minPerBin);
         const series = [{
           stats, color: "#ffd740",
-          label: "Best 0 to " + spdLabel(useTarget),
+          label: i18n("Best 0 to {speed}", { speed: spdLabel(useTarget) }),
           unit: "s", band: true, dp: 2,
         }];
         drawTrendChart(document.getElementById("chart-accel40"), bins, series, { rolling });
@@ -5994,16 +6033,22 @@
           const all = dated.map((m) => m.accel25).filter((v) => v != null).sort((a, b) => a - b);
           const med = all[Math.floor(all.length / 2)];
           const f = findFastest("accel25");
-          parts.push(`Fastest 0&hairsp;&rarr;&hairsp;${spdLabel(25)}: <b>${f.v.toFixed(2)} s</b>` + (f.date ? ` on <b>${tripLink(dateFmt.format(f.date), f.idx)}</b>` : ""));
-          parts.push(`Typical: <b>${med.toFixed(2)} s</b>`);
+          parts.push(f.date
+            ? i18n("Fastest 0&hairsp;&rarr;&hairsp;{speed}: <b>{v} s</b> on <b>{when}</b>", { speed: spdLabel(25), v: f.v.toFixed(2), when: tripLink(dateFmt.format(f.date), f.idx) })
+            : i18n("Fastest 0&hairsp;&rarr;&hairsp;{speed}: <b>{v} s</b>", { speed: spdLabel(25), v: f.v.toFixed(2) }));
+          parts.push(i18n("Typical: <b>{v} s</b>", { v: med.toFixed(2) }));
         }
         if (usable40) {
           const f = findFastest("accel40");
-          parts.push(`Fastest 0&hairsp;&rarr;&hairsp;${spdLabel(40)}: <b>${f.v.toFixed(2)} s</b>` + (f.date ? ` on <b>${tripLink(dateFmt.format(f.date), f.idx)}</b>` : ""));
+          parts.push(f.date
+            ? i18n("Fastest 0&hairsp;&rarr;&hairsp;{speed}: <b>{v} s</b> on <b>{when}</b>", { speed: spdLabel(40), v: f.v.toFixed(2), when: tripLink(dateFmt.format(f.date), f.idx) })
+            : i18n("Fastest 0&hairsp;&rarr;&hairsp;{speed}: <b>{v} s</b>", { speed: spdLabel(40), v: f.v.toFixed(2) }));
         }
         if (usable60) {
           const f = findFastest("accel60");
-          parts.push(`Fastest 0&hairsp;&rarr;&hairsp;${spdLabel(60)}: <b>${f.v.toFixed(2)} s</b>` + (f.date ? ` on <b>${tripLink(dateFmt.format(f.date), f.idx)}</b>` : ""));
+          parts.push(f.date
+            ? i18n("Fastest 0&hairsp;&rarr;&hairsp;{speed}: <b>{v} s</b> on <b>{when}</b>", { speed: spdLabel(60), v: f.v.toFixed(2), when: tripLink(dateFmt.format(f.date), f.idx) })
+            : i18n("Fastest 0&hairsp;&rarr;&hairsp;{speed}: <b>{v} s</b>", { speed: spdLabel(60), v: f.v.toFixed(2) }));
         }
         setTakeaway("accel40-takeaway", parts);
       }
@@ -6023,13 +6068,13 @@
       const lifts = events.filter((e) => e.kind === "lift");
       const glitches = events.filter((e) => e.kind === "glitch");
       const spikes = events.filter((e) => e.kind === "spike");
-      meta.textContent = events.length + " events (" + lifts.length + " lifts / " + falls.length + " falls / " + spikes.length + " sensor spikes / " + glitches.length + " logger glitches)";
+      meta.textContent = i18n("{n} events ({lifts} lifts / {falls} falls / {spikes} sensor spikes / {glitches} logger glitches)", { n: events.length, lifts: lifts.length, falls: falls.length, spikes: spikes.length, glitches: glitches.length });
       setTakeaway("anomalies-takeaway", events.length ? [
-        `Lifts / pickup tests: <b>${lifts.length}</b>`,
-        `Suspected falls: <b>${falls.length}</b>`,
-        `Sensor spikes during riding: <b>${spikes.length}</b>`,
-        `Logger glitches: <b>${glitches.length}</b>`,
-      ] : ["No anomaly samples detected"], falls.length > 0 ? "warn" : null);
+        i18n("Lifts / pickup tests: <b>{n}</b>", { n: lifts.length }),
+        i18n("Suspected falls: <b>{n}</b>", { n: falls.length }),
+        i18n("Sensor spikes during riding: <b>{n}</b>", { n: spikes.length }),
+        i18n("Logger glitches: <b>{n}</b>", { n: glitches.length }),
+      ] : [i18n("No anomaly samples detected")], falls.length > 0 ? "warn" : null);
       // Render most recent 200 lifts + falls (the rider-event types).
       const riderEvents = events.filter((e) => e.kind === "lift" || e.kind === "fall");
       riderEvents.sort((a, b) => (b.date?.getTime() || 0) - (a.date?.getTime() || 0));
@@ -6043,10 +6088,10 @@
         const startSec = Math.max(0, (e.sec || 0) - 6);
         const dateLabel = e.date ? fmt.format(e.date) : "?";
         const dateHtml = e.tripIdx != null
-          ? `<a class="anom-link" href="inspector.html?i=${e.tripIdx}&t=${startSec}" target="_blank" rel="noopener" title="Open this ride in the inspector starting 6 s before the event">${dateLabel}</a>`
+          ? `<a class="anom-link" href="inspector.html?i=${e.tripIdx}&t=${startSec}" target="_blank" rel="noopener" title="${i18n("Open this ride in the inspector starting 6 s before the event")}">${dateLabel}</a>`
           : dateLabel;
         return `<div class="anomaly-row ${e.kind}">` +
-          `<span class="anom-kind">${e.kind.toUpperCase()}</span>` +
+          `<span class="anom-kind">${e.kind === "fall" ? i18n("FALL") : i18n("LIFT")}</span>` +
           `<span class="anom-date">${dateHtml}</span>` +
           `<span class="anom-peak">${peak} ${UNITS.speedUnit}</span>` +
           `<span style="color:#888">${dur}s</span>` +
@@ -6059,7 +6104,7 @@
       const meta = document.getElementById("gpsdelta-meta");
       const usable = dated.filter((m) => m.gpsMeanAbsDiff != null).length;
       if (usable < 3) {
-        setSectionEmpty("gpsdelta", "Not enough trips with both wheel speed and GPS speed to compare.");
+        setSectionEmpty("gpsdelta", i18n("Not enough trips with both wheel speed and GPS speed to compare."));
         meta.textContent = "";
         setTakeaway("gpsdelta-trend-takeaway", []);
         setTakeaway("gpsdelta-lag-takeaway", []);
@@ -6068,11 +6113,11 @@
         setSectionActive("gpsdelta");
         const totalSamples = dated.reduce((s, m) => s + (m.gpsAgreementSamples || 0), 0);
         const totalSpikes = dated.reduce((s, m) => s + (m.gpsSpikeCount || 0), 0);
-        meta.textContent = usable + " trips · " + totalSamples.toLocaleString() + " comparable samples · " + totalSpikes + " spikes";
+        meta.textContent = i18n("{n} trips · {samples} comparable samples · {spikes} spikes", { n: usable, samples: totalSamples.toLocaleString(), spikes: totalSpikes });
         // Trend: typical disagreement
         const diffStats = binStats(bins, (m) => m.gpsMeanAbsDiff, minPerBin);
         drawTrendChart(document.getElementById("chart-gpsdelta-trend"), bins, [{
-          stats: diffStats, color: "#7cc7ff", label: "Typical |wheel − GPS|", unit: "km/h", band: true, dp: 2,
+          stats: diffStats, color: "#7cc7ff", label: i18n("Typical |wheel − GPS|"), unit: "km/h", band: true, dp: 2,
         }], { rolling, zeroBase: true });
         const { peak: dPeak, trough: dTrough } = statsPeakTrough(diffStats, bins, null, (m) => m.gpsMeanAbsDiff);
         const allDiffs = dated.map((m) => m.gpsMeanAbsDiff).filter((v) => v != null);
@@ -6082,18 +6127,20 @@
         const sortedBias = allBias.slice().sort((a, b) => a - b);
         const medBias = sortedBias[Math.floor(sortedBias.length / 2)];
         const trendParts = [
-          `Typical gap: <b>${medDiff.toFixed(2)} km/h</b>`,
-          `Wheel reads <b>${Math.abs(medBias).toFixed(2)} km/h ${medBias >= 0 ? "higher" : "lower"}</b> than GPS on average`,
+          i18n("Typical gap: <b>{v} {unit}</b>", { v: medDiff.toFixed(2), unit: "km/h" }),
+          medBias >= 0
+            ? i18n("Wheel reads <b>{v} {unit} higher</b> than GPS on average", { v: Math.abs(medBias).toFixed(2), unit: "km/h" })
+            : i18n("Wheel reads <b>{v} {unit} lower</b> than GPS on average", { v: Math.abs(medBias).toFixed(2), unit: "km/h" }),
         ];
         if (dPeak && dTrough && dPeak.label !== dTrough.label) {
-          trendParts.push(`Best: <b>${dTrough.v.toFixed(2)}</b> in <b>${tripLink(dTrough.label, dTrough.tripIdx)}</b> · worst: <b>${dPeak.v.toFixed(2)}</b> in <b>${tripLink(dPeak.label, dPeak.tripIdx)}</b>`);
+          trendParts.push(i18n("Best: <b>{best}</b> in <b>{bestWhen}</b> · worst: <b>{worst}</b> in <b>{worstWhen}</b>", { best: dTrough.v.toFixed(2), bestWhen: tripLink(dTrough.label, dTrough.tripIdx), worst: dPeak.v.toFixed(2), worstWhen: tripLink(dPeak.label, dPeak.tripIdx) }));
         }
         setTakeaway("gpsdelta-trend-takeaway", trendParts);
 
         // Trend: GPS lag (signed)
         const lagStats = binStats(bins, (m) => m.gpsLagSec, minPerBin);
         drawTrendChart(document.getElementById("chart-gpsdelta-lag"), bins, [{
-          stats: lagStats, color: "#ffd740", label: "GPS lag", unit: "s", band: true, dp: 2,
+          stats: lagStats, color: "#ffd740", label: i18n("GPS lag"), unit: "s", band: true, dp: 2,
         }], { rolling });
         const allLags = dated.map((m) => m.gpsLagSec).filter((v) => v != null);
         if (allLags.length) {
@@ -6105,11 +6152,13 @@
           const p90Abs = absLags[Math.floor(absLags.length * 0.9)];
           const parts = [];
           if (Math.abs(meanLag) < 0.15) {
-            parts.push(`On average GPS and wheel are <b>essentially in sync</b> (mean offset ${meanLag >= 0 ? "+" : ""}<b>${meanLag.toFixed(2)} s</b>)`);
+            parts.push(i18n("On average GPS and wheel are <b>essentially in sync</b> (mean offset {sign}<b>{v} s</b>)", { sign: meanLag >= 0 ? "+" : "", v: meanLag.toFixed(2) }));
           } else {
-            parts.push(`On average GPS arrives <b>${Math.abs(meanLag).toFixed(2)} s ${meanLag > 0 ? "behind" : "ahead of"}</b> the wheel reading`);
+            parts.push(meanLag > 0
+              ? i18n("On average GPS arrives <b>{v} s behind</b> the wheel reading", { v: Math.abs(meanLag).toFixed(2) })
+              : i18n("On average GPS arrives <b>{v} s ahead of</b> the wheel reading", { v: Math.abs(meanLag).toFixed(2) }));
           }
-          parts.push(`Per-trip offset is typically <b>${medAbs.toFixed(2)} s</b>, top 10% beyond <b>${p90Abs.toFixed(2)} s</b>`);
+          parts.push(i18n("Per-trip offset is typically <b>{med} s</b>, top 10% beyond <b>{p90} s</b>", { med: medAbs.toFixed(2), p90: p90Abs.toFixed(2) }));
           const sortedByDate = dated.filter((m) => m.gpsLagSec != null).slice().sort((a, b) => a.date - b.date);
           if (sortedByDate.length >= 12) {
             const third = Math.floor(sortedByDate.length / 3);
@@ -6117,9 +6166,11 @@
             const lateAbs  = sortedByDate.slice(-third).map((m) => Math.abs(m.gpsLagSec)).reduce((a, b) => a + b, 0) / third;
             const change = ((lateAbs - earlyAbs) / Math.max(0.01, earlyAbs)) * 100;
             if (Math.abs(change) >= 15) {
-              parts.push(`Offset has ${change < 0 ? "tightened" : "widened"} by <b>${Math.abs(change).toFixed(0)}%</b> from your first third to your last third`);
+              parts.push(change < 0
+                ? i18n("Offset has tightened by <b>{pct}%</b> from your first third to your last third", { pct: Math.abs(change).toFixed(0) })
+                : i18n("Offset has widened by <b>{pct}%</b> from your first third to your last third", { pct: Math.abs(change).toFixed(0) }));
             } else {
-              parts.push("Offset is stable across your history");
+              parts.push(i18n("Offset is stable across your history"));
             }
           }
           setTakeaway("gpsdelta-lag-takeaway", parts);
@@ -6129,7 +6180,7 @@
 
         // Histogram of per-trip mean |wheel − GPS|
         drawHistogram(document.getElementById("chart-gpsdelta-hist"), allDiffs, {
-          xLabel: "km/h", yLabel: "trips", nBins: 16,
+          xLabel: "km/h", yLabel: i18n("trips"), nBins: 16,
           colorTop: "rgba(124,199,255,0.9)", colorBot: "rgba(124,199,255,0.18)",
         });
         const p25 = sortedDiffs[Math.floor(sortedDiffs.length * 0.25)];
@@ -6137,9 +6188,10 @@
         const max = sortedDiffs[sortedDiffs.length - 1];
         const worstTrip = dated.find((m) => m.gpsMeanAbsDiff === max);
         setTakeaway("gpsdelta-hist-takeaway", [
-          `Most rides land in the <b>${p25.toFixed(2)} − ${p75.toFixed(2)} km/h</b> band`,
-          `Worst trip: <b>${max.toFixed(2)} km/h</b> typical gap` +
-            (worstTrip ? ` on <b>${tripLink(worstTrip.label, worstTrip.tripIdx)}</b>` : ""),
+          i18n("Most rides land in the <b>{from} − {to} {unit}</b> band", { from: p25.toFixed(2), to: p75.toFixed(2), unit: "km/h" }),
+          worstTrip
+            ? i18n("Worst trip: <b>{v} {unit}</b> typical gap on <b>{when}</b>", { v: max.toFixed(2), unit: "km/h", when: tripLink(worstTrip.label, worstTrip.tripIdx) })
+            : i18n("Worst trip: <b>{v} {unit}</b> typical gap", { v: max.toFixed(2), unit: "km/h" }),
         ]);
       }
     }
@@ -6158,7 +6210,7 @@
       }
       const usable = dated.filter((m) => m.gLatPeak != null || m.gLongPeak != null).length;
       if (usable < 3 || (totalCorners + totalBrakes + totalLaunches) === 0) {
-        setSectionEmpty("gforce", "No real cornering or braking maneuvers found yet. Need rides with GPS at speed.");
+        setSectionEmpty("gforce", i18n("No real cornering or braking maneuvers found yet. Need rides with GPS at speed."));
         meta.textContent = "";
         setTakeaway("gforce-trend-takeaway", []);
         setTakeaway("gforce-hist-takeaway", []);
@@ -6166,13 +6218,15 @@
       } else {
         setSectionActive("gforce");
         const anyImu = dated.some((m) => m.gFromImu);
-        meta.textContent = usable + " trips · " + totalCorners + " corners · " + totalBrakes + " hard brakes · " + totalLaunches + " launches · " + (anyImu ? "IMU" : "GPS-estimated");
+        meta.textContent = anyImu
+          ? i18n("{n} trips · {corners} corners · {brakes} hard brakes · {launches} launches · IMU", { n: usable, corners: totalCorners, brakes: totalBrakes, launches: totalLaunches })
+          : i18n("{n} trips · {corners} corners · {brakes} hard brakes · {launches} launches · GPS-estimated", { n: usable, corners: totalCorners, brakes: totalBrakes, launches: totalLaunches });
         // Trend: lateral peak (from corners) + longitudinal peak (brake/launch)
         const latStats = binStats(bins, (m) => m.gLatPeak, minPerBin);
         const lngStats = binStats(bins, (m) => m.gLongPeak, minPerBin);
         drawTrendChart(document.getElementById("chart-gforce-trend"), bins, [
-          { stats: latStats, color: "#ff5252", label: "Cornering G", unit: "G", band: false, dp: 2 },
-          { stats: lngStats, color: "#ffd740", label: "Brake / launch G", unit: "G", band: false, dp: 2 },
+          { stats: latStats, color: "#ff5252", label: i18n("Cornering G"), unit: "G", band: false, dp: 2 },
+          { stats: lngStats, color: "#ffd740", label: i18n("Brake / launch G"), unit: "G", band: false, dp: 2 },
         ], { rolling });
         const allLat = dated.map((m) => m.gLatPeak).filter((v) => v != null);
         const allLng = dated.map((m) => m.gLongPeak).filter((v) => v != null);
@@ -6182,24 +6236,29 @@
         const latTrip = allLat.length ? dated.find((m) => m.gLatPeak === allLat[0]) : null;
         const lngTrip = allLng.length ? dated.find((m) => m.gLongPeak === allLng[0]) : null;
         const trendParts = [];
-        if (allLat.length) trendParts.push(`Hardest cornering G: <b>${allLat[0].toFixed(2)} G</b>` + (latTrip && latTrip.date ? ` on <b>${tripLink(dateFmt.format(latTrip.date), latTrip.tripIdx)}</b>` : ""));
-        if (allLng.length) trendParts.push(`Hardest braking / launch G: <b>${allLng[0].toFixed(2)} G</b>` + (lngTrip && lngTrip.date ? ` on <b>${tripLink(dateFmt.format(lngTrip.date), lngTrip.tripIdx)}</b>` : ""));
-        if (!anyImu) trendParts.push("Source: <b>GPS-estimated</b> centripetal G");
+        if (allLat.length) trendParts.push(latTrip && latTrip.date
+          ? i18n("Hardest cornering G: <b>{v} G</b> on <b>{when}</b>", { v: allLat[0].toFixed(2), when: tripLink(dateFmt.format(latTrip.date), latTrip.tripIdx) })
+          : i18n("Hardest cornering G: <b>{v} G</b>", { v: allLat[0].toFixed(2) }));
+        if (allLng.length) trendParts.push(lngTrip && lngTrip.date
+          ? i18n("Hardest braking / launch G: <b>{v} G</b> on <b>{when}</b>", { v: allLng[0].toFixed(2), when: tripLink(dateFmt.format(lngTrip.date), lngTrip.tripIdx) })
+          : i18n("Hardest braking / launch G: <b>{v} G</b>", { v: allLng[0].toFixed(2) }));
+        if (!anyImu) trendParts.push(i18n("Source: <b>GPS-estimated</b> centripetal G"));
         setTakeaway("gforce-trend-takeaway", trendParts);
         // Histogram of peak corner G across trips
         if (allLat.length >= 5) {
           drawHistogram(document.getElementById("chart-gforce-hist"), allLat, {
-            xLabel: "G", yLabel: "trips", nBins: 12,
+            xLabel: "G", yLabel: i18n("trips"), nBins: 12,
             colorTop: "rgba(255,82,82,0.9)", colorBot: "rgba(255,82,82,0.18)",
           });
           const sortedAsc = allLat.slice().sort((a, b) => a - b);
           const med = sortedAsc[Math.floor(sortedAsc.length / 2)];
           const p90 = sortedAsc[Math.floor(sortedAsc.length * 0.9)];
           setTakeaway("gforce-hist-takeaway", [
-            `Typical hardest corner per ride: <b>${med.toFixed(2)} G</b>`,
-            `Top 10% beyond: <b>${p90.toFixed(2)} G</b>`,
-            `Hardest ever: <b>${sortedAsc[sortedAsc.length - 1].toFixed(2)} G</b>` +
-              (latTrip ? ` on <b>${tripLink(latTrip.label, latTrip.tripIdx)}</b>` : ""),
+            i18n("Typical hardest corner per ride: <b>{v} G</b>", { v: med.toFixed(2) }),
+            i18n("Top 10% beyond: <b>{v} {unit}</b>", { v: p90.toFixed(2), unit: "G" }),
+            latTrip
+              ? i18n("Hardest ever: <b>{v} G</b> on <b>{when}</b>", { v: sortedAsc[sortedAsc.length - 1].toFixed(2), when: tripLink(latTrip.label, latTrip.tripIdx) })
+              : i18n("Hardest ever: <b>{v} G</b>", { v: sortedAsc[sortedAsc.length - 1].toFixed(2) }),
           ]);
         } else {
           setTakeaway("gforce-hist-takeaway", []);
@@ -6215,7 +6274,7 @@
               epoch: m.epoch,
               label: m.label,
               tripIdx: m.tripIdx,
-              meta: `<b>${m.label}</b><br>Avg speed in corner: <b>${fmtVal(UNITS.speed(spd), 1)}</b> ${UNITS.speedUnit}<br>Peak lateral G: <b>${latG.toFixed(2)}</b>`,
+              meta: i18n("<b>{label}</b><br>Avg speed in corner: <b>{speed}</b> {unit}<br>Peak lateral G: <b>{g}</b>", { label: m.label, speed: fmtVal(UNITS.speed(spd), 1), unit: UNITS.speedUnit, g: latG.toFixed(2) }),
             });
           }
         }
@@ -6223,7 +6282,7 @@
         if (grip.length >= 8) {
           gripHost.classList.remove("hidden");
           drawScatter(document.getElementById("chart-grip"), grip, {
-            xLabel: "corner speed (" + UNITS.speedUnit + ")", yLabel: "lateral G",
+            xLabel: i18n("corner speed ({unit})", { unit: UNITS.speedUnit }), yLabel: i18n("lateral G"),
           });
           // "Best grip" = highest lateral G held in a corner, with the speed.
           let best = grip[0];
@@ -6234,13 +6293,15 @@
             if (g.y >= 0.3 && (!fastestGrip || g.x > fastestGrip.x)) fastestGrip = g;
           }
           const parts = [
-            `Hardest held: <b>${best.y.toFixed(2)} G</b> at <b>${best.x.toFixed(0)} ${UNITS.speedUnit}</b>` +
-              (best.tripIdx != null ? ` on <b>${tripLink(best.label, best.tripIdx)}</b>` : ""),
-            `<b>${grip.length}</b> sustained corners across <b>${dated.filter((m) => m.gripScatter && m.gripScatter.length).length}</b> rides`,
+            best.tripIdx != null
+              ? i18n("Hardest held: <b>{g} G</b> at <b>{v} {unit}</b> on <b>{when}</b>", { g: best.y.toFixed(2), v: best.x.toFixed(0), unit: UNITS.speedUnit, when: tripLink(best.label, best.tripIdx) })
+              : i18n("Hardest held: <b>{g} G</b> at <b>{v} {unit}</b>", { g: best.y.toFixed(2), v: best.x.toFixed(0), unit: UNITS.speedUnit }),
+            i18n("<b>{n}</b> sustained corners across <b>{rides}</b> rides", { n: grip.length, rides: dated.filter((m) => m.gripScatter && m.gripScatter.length).length }),
           ];
           if (fastestGrip) {
-            parts.push(`Fastest hard corner (≥0.3 G): <b>${fastestGrip.x.toFixed(0)} ${UNITS.speedUnit}</b>` +
-              (fastestGrip.tripIdx != null ? ` on <b>${tripLink(fastestGrip.label, fastestGrip.tripIdx)}</b>` : ""));
+            parts.push(fastestGrip.tripIdx != null
+              ? i18n("Fastest hard corner (≥0.3 G): <b>{v} {unit}</b> on <b>{when}</b>", { v: fastestGrip.x.toFixed(0), unit: UNITS.speedUnit, when: tripLink(fastestGrip.label, fastestGrip.tripIdx) })
+              : i18n("Fastest hard corner (≥0.3 G): <b>{v} {unit}</b>", { v: fastestGrip.x.toFixed(0), unit: UNITS.speedUnit }));
           }
           setTakeaway("grip-takeaway", parts);
         } else {
@@ -6256,7 +6317,7 @@
       const hasKmPct = dated.some((m) => m.kmPerPct != null);
       const meta = document.getElementById("efficiency-meta");
       if (!hasWh && !hasKmPct) {
-        setSectionEmpty("efficiency", "These exports carry no power/current or battery columns, so efficiency can't be computed.");
+        setSectionEmpty("efficiency", i18n("These exports carry no power/current or battery columns, so efficiency can't be computed."));
         meta.textContent = "";
         setTakeaway("efficiency-takeaway", []);
       } else {
@@ -6281,8 +6342,8 @@
           const { peak, trough } = statsPeakTrough(whStats, bins, null, whMetric);
           const parts = [];
           if (peak && trough && peak.label !== trough.label) {
-            parts.push(`Best: <b>${trough.v.toFixed(1)} Wh/${UNITS.distUnit}</b> in <b>${tripLink(trough.label, trough.tripIdx)}</b>`);
-            parts.push(`Worst: <b>${peak.v.toFixed(1)} Wh/${UNITS.distUnit}</b> in <b>${tripLink(peak.label, peak.tripIdx)}</b>`);
+            parts.push(i18n("Best: <b>{v} Wh/{unit}</b> in <b>{when}</b>", { v: trough.v.toFixed(1), unit: UNITS.distUnit, when: tripLink(trough.label, trough.tripIdx) }));
+            parts.push(i18n("Worst: <b>{v} Wh/{unit}</b> in <b>{when}</b>", { v: peak.v.toFixed(1), unit: UNITS.distUnit, when: tripLink(peak.label, peak.tripIdx) }));
           }
           setTakeaway("efficiency-takeaway", parts);
         }
@@ -6293,7 +6354,7 @@
         if (powers.length >= 5) {
           drawHistogram(document.getElementById("chart-power-hist"), powers, {
             xLabel: "W",
-            yLabel: "trips",
+            yLabel: i18n("trips"),
             nBins: 16,
             colorTop: "rgba(124,77,255,0.9)",
             colorBot: "rgba(124,77,255,0.18)",
@@ -6305,10 +6366,11 @@
           const hardTrip = dated.reduce((best, m) =>
             (m.avgPower != null && (!best || m.avgPower > best.avgPower)) ? m : best, null);
           setTakeaway("power-hist-takeaway", [
-            `Median ride pulls <b>${medP.toFixed(0)} W</b>`,
-            `Top 10% beyond: <b>${p90P.toFixed(0)} W</b>`,
-            `Hardest ride: <b>${maxP.toFixed(0)} W</b> avg` +
-              (hardTrip ? ` on <b>${tripLink(hardTrip.label, hardTrip.tripIdx)}</b>` : ""),
+            i18n("Median ride pulls <b>{v} W</b>", { v: medP.toFixed(0) }),
+            i18n("Top 10% beyond: <b>{v} {unit}</b>", { v: p90P.toFixed(0), unit: "W" }),
+            hardTrip
+              ? i18n("Hardest ride: <b>{v} W</b> avg on <b>{when}</b>", { v: maxP.toFixed(0), when: tripLink(hardTrip.label, hardTrip.tripIdx) })
+              : i18n("Hardest ride: <b>{v} W</b> avg", { v: maxP.toFixed(0) }),
           ]);
         } else {
           setTakeaway("power-hist-takeaway", []);
@@ -6331,19 +6393,21 @@
           if (stopped.pctPerH < 0.2) {
             // Gauge rebound eats the signal: the honest answer is a bound.
             const kmBound = UNITS.dist(0.2 / cruisePctPerKm).toFixed(1);
-            parts.push(`Standing still is effectively free: under <b>0.2%</b> per hour, less than <b>${kmBound} ${UNITS.distUnit}</b> of range at cruise pace (${cruiseBand})`);
+            parts.push(i18n("Standing still is effectively free: under <b>0.2%</b> per hour, less than <b>{d} {unit}</b> of range at cruise pace ({band})", { d: kmBound, unit: UNITS.distUnit, band: cruiseBand }));
           } else {
             const kmEquiv = stopped.pctPerH / cruisePctPerKm;
-            parts.push(`An hour of standing costs about <b>${stopped.pctPerH.toFixed(1)}%</b>, roughly <b>${UNITS.dist(kmEquiv).toFixed(1)} ${UNITS.distUnit}</b> of range at cruise pace (${cruiseBand})`);
+            parts.push(i18n("An hour of standing costs about <b>{pct}%</b>, roughly <b>{d} {unit}</b> of range at cruise pace ({band})", { pct: stopped.pctPerH.toFixed(1), d: UNITS.dist(kmEquiv).toFixed(1), unit: UNITS.distUnit, band: cruiseBand }));
           }
         }
         if (walk && cruisePctPerKm > 0) {
           const walkPctPerKm = walk.pctPerH / walk.midKmh;
           const ratio = walkPctPerKm / cruisePctPerKm;
           if (ratio >= 0.7 && ratio <= 1.6) {
-            parts.push(`Walking the wheel costs about as much per ${UNITS.distUnit} as cruising at ${cruiseBand} (<b>${(walkPctPerKm / UNITS.dist(1)).toFixed(2)}</b> vs <b>${(cruisePctPerKm / UNITS.dist(1)).toFixed(2)} %/${UNITS.distUnit}</b>)`);
+            parts.push(i18n("Walking the wheel costs about as much per {unit} as cruising at {band} (<b>{walk}</b> vs <b>{cruise} %/{unit}</b>)", { unit: UNITS.distUnit, band: cruiseBand, walk: (walkPctPerKm / UNITS.dist(1)).toFixed(2), cruise: (cruisePctPerKm / UNITS.dist(1)).toFixed(2) }));
           } else {
-            parts.push(`Walking the wheel: <b>${walk.pctPerH.toFixed(1)} %/h</b>, ${ratio > 1.6 ? "pricier" : "cheaper"} per ${UNITS.distUnit} than cruising at ${cruiseBand}`);
+            parts.push(ratio > 1.6
+              ? i18n("Walking the wheel: <b>{v} %/h</b>, pricier per {unit} than cruising at {band}", { v: walk.pctPerH.toFixed(1), unit: UNITS.distUnit, band: cruiseBand })
+              : i18n("Walking the wheel: <b>{v} %/h</b>, cheaper per {unit} than cruising at {band}", { v: walk.pctPerH.toFixed(1), unit: UNITS.distUnit, band: cruiseBand }));
           }
         }
         setTakeaway("idle-cost-takeaway", parts);
@@ -6360,11 +6424,8 @@
         // Tell the user exactly what's missing: "0 of 276" means the export's
         // Current/Power columns are empty, not that the history is too short.
         const msg = tripsWithRegen.length === 0
-          ? `None of the ${dated.length} loaded trips carry motor current or power samples ` +
-            `(the export's Current/Power columns are empty), so drive vs regen can't be split. ` +
-            `If your wheel reports amps, check the logger app's export settings.`
-          : `Only ${tripsWithRegen.length} of ${dated.length} trips carry sample-level power data; ` +
-            `at least 5 are needed to split drive vs regen.`;
+          ? i18n("None of the {n} loaded trips carry motor current or power samples (the export's Current/Power columns are empty), so drive vs regen can't be split. If your wheel reports amps, check the logger app's export settings.", { n: dated.length })
+          : i18n("Only {n} of {total} trips carry sample-level power data; at least 5 are needed to split drive vs regen.", { n: tripsWithRegen.length, total: dated.length });
         setSectionEmpty("regen", msg);
         if (meta) meta.textContent = "";
         setTakeaway("regen-trend-takeaway", []);
@@ -6376,14 +6437,14 @@
         let totDrive = 0, totRegen = 0;
         for (const m of tripsWithRegen) { totDrive += m.driveWh; totRegen += m.regenWh; }
         const lifetimePct = totDrive > 0 ? (totRegen / totDrive) * 100 : 0;
-        if (meta) meta.textContent = `${tripsWithRegen.length} trips · ${totRegen.toFixed(0)} Wh recovered of ${totDrive.toFixed(0)} Wh drawn`;
+        if (meta) meta.textContent = i18n("{n} trips · {regen} Wh recovered of {drive} Wh drawn", { n: tripsWithRegen.length, regen: totRegen.toFixed(0), drive: totDrive.toFixed(0) });
 
         // Trend: median regen % per group.
         const regenStats = binStats(bins, (m) => (m.driveWh != null && m.driveWh > 0) ? m.regenPct : null, minPerBin);
         const trendSeries = [{
           stats: regenStats,
           color: "rgba(105,240,174,0.95)",
-          label: "regen %",
+          label: i18n("regen %"),
           unit: "%",
           band: true, dp: 1,
         }];
@@ -6391,10 +6452,10 @@
         const regenMetric = (m) => (m.driveWh != null && m.driveWh > 0) ? m.regenPct : null;
         const { peak, trough } = statsPeakTrough(regenStats, bins, null, regenMetric);
         const trendParts = [];
-        trendParts.push(`Lifetime: <b>${lifetimePct.toFixed(1)}%</b> of drive energy recovered`);
+        trendParts.push(i18n("Lifetime: <b>{pct}%</b> of drive energy recovered", { pct: lifetimePct.toFixed(1) }));
         if (peak && trough && peak.label !== trough.label) {
-          trendParts.push(`Best month: <b>${peak.v.toFixed(1)}%</b> in <b>${tripLink(peak.label, peak.tripIdx)}</b>`);
-          trendParts.push(`Lowest: <b>${trough.v.toFixed(1)}%</b> in <b>${tripLink(trough.label, trough.tripIdx)}</b>`);
+          trendParts.push(i18n("Best month: <b>{v}%</b> in <b>{when}</b>", { v: peak.v.toFixed(1), when: tripLink(peak.label, peak.tripIdx) }));
+          trendParts.push(i18n("Lowest: <b>{v}%</b> in <b>{when}</b>", { v: trough.v.toFixed(1), when: tripLink(trough.label, trough.tripIdx) }));
         }
         setTakeaway("regen-trend-takeaway", trendParts);
 
@@ -6407,22 +6468,19 @@
             x: UNITS.alt(descent),
             y: m.regenWh,
             epoch: m.epoch,
-            meta: `<b>${m.label}</b><br>Descent: <b>${fmtVal(UNITS.alt(descent), 0)}</b> ${UNITS.altUnit}` +
-                  `<br>Regen: <b>${fmtVal(m.regenWh, 0)}</b> Wh` +
-                  `<br>Drive: <b>${fmtVal(m.driveWh, 0)}</b> Wh` +
-                  `<br>Share: <b>${fmtVal(m.regenPct, 1)}</b>%`,
+            meta: i18n("<b>{label}</b><br>Descent: <b>{descent}</b> {unit}<br>Regen: <b>{regen}</b> Wh<br>Drive: <b>{drive}</b> Wh<br>Share: <b>{share}</b>%", { label: m.label, descent: fmtVal(UNITS.alt(descent), 0), unit: UNITS.altUnit, regen: fmtVal(m.regenWh, 0), drive: fmtVal(m.driveWh, 0), share: fmtVal(m.regenPct, 1) }),
           });
         }
         if (pts.length >= 5) {
           drawScatter(document.getElementById("chart-regen-scatter"), pts, {
-            xLabel: "descent (" + UNITS.altUnit + ")",
-            yLabel: "regen recovered (Wh)",
+            xLabel: i18n("descent ({unit})", { unit: UNITS.altUnit }),
+            yLabel: i18n("regen recovered (Wh)"),
           });
           const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
           const fit = theilSen(xs, ys);
           const scatterParts = [];
           if (fit) {
-            scatterParts.push(`<b>${fit.slope.toFixed(2)} Wh</b> recovered per ${UNITS.altUnit} descended`);
+            scatterParts.push(i18n("<b>{v} Wh</b> recovered per {unit} descended", { v: fit.slope.toFixed(2), unit: UNITS.altUnit }));
           }
           // Find a peak-regen trip to make the chart memorable. The trip name
           // itself becomes the link so the line still reads like a report
@@ -6430,7 +6488,7 @@
           const sortedByPct = tripsWithRegen.slice().sort((a, b) => b.regenPct - a.regenPct);
           const topTrip = sortedByPct[0];
           if (topTrip && topTrip.regenPct >= 10) {
-            scatterParts.push(`Best ride: <b>${topTrip.regenPct.toFixed(0)}%</b> regen on <b>${tripLink(topTrip.label, topTrip.tripIdx)}</b>`);
+            scatterParts.push(i18n("Best ride: <b>{pct}%</b> regen on <b>{when}</b>", { pct: topTrip.regenPct.toFixed(0), when: tripLink(topTrip.label, topTrip.tripIdx) }));
           }
           setTakeaway("regen-scatter-takeaway", scatterParts);
         } else {
@@ -6448,8 +6506,8 @@
         const clippedCount = sharesAll.filter((v) => v > HIST_CAP).length;
         if (sharesAll.length >= 5) {
           drawHistogram(document.getElementById("chart-regen-hist"), sharesClipped, {
-            xLabel: "regen % (clipped at " + HIST_CAP + ")",
-            yLabel: "trips",
+            xLabel: i18n("regen % (clipped at {cap})", { cap: HIST_CAP }),
+            yLabel: i18n("trips"),
             nBins: 16,
             colorTop: "rgba(105,240,174,0.9)",
             colorBot: "rgba(105,240,174,0.18)",
@@ -6459,10 +6517,10 @@
           const flat = sharesAll.filter((v) => v < 2).length;
           const heavy = sharesAll.filter((v) => v >= 10).length;
           const histParts = [];
-          histParts.push(`Median trip recovers <b>${medS.toFixed(1)}%</b>`);
-          histParts.push(`<b>${flat}</b> flat rides (&lt;2%)`);
-          histParts.push(`<b>${heavy}</b> descent-heavy (&ge;10%)`);
-          if (clippedCount > 0) histParts.push(`<b>${clippedCount}</b> beyond ${HIST_CAP}%`);
+          histParts.push(i18n("Median trip recovers <b>{pct}%</b>", { pct: medS.toFixed(1) }));
+          histParts.push(i18n("<b>{n}</b> flat rides (&lt;2%)", { n: flat }));
+          histParts.push(i18n("<b>{n}</b> descent-heavy (&ge;10%)", { n: heavy }));
+          if (clippedCount > 0) histParts.push(i18n("<b>{n}</b> beyond {cap}%", { n: clippedCount, cap: HIST_CAP }));
           setTakeaway("regen-hist-takeaway", histParts);
         } else {
           setTakeaway("regen-hist-takeaway", []);
@@ -6479,46 +6537,44 @@
           x: UNITS.speed(m.avgMovingSpeed),
           y: m.avgCurrent,
           epoch: m.epoch,
-          meta: `<b>${m.label}</b><br>Avg speed: <b>${fmtVal(UNITS.speed(m.avgMovingSpeed), 1)}</b> ${UNITS.speedUnit}` +
-                `<br>Avg current: <b>${fmtVal(m.avgCurrent, 1)}</b> A` +
-                `<br>Distance: <b>${fmtVal(UNITS.dist(m.distKm), 1)}</b> ${UNITS.distUnit}`,
+          meta: i18n("<b>{label}</b><br>Avg speed: <b>{speed}</b> {speedUnit}<br>Avg current: <b>{current}</b> A<br>Distance: <b>{d}</b> {unit}", { label: m.label, speed: fmtVal(UNITS.speed(m.avgMovingSpeed), 1), speedUnit: UNITS.speedUnit, current: fmtVal(m.avgCurrent, 1), d: fmtVal(UNITS.dist(m.distKm), 1), unit: UNITS.distUnit }),
         });
       }
       const meta = document.getElementById("motor-meta");
       if (pts.length < 5) {
         setSectionEmpty("motor", pts.length === 0
-          ? `None of the ${dated.length} loaded trips carry motor current samples (the export's Current column is empty), so speed vs amps can't be analyzed.`
-          : `Only ${pts.length} of ${dated.length} trips carry current data; at least 5 are needed.`);
+          ? i18n("None of the {n} loaded trips carry motor current samples (the export's Current column is empty), so speed vs amps can't be analyzed.", { n: dated.length })
+          : i18n("Only {n} of {total} trips carry current data; at least 5 are needed.", { n: pts.length, total: dated.length }));
         meta.textContent = "";
         setTakeaway("motor-takeaway", []);
         setTakeaway("motor-trend-takeaway", []);
       } else {
         setSectionActive("motor");
         drawScatter(document.getElementById("chart-motor"), pts, {
-          xLabel: "avg speed (" + UNITS.speedUnit + ")", yLabel: "avg current (A)",
+          xLabel: i18n("avg speed ({unit})", { unit: UNITS.speedUnit }), yLabel: i18n("avg current (A)"),
         });
         // Slope of current vs speed across all trips (single fit).
         const xsAll = pts.map((p) => p.x), ysAll = pts.map((p) => p.y);
         const fit = theilSen(xsAll, ysAll);
         const scatterParts = [];
-        if (fit) scatterParts.push(`Slope: <b>${fit.slope.toFixed(2)} A per ${UNITS.speedUnit}</b>`);
-        scatterParts.push(`<b>${pts.length}</b> trips plotted`);
+        if (fit) scatterParts.push(i18n("Slope: <b>{v} A per {unit}</b>", { v: fit.slope.toFixed(2), unit: UNITS.speedUnit }));
+        scatterParts.push(i18n("<b>{n}</b> trips plotted", { n: pts.length }));
         setTakeaway("motor-takeaway", scatterParts);
         const trendStats = binStats(bins, (m) => (m.avgMovingSpeed != null && m.avgCurrent != null && m.avgMovingSpeed > 5)
           ? m.avgCurrent / UNITS.speed(m.avgMovingSpeed) : null, minPerBin);
         const series = [{
           stats: trendStats,
-          color: COLORS.ampsPerKmh, label: "A per " + UNITS.speedUnit, unit: "A/(" + UNITS.speedUnit + ")", band: true, dp: 3,
+          color: COLORS.ampsPerKmh, label: i18n("A per {unit}", { unit: UNITS.speedUnit }), unit: "A/(" + UNITS.speedUnit + ")", band: true, dp: 3,
         }];
         drawTrendChart(document.getElementById("chart-motor-trend"), bins, series, { rolling });
-        meta.textContent = pts.length + " trips";
+        meta.textContent = i18n("{n} trips", { n: pts.length });
         const motorMetric = (m) => (m.avgMovingSpeed != null && m.avgCurrent != null && m.avgMovingSpeed > 5) ? m.avgCurrent / UNITS.speed(m.avgMovingSpeed) : null;
         const { peak, trough } = statsPeakTrough(trendStats, bins, null, motorMetric);
         const trendParts = [];
         if (peak && trough && peak.label !== trough.label) {
           const pct = ((peak.v - trough.v) / trough.v) * 100;
-          trendParts.push(`Lowest draw: <b>${trough.v.toFixed(3)} A/${UNITS.speedUnit}</b> in <b>${tripLink(trough.label, trough.tripIdx)}</b>`);
-          trendParts.push(`Highest: <b>${peak.v.toFixed(3)}</b> in <b>${tripLink(peak.label, peak.tripIdx)}</b> (+${pct.toFixed(0)}%)`);
+          trendParts.push(i18n("Lowest draw: <b>{v} A/{unit}</b> in <b>{when}</b>", { v: trough.v.toFixed(3), unit: UNITS.speedUnit, when: tripLink(trough.label, trough.tripIdx) }));
+          trendParts.push(i18n("Highest: <b>{v}</b> in <b>{when}</b> (+{pct}%)", { v: peak.v.toFixed(3), when: tripLink(peak.label, peak.tripIdx), pct: pct.toFixed(0) }));
         }
         setTakeaway("motor-trend-takeaway", trendParts);
       }
@@ -6537,13 +6593,13 @@
         tHost.classList.toggle("hidden", !anyTorque);
         if (anyTorque) {
           drawTrendChart(document.getElementById("chart-torque-trend"), bins, [
-            { stats: binStats(bins, (m) => m.torqueDrive, minPerBin), color: "#ff7043", label: "drive", unit: "Nm", band: true, dp: 1 },
-            { stats: binStats(bins, (m) => m.torqueRegen, minPerBin), color: "#90a4ae", label: "regen", unit: "Nm", dp: 1 },
+            { stats: binStats(bins, (m) => m.torqueDrive, minPerBin), color: "#ff7043", label: i18n("drive"), unit: "Nm", band: true, dp: 1 },
+            { stats: binStats(bins, (m) => m.torqueRegen, minPerBin), color: "#90a4ae", label: i18n("regen"), unit: "Nm", dp: 1 },
           ], { rolling });
           const bd = bestOf((m) => m.torqueDrive), br = bestOf((m) => m.torqueRegen);
           const p = [];
-          if (bd) p.push(`Peak drive: <b>${bd.v.toFixed(1)} Nm</b> in <b>${tripLink(bd.label, bd.tripIdx)}</b>`);
-          if (br) p.push(`Peak regen: <b>${br.v.toFixed(1)} Nm</b>`);
+          if (bd) p.push(i18n("Peak drive: <b>{v} {unit}</b> in <b>{when}</b>", { v: bd.v.toFixed(1), unit: "Nm", when: tripLink(bd.label, bd.tripIdx) }));
+          if (br) p.push(i18n("Peak regen: <b>{v} {unit}</b>", { v: br.v.toFixed(1), unit: "Nm" }));
           setTakeaway("torque-trend-takeaway", p);
         }
       }
@@ -6552,13 +6608,13 @@
         phHost.classList.toggle("hidden", !anyPhase);
         if (anyPhase) {
           drawTrendChart(document.getElementById("chart-phase-trend"), bins, [
-            { stats: binStats(bins, (m) => m.phaseDrive, minPerBin), color: "#4db6ac", label: "drive", unit: "A", band: true, dp: 0 },
-            { stats: binStats(bins, (m) => m.phaseRegen, minPerBin), color: "#90a4ae", label: "regen", unit: "A", dp: 0 },
+            { stats: binStats(bins, (m) => m.phaseDrive, minPerBin), color: "#4db6ac", label: i18n("drive"), unit: "A", band: true, dp: 0 },
+            { stats: binStats(bins, (m) => m.phaseRegen, minPerBin), color: "#90a4ae", label: i18n("regen"), unit: "A", dp: 0 },
           ], { rolling });
           const bd = bestOf((m) => m.phaseDrive), br = bestOf((m) => m.phaseRegen);
           const p = [];
-          if (bd) p.push(`Peak drive: <b>${bd.v.toFixed(0)} A</b> in <b>${tripLink(bd.label, bd.tripIdx)}</b>`);
-          if (br) p.push(`Peak regen: <b>${br.v.toFixed(0)} A</b>`);
+          if (bd) p.push(i18n("Peak drive: <b>{v} {unit}</b> in <b>{when}</b>", { v: bd.v.toFixed(0), unit: "A", when: tripLink(bd.label, bd.tripIdx) }));
+          if (br) p.push(i18n("Peak regen: <b>{v} {unit}</b>", { v: br.v.toFixed(0), unit: "A" }));
           setTakeaway("phase-trend-takeaway", p);
         }
       }
@@ -6571,10 +6627,10 @@
           for (const m of dated) {
             if (m.avgPhase == null || m.avgCurrent == null) continue;
             ppts.push({ x: m.avgCurrent, y: m.avgPhase, epoch: m.epoch,
-              meta: `<b>${m.label}</b><br>Avg current: <b>${fmtVal(m.avgCurrent, 1)}</b> A<br>Avg phase: <b>${fmtVal(m.avgPhase, 1)}</b> A` });
+              meta: i18n("<b>{label}</b><br>Avg current: <b>{current}</b> A<br>Avg phase: <b>{phase}</b> A", { label: m.label, current: fmtVal(m.avgCurrent, 1), phase: fmtVal(m.avgPhase, 1) }) });
           }
-          drawScatter(document.getElementById("chart-phase-current"), ppts, { xLabel: "avg current (A)", yLabel: "avg phase (A)" });
-          setTakeaway("phase-current-takeaway", [`<b>${ppts.length}</b> trips plotted`]);
+          drawScatter(document.getElementById("chart-phase-current"), ppts, { xLabel: i18n("avg current (A)"), yLabel: i18n("avg phase (A)") });
+          setTakeaway("phase-current-takeaway", [i18n("<b>{n}</b> trips plotted", { n: ppts.length })]);
         }
       }
       const expl = document.getElementById("torque-phase-explainer");
@@ -6597,27 +6653,27 @@
           x: m.avgPower,
           y: tempDelta(rise),
           epoch: m.epoch,
-          meta: `<b>${m.label}</b><br>Temp rise: <b>${fmtVal(tempDelta(rise), 1)}</b> ${UNITS.tempUnit}` +
-                `<br>Avg power: <b>${fmtVal(m.avgPower, 0)}</b> W` +
-                (m.ambientC != null ? `<br>Ambient: <b>${fmtVal(UNITS.temp(m.ambientC), 1)}</b> ${UNITS.tempUnit}` : ""),
+          meta: m.ambientC != null
+            ? i18n("<b>{label}</b><br>Temp rise: <b>{rise}</b> {tempUnit}<br>Avg power: <b>{power}</b> W<br>Ambient: <b>{ambient}</b> {tempUnit}", { label: m.label, rise: fmtVal(tempDelta(rise), 1), tempUnit: UNITS.tempUnit, power: fmtVal(m.avgPower, 0), ambient: fmtVal(UNITS.temp(m.ambientC), 1) })
+            : i18n("<b>{label}</b><br>Temp rise: <b>{rise}</b> {tempUnit}<br>Avg power: <b>{power}</b> W", { label: m.label, rise: fmtVal(tempDelta(rise), 1), tempUnit: UNITS.tempUnit, power: fmtVal(m.avgPower, 0) }),
         });
       }
       const meta = document.getElementById("thermal-meta");
       if (pts.length < 5) {
-        setSectionEmpty("thermal", "Not enough trips with temperature + power data for this analysis.");
+        setSectionEmpty("thermal", i18n("Not enough trips with temperature + power data for this analysis."));
         meta.textContent = "";
         setTakeaway("thermal-takeaway", []);
         setTakeaway("thermal-trend-takeaway", []);
       } else {
         setSectionActive("thermal");
         drawScatter(document.getElementById("chart-thermal"), pts, {
-          xLabel: "avg power (W)", yLabel: "temp rise (" + UNITS.tempUnit + ")",
+          xLabel: i18n("avg power (W)"), yLabel: i18n("temp rise ({unit})", { unit: UNITS.tempUnit }),
         });
         const xsAll = pts.map((p) => p.x), ysAll = pts.map((p) => p.y);
         const fit = theilSen(xsAll, ysAll);
         const scatterParts = [];
-        if (fit) scatterParts.push(`Slope: <b>${(fit.slope * 1000).toFixed(2)} ${UNITS.tempUnit} per kW</b>`);
-        scatterParts.push(useAmbient ? "Rise measured vs ambient" : "Rise measured vs trip-start temp");
+        if (fit) scatterParts.push(i18n("Slope: <b>{v} {unit} per kW</b>", { v: (fit.slope * 1000).toFixed(2), unit: UNITS.tempUnit }));
+        scatterParts.push(useAmbient ? i18n("Rise measured vs ambient") : i18n("Rise measured vs trip-start temp"));
         setTakeaway("thermal-takeaway", scatterParts);
         const trendStats = binStats(bins, (m) => {
           const r = tempRiseOf(m);
@@ -6625,10 +6681,10 @@
         }, minPerBin);
         const series = [{
           stats: trendStats,
-          color: COLORS.tempRise, label: "Median temp rise", unit: UNITS.tempUnit, band: true, dp: 1,
+          color: COLORS.tempRise, label: i18n("Median temp rise"), unit: UNITS.tempUnit, band: true, dp: 1,
         }];
         drawTrendChart(document.getElementById("chart-thermal-trend"), bins, series, { rolling });
-        meta.textContent = useAmbient ? "vs ambient (weather)" : "vs trip-start temp. Add weather for an ambient baseline.";
+        meta.textContent = useAmbient ? i18n("vs ambient (weather)") : i18n("vs trip-start temp. Add weather for an ambient baseline.");
         const thermalMetric = (m) => {
           const r = tempRiseOf(m);
           return r == null ? null : tempDelta(r);
@@ -6636,8 +6692,8 @@
         const { peak, trough } = statsPeakTrough(trendStats, bins, null, thermalMetric);
         const trendParts = [];
         if (peak && trough && peak.label !== trough.label) {
-          trendParts.push(`Coolest: <b>${trough.v.toFixed(1)} ${UNITS.tempUnit}</b> in <b>${tripLink(trough.label, trough.tripIdx)}</b>`);
-          trendParts.push(`Hottest: <b>${peak.v.toFixed(1)} ${UNITS.tempUnit}</b> in <b>${tripLink(peak.label, peak.tripIdx)}</b>`);
+          trendParts.push(i18n("Coolest: <b>{v} {unit}</b> in <b>{when}</b>", { v: trough.v.toFixed(1), unit: UNITS.tempUnit, when: tripLink(trough.label, trough.tripIdx) }));
+          trendParts.push(i18n("Hottest: <b>{v} {unit}</b> in <b>{when}</b>", { v: peak.v.toFixed(1), unit: UNITS.tempUnit, when: tripLink(peak.label, peak.tripIdx) }));
         }
         setTakeaway("thermal-trend-takeaway", trendParts);
       }
@@ -6648,7 +6704,7 @@
       const usable = dated.filter((m) => m.ohmIR != null).length;
       const meta = document.getElementById("health-meta");
       if (usable < 5) {
-        setSectionEmpty("health", "Not enough trips with voltage + current data to estimate internal resistance.");
+        setSectionEmpty("health", i18n("Not enough trips with voltage + current data to estimate internal resistance."));
         meta.textContent = "";
         setTakeaway("health-takeaway", []);
       } else {
@@ -6656,19 +6712,19 @@
         const irStats = binStats(bins, (m) => m.ohmIR == null ? null : m.ohmIR * 1000, Math.max(2, minPerBin));
         const series = [{
           stats: irStats,
-          color: COLORS.ohmIR, label: "Effective IR", unit: "mΩ", band: true, dp: 0,
+          color: COLORS.ohmIR, label: i18n("Effective IR"), unit: "mΩ", band: true, dp: 0,
         }];
         // Let the y-axis fit the actual data range; IR sits around 180 mΩ,
         // forcing the axis to zero compressed the variation into the top sliver.
         drawTrendChart(document.getElementById("chart-health"), bins, series, { rolling });
-        meta.textContent = usable + " trips";
+        meta.textContent = i18n("{n} trips", { n: usable });
         const irMetric = (m) => m.ohmIR == null ? null : m.ohmIR * 1000;
         const { peak, trough } = statsPeakTrough(irStats, bins, null, irMetric);
         const parts = [];
         if (peak && trough && peak.label !== trough.label) {
           const pct = ((peak.v - trough.v) / trough.v) * 100;
-          parts.push(`Lowest IR: <b>${trough.v.toFixed(0)} mΩ</b> in <b>${tripLink(trough.label, trough.tripIdx)}</b>`);
-          parts.push(`Highest: <b>${peak.v.toFixed(0)} mΩ</b> in <b>${tripLink(peak.label, peak.tripIdx)}</b> (+${pct.toFixed(0)}%)`);
+          parts.push(i18n("Lowest IR: <b>{v} mΩ</b> in <b>{when}</b>", { v: trough.v.toFixed(0), when: tripLink(trough.label, trough.tripIdx) }));
+          parts.push(i18n("Highest: <b>{v} mΩ</b> in <b>{when}</b> (+{pct}%)", { v: peak.v.toFixed(0), when: tripLink(peak.label, peak.tripIdx), pct: pct.toFixed(0) }));
         }
         setTakeaway("health-takeaway", parts, peak && trough && ((peak.v - trough.v) / trough.v) > 0.25 ? "warn" : null);
 
@@ -6677,15 +6733,15 @@
         const usableSag = dated.filter((m) => m.voltSagPct != null).length;
         if (usableSag >= 5) {
           const sagSeries = [{
-            stats: sagStats, color: "#ff7043", label: "Voltage droop", unit: "%", band: true, dp: 1,
+            stats: sagStats, color: "#ff7043", label: i18n("Voltage droop"), unit: "%", band: true, dp: 1,
           }];
           drawTrendChart(document.getElementById("chart-health-sag"), bins, sagSeries, { rolling });
           const sagMetric = (m) => m.voltSagPct;
           const { peak: sp, trough: st } = statsPeakTrough(sagStats, bins, null, sagMetric);
           const sagParts = [];
           if (sp && st && sp.label !== st.label) {
-            sagParts.push(`Smallest droop: <b>${st.v.toFixed(1)}%</b> in <b>${tripLink(st.label, st.tripIdx)}</b>`);
-            sagParts.push(`Largest: <b>${sp.v.toFixed(1)}%</b> in <b>${tripLink(sp.label, sp.tripIdx)}</b>`);
+            sagParts.push(i18n("Smallest droop: <b>{v}%</b> in <b>{when}</b>", { v: st.v.toFixed(1), when: tripLink(st.label, st.tripIdx) }));
+            sagParts.push(i18n("Largest: <b>{v}%</b> in <b>{when}</b>", { v: sp.v.toFixed(1), when: tripLink(sp.label, sp.tripIdx) }));
           }
           setTakeaway("health-sag-takeaway", sagParts);
         } else {

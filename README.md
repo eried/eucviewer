@@ -46,9 +46,9 @@ with the library, with archive, upload, and a stop button for long runs.
 **Video Overlay Studio.** Composites telemetry over ride footage in the browser and
 renders out an MP4 via WebCodecs. An optional Dragy `.vbo` adds GPS speed.
 
-**Languages and units.** The map page speaks the 30 languages the EUC Planet app
-ships plus English (UK), the same 31 as eucstats, picked from the browser and changeable in the cogwheel. The inspector, forensics
-and video studio are English for now. Units are three separate switches (`km | mi`,
+**Languages and units.** Every page speaks the 30 languages the EUC Planet app ships
+plus English (UK), the same 31 as eucstats, picked from the browser and changeable in
+the map page's cogwheel. Units are three separate switches (`km | mi`,
 `°C | °F`, `m | ft`), defaulting from the timezone, not the browser language: miles,
 °F and feet in the US, miles with °C and metres in the UK, metric everywhere else. Both
 choices are shared with [eucstats](https://github.com/eried/eucstats) through a cookie

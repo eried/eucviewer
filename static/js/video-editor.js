@@ -9,6 +9,8 @@
 
   // --- Units: decided and converted in units.js, shared by every page. ---
   const UNITS = window.EucUnits.UNITS;
+  // Every string the rider reads goes through this (i18n.js).
+  const i18n = window.EucI18n.t;
 
   // --- DOM ---
   const $ = (id) => document.getElementById(id);
@@ -107,7 +109,7 @@
     if (cfg.trimEnd == null || cfg.trimEnd > S.dur) cfg.trimEnd = S.dur;
     if (cfg.trimStart > S.dur) cfg.trimStart = 0;
     $("tb-trip-name").textContent = t.date || t.name || "";
-    setStatus("ms-trip", `${t.date || t.name || "trip"} · ${fmtT(S.dur)}`);
+    setStatus("ms-trip", `${t.date || t.name || i18n("trip")} · ${fmtT(S.dur)}`);
     $("stage-empty").classList.add("hidden");
     layoutTimeline();
     drawTeleGraph();
@@ -211,19 +213,19 @@
 
   // --- Elements (order + on/off drive the chip bar) ---
   const EL_DEFS = {
-    speed:    { label: "Speed",     fmt: (s) => UNITS.speed(s.speed).toFixed(0) + " " + UNITS.speedUnit },
-    maxSpeed: { label: "Max Speed", fmt: (s) => UNITS.speed(s.maxSpeed).toFixed(0) + " " + UNITS.speedUnit },
+    speed:    { label: i18n("Speed"),     fmt: (s) => UNITS.speed(s.speed).toFixed(0) + " " + UNITS.speedUnit },
+    maxSpeed: { label: i18n("Max Speed"), fmt: (s) => UNITS.speed(s.maxSpeed).toFixed(0) + " " + UNITS.speedUnit },
     gps:      { label: "GPS",       fmt: (s) => UNITS.speed(s.gps).toFixed(0) + " " + UNITS.speedUnit },
-    voltage:  { label: "Voltage",   fmt: (s) => s.volt.toFixed(0) + " V" },
-    temp:     { label: "Temp",      fmt: (s) => UNITS.temp(s.temp).toFixed(0) + " " + UNITS.tempUnit },
-    battery:  { label: "Battery",   fmt: (s) => s.batt.toFixed(0) + " %" },
-    mileage:  { label: "Mileage",   fmt: (s) => UNITS.dist(s.mileage).toFixed(1) + " " + UNITS.distUnit },
+    voltage:  { label: i18n("Voltage"),   fmt: (s) => s.volt.toFixed(0) + " V" },
+    temp:     { label: i18n("Temp"),      fmt: (s) => UNITS.temp(s.temp).toFixed(0) + " " + UNITS.tempUnit },
+    battery:  { label: i18n("Battery"),   fmt: (s) => s.batt.toFixed(0) + " %" },
+    mileage:  { label: i18n("Mileage"),   fmt: (s) => UNITS.dist(s.mileage).toFixed(1) + " " + UNITS.distUnit },
     pwm:      { label: "PWM",       fmt: (s) => s.pwm.toFixed(0) + " %" },
-    power:    { label: "Power",     fmt: (s) => s.pow.toFixed(0) + " W" },
-    current:  { label: "Current",   fmt: (s) => s.cur.toFixed(1) + " A" },
-    torque:   { label: "Torque",    fmt: (s) => s.torque.toFixed(1) + " Nm" },
-    phase:    { label: "Phase",     fmt: (s) => s.phase.toFixed(1) + " A" },
-    time:     { label: "Time",      fmt: (s) => s.clock ? s.clock.toTimeString().slice(0, 8) : "--:--:--" },
+    power:    { label: i18n("Power"),     fmt: (s) => s.pow.toFixed(0) + " W" },
+    current:  { label: i18n("Current"),   fmt: (s) => s.cur.toFixed(1) + " A" },
+    torque:   { label: i18n("Torque"),    fmt: (s) => s.torque.toFixed(1) + " Nm" },
+    phase:    { label: i18n("Phase"),     fmt: (s) => s.phase.toFixed(1) + " A" },
+    time:     { label: i18n("Time"),      fmt: (s) => s.clock ? s.clock.toTimeString().slice(0, 8) : "--:--:--" },
     dragy:    { label: "Dragy",     fmt: (s) => UNITS.speed(s.dragy).toFixed(0) + " " + UNITS.speedUnit },
   };
 
@@ -287,19 +289,19 @@
     textP.innerHTML = ""; gaugeP.innerHTML = ""; elemP.innerHTML = "";
 
     for (const [k, l, mi, ma, u] of [
-      ["fontSize", "Font size", 10, 48, " px"], ["vPos", "Vertical position", 0, 100, " %"],
-      ["hPos", "Horizontal position", 0, 100, " %"], ["pad", "Box padding", 0, 30, " px"],
-      ["spacing", "Spacing", 0, 40, " px"], ["radius", "Border radius", 0, 30, " px"],
-      ["opacity", "Box opacity", 0, 100, " %"], ["textOffset", "Text offset", -20, 20, " px"],
+      ["fontSize", i18n("Font size"), 10, 48, " px"], ["vPos", i18n("Vertical position"), 0, 100, " %"],
+      ["hPos", i18n("Horizontal position"), 0, 100, " %"], ["pad", i18n("Box padding"), 0, 30, " px"],
+      ["spacing", i18n("Spacing"), 0, 40, " px"], ["radius", i18n("Border radius"), 0, 30, " px"],
+      ["opacity", i18n("Box opacity"), 0, 100, " %"], ["textOffset", i18n("Text offset"), -20, 20, " px"],
     ]) syncers.push(slider(textP, cfg.text, k, l, mi, ma, u));
-    syncers.push(checkbox(textP, cfg.text, "staticSize", "Static box size"));
-    syncers.push(checkbox(textP, cfg.text, "vertical", "Vertical layout"));
+    syncers.push(checkbox(textP, cfg.text, "staticSize", i18n("Static box size")));
+    syncers.push(checkbox(textP, cfg.text, "vertical", i18n("Vertical layout")));
 
     for (const [k, l, mi, ma, u] of [
-      ["scale", "Scale", 40, 250, " %"], ["hPos", "Horizontal position", 0, 100, " %"],
-      ["vPos", "Vertical position", 0, 100, " %"], ["numSize", "Speed number size", 50, 250, " %"],
-      ["unitSize", "Unit text size", 50, 200, " %"], ["numY", "Speed Y offset", -60, 60, " px"],
-      ["unitY", "Unit Y offset", -60, 60, " px"],
+      ["scale", i18n("Scale"), 40, 250, " %"], ["hPos", i18n("Horizontal position"), 0, 100, " %"],
+      ["vPos", i18n("Vertical position"), 0, 100, " %"], ["numSize", i18n("Speed number size"), 50, 250, " %"],
+      ["unitSize", i18n("Unit text size"), 50, 200, " %"], ["numY", i18n("Speed Y offset"), -60, 60, " px"],
+      ["unitY", i18n("Unit Y offset"), -60, 60, " px"],
     ]) syncers.push(slider(gaugeP, cfg.gauge, k, l, mi, ma, u));
 
     // Elements: checkbox list, drag rows to reorder the chip bar.
@@ -331,20 +333,20 @@
     }
     elemP.appendChild(list);
 
-    syncers.push(checkbox(elemP, cfg, "useIcons", "Use icons"));
-    syncers.push(checkbox(elemP, cfg.gauge, "on", "Speed dial (arc)"));
+    syncers.push(checkbox(elemP, cfg, "useIcons", i18n("Use icons")));
+    syncers.push(checkbox(elemP, cfg.gauge, "on", i18n("Speed dial (arc)")));
 
     const mapHead = document.createElement("div");
     mapHead.className = "ctl-sep";
-    mapHead.textContent = "Track map";
+    mapHead.textContent = i18n("Track map");
     elemP.appendChild(mapHead);
-    syncers.push(checkbox(elemP, cfg.map, "on", "Show track map"));
+    syncers.push(checkbox(elemP, cfg.map, "on", i18n("Show track map")));
     // The source picker only exists once a VBO with GPS is loaded;
     // without one, trip GPS is the only source there is.
     if (vbo && vbo.path.length > 1) {
       const srcRow = document.createElement("div");
       srcRow.className = "ctl-row";
-      srcRow.innerHTML = `<label>Map source</label><select id="map-src"><option value="trip">Trip GPS</option><option value="vbo">Dragy VBO</option></select>`;
+      srcRow.innerHTML = `<label>${i18n("Map source")}</label><select id="map-src"><option value="trip">${i18n("Trip GPS")}</option><option value="vbo">Dragy VBO</option></select>`;
       elemP.appendChild(srcRow);
       const srcSel = srcRow.querySelector("select");
       srcSel.value = cfg.map.source;
@@ -353,16 +355,16 @@
     } else {
       cfg.map.source = "trip";
     }
-    syncers.push(slider(elemP, cfg.map, "size", "Map size", 10, 70, " %"));
-    syncers.push(slider(elemP, cfg.map, "opacity", "Map opacity", 10, 100, " %"));
+    syncers.push(slider(elemP, cfg.map, "size", i18n("Map size"), 10, 70, " %"));
+    syncers.push(slider(elemP, cfg.map, "opacity", i18n("Map opacity"), 10, 100, " %"));
     const mapHint = document.createElement("div");
     mapHint.className = "ctl-hint";
-    mapHint.textContent = "Drag the map on the preview to move it. Scroll over it to resize.";
+    mapHint.textContent = i18n("Drag the map on the preview to move it. Scroll over it to resize.");
     elemP.appendChild(mapHint);
 
     const chromaHead = document.createElement("div");
     chromaHead.className = "ctl-sep";
-    chromaHead.textContent = "Chroma background";
+    chromaHead.textContent = i18n("Chroma background");
     elemP.appendChild(chromaHead);
     // One row of color swatches: the presets plus a rainbow "custom" one
     // that opens the native picker. The active swatch carries a ring.
@@ -371,12 +373,12 @@
     // Pure blue (the default) and pure green like EUCTelemetry, plus
     // OBS-style magenta and black for luma keys or dark edits.
     chromaRow.innerHTML =
-      ['#0000ff|Blue', '#00ff00|Green', '#ff00ff|Magenta', '#000000|Black']
+      ['#0000ff|' + i18n("Blue"), '#00ff00|' + i18n("Green"), '#ff00ff|' + i18n("Magenta"), '#000000|' + i18n("Black")]
         .map((p) => {
           const [c, name] = p.split("|");
           return `<button type="button" class="swatch" data-c="${c}" style="background:${c}" title="${name}"></button>`;
         }).join("") +
-      `<label class="swatch swatch-custom" title="Custom color">
+      `<label class="swatch swatch-custom" title="${i18n("Custom color")}">
          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="m10.5 2.7 2.8 2.8M12.6 1.9l1.5 1.5a1.1 1.1 0 0 1 0 1.6l-1.7 1.7-3.1-3.1 1.7-1.7a1.1 1.1 0 0 1 1.6 0zM9.3 3.6l3.1 3.1-6.2 6.2c-.4.4-1 .7-1.6.8l-2 .3.3-2c.1-.6.4-1.2.8-1.6z"/></svg>
          <input type="color" id="chroma-color">
        </label>
@@ -404,7 +406,7 @@
       b.addEventListener("click", () => { cfg.chroma = b.dataset.c; syncChroma(); persistCfg(); requestDraw(); }));
     syncers.push({ _sync: syncChroma });
 
-    syncers.push(checkbox(elemP, cfg, "debug", "Debug info"));
+    syncers.push(checkbox(elemP, cfg, "debug", i18n("Debug info")));
   }
   buildSidebar();
 
@@ -836,10 +838,10 @@
     const parts = [];
     if (hasOffset) {
       const a = Math.abs(cfg.teleOffset);
-      parts.push("offset " + (cfg.teleOffset < 0 ? "-" : "+") + (a < 60 ? a.toFixed(2) + "s" : fmtT(a)));
+      parts.push(i18n("offset {t}", { t: (cfg.teleOffset < 0 ? "-" : "+") + (a < 60 ? a.toFixed(2) + "s" : fmtT(a)) }));
     }
     // Trim shown in video time so it lines up with the playhead readout.
-    if (trimmed) parts.push("trim " + fmtT(cfg.teleOffset + cfg.trimStart) + " → " + fmtT(cfg.teleOffset + s1));
+    if (trimmed) parts.push(i18n("trim {a} → {b}", { a: fmtT(cfg.teleOffset + cfg.trimStart), b: fmtT(cfg.teleOffset + s1) }));
     el.classList.toggle("hidden", parts.length === 0);
     el.textContent = parts.join("  ·  ");
     // The × clears the trim only (the offset has its own Reset); show it
@@ -1203,7 +1205,7 @@
     }
     persistCfg(); buildSidebar(); layoutTimeline(); drawTeleGraph(); positionTrims(); requestDraw();
     updateInOutLabel();
-    toast("Reset done.");
+    toast(i18n("Reset done."));
   });
 
   function snapTo(value, candidates) {
@@ -1332,12 +1334,12 @@
       if ($("mr-sync")) $("mr-sync").disabled = false;
       if (tlzVideoBtn) tlzVideoBtn.classList.remove("hidden");
       setStatus("ms-video", `${fmtT(videoEl.duration || 0)} · ${videoEl.videoWidth}x${videoEl.videoHeight}`);
-      setStatus("ms-sync", "pick the full source recording (.lrv)");
+      setStatus("ms-sync", i18n("pick the full source recording (.lrv)"));
       curT = 0;
       layoutTimeline(); drawTeleGraph(); buildThumbs(); requestDraw();
       // A short clip on a long ride is unusable at fit zoom; frame it.
       frameVideo();
-      toast(`Video loaded: ${(videoEl.duration || 0) > 0 ? fmtT(videoEl.duration) : "?"} at ${videoEl.videoWidth}x${videoEl.videoHeight}`);
+      toast(i18n("Video loaded: {dur} at {w}x{h}", { dur: (videoEl.duration || 0) > 0 ? fmtT(videoEl.duration) : "?", w: videoEl.videoWidth, h: videoEl.videoHeight }));
       detectVideoFps().then((f) => {
         videoFps = f;
         if (f) setStatus("ms-video", `${fmtT(videoEl.duration || 0)} · ${videoEl.videoWidth}x${videoEl.videoHeight} · ${fmtFps(f)} fps`);
@@ -1424,7 +1426,7 @@
     const f = e.target.files[0];
     e.target.value = "";
     if (!f) return;
-    toast("Parsing trip…");
+    toast(i18n("Parsing trip…"));
     try {
       const tracks = await new Promise((resolve, reject) => {
         const worker = new Worker("static/js/parser-worker.js?v=25");
@@ -1433,20 +1435,20 @@
           const m = ev.data || {};
           if (m.type === "track") acc.push(m.track);
           else if (m.type === "done") { worker.terminate(); resolve(acc); }
-          else if (m.type === "error") { worker.terminate(); reject(new Error(m.message || "Parse failed")); }
+          else if (m.type === "error") { worker.terminate(); reject(new Error(m.message || i18n("Parse failed"))); }
         };
         worker.onerror = (err) => { worker.terminate(); reject(err); };
         worker.postMessage({ type: "parse", file: f });
       });
-      if (!tracks.length) { toast("No trips found in that file."); return; }
+      if (!tracks.length) { toast(i18n("No trips found in that file.")); return; }
       // Longest trip wins when an archive holds several.
       tracks.sort((a, b) => (b.stats?.rows || 0) - (a.stats?.rows || 0));
       setTrack(tracks[0]);
       cfg.trimStart = 0; cfg.trimEnd = S.dur;
       layoutTimeline(); drawTeleGraph(); requestDraw();
-      toast(`Trip loaded: ${tracks[0].date || tracks[0].name}${tracks.length > 1 ? ` (+${tracks.length - 1} more ignored)` : ""}`);
+      toast(tracks.length > 1 ? i18n("Trip loaded: {name} (+{n} more ignored)", { name: tracks[0].date || tracks[0].name, n: tracks.length - 1 }) : i18n("Trip loaded: {name}", { name: tracks[0].date || tracks[0].name }));
     } catch (err) {
-      toast("Could not parse that file: " + err.message);
+      toast(i18n("Could not parse that file: {error}", { error: err.message }));
     }
   });
 
@@ -1457,16 +1459,16 @@
     if (!f) return;
     try {
       const parsed = parseVbo(await f.text());
-      if (!parsed || parsed.t.length < 2) { toast("No usable rows in that VBO."); return; }
+      if (!parsed || parsed.t.length < 2) { toast(i18n("No usable rows in that VBO.")); return; }
       vbo = parsed;
       cfg.elements.dragy = true;
       if (parsed.path.length > 1) cfg.map.source = "vbo";
       buildSidebar();
       requestDraw();
-      setStatus("ms-vbo", `${parsed.t.length} rows · ${fmtT(parsed.t[parsed.t.length - 1])}${parsed.path.length > 1 ? " · GPS track" : ""}`);
-      toast(`VBO loaded: ${parsed.t.length} rows, ${fmtT(parsed.t[parsed.t.length - 1])}${parsed.path.length > 1 ? ", GPS track" : ""}`);
+      setStatus("ms-vbo", parsed.path.length > 1 ? i18n("{n} rows · {dur} · GPS track", { n: parsed.t.length, dur: fmtT(parsed.t[parsed.t.length - 1]) }) : i18n("{n} rows · {dur}", { n: parsed.t.length, dur: fmtT(parsed.t[parsed.t.length - 1]) }));
+      toast(parsed.path.length > 1 ? i18n("VBO loaded: {n} rows, {dur}, GPS track", { n: parsed.t.length, dur: fmtT(parsed.t[parsed.t.length - 1]) }) : i18n("VBO loaded: {n} rows, {dur}", { n: parsed.t.length, dur: fmtT(parsed.t[parsed.t.length - 1]) }));
     } catch (err) {
-      toast("VBO parse failed: " + err.message);
+      toast(i18n("VBO parse failed: {error}", { error: err.message }));
     }
   });
   function parseVbo(text) {
@@ -1518,26 +1520,26 @@
     const f = e.target.files[0];
     e.target.value = "";
     if (!f || !videoFile) return;
-    toast("Analyzing audio, this can take a moment…", 15000);
+    toast(i18n("Analyzing audio, this can take a moment…"), 15000);
     try {
       const [clipEnv, srcEnv] = await Promise.all([audioEnvelope(videoFile), audioEnvelope(f)]);
-      if (!clipEnv || !srcEnv) throw new Error("could not decode audio");
+      if (!clipEnv || !srcEnv) throw new Error(i18n("could not decode audio"));
       const clipStart = bestOffset(clipEnv, srcEnv);
       const created = await mp4CreationTime(f);
       if (created && S && S.dateStart) {
         const videoStartAbs = created.getTime() + clipStart * 1000;
         cfg.teleOffset = Math.round((S.dateStart.getTime() - videoStartAbs) / 1000 * 100) / 100;
-        toast(`Synced: clip starts ${fmtT(clipStart)} into the source. Offset set to ${cfg.teleOffset.toFixed(1)}s.`, 6000);
+        toast(i18n("Synced: clip starts {t} into the source. Offset set to {offset}s.", { t: fmtT(clipStart), offset: cfg.teleOffset.toFixed(1) }), 6000);
       } else {
         // No absolute anchor: assume the telemetry started with the source.
         cfg.teleOffset = -clipStart;
-        toast(`Clip starts ${fmtT(clipStart)} into the source. Telemetry aligned to it. Drag to fine-tune.`, 6000);
+        toast(i18n("Clip starts {t} into the source. Telemetry aligned to it. Drag to fine-tune.", { t: fmtT(clipStart) }), 6000);
       }
-      setStatus("ms-sync", `synced · offset ${cfg.teleOffset.toFixed(1)}s`);
+      setStatus("ms-sync", i18n("synced · offset {offset}s", { offset: cfg.teleOffset.toFixed(1) }));
       persistCfg(); layoutTimeline(); requestDraw();
     } catch (err) {
-      toast("Auto-sync failed: " + err.message, 5000);
-      setStatus("ms-sync", "failed, drag the trip strip to align by hand");
+      toast(i18n("Auto-sync failed: {error}", { error: err.message }), 5000);
+      setStatus("ms-sync", i18n("failed, drag the trip strip to align by hand"));
     }
   });
 
@@ -1639,9 +1641,9 @@
     try {
       applyCfg(JSON.parse(await f.text()));
       persistCfg(); buildSidebar(); layoutTimeline(); drawTeleGraph(); requestDraw();
-      toast("Setup loaded.");
+      toast(i18n("Setup loaded."));
     } catch {
-      toast("Not a valid setup file.");
+      toast(i18n("Not a valid setup file."));
     }
   });
 
@@ -1657,22 +1659,22 @@
     if (hasVideo && videoEl.videoWidth) {
       const vw = videoEl.videoWidth, vh = videoEl.videoHeight;
       opts = [];
-      if (vw * 2 <= 4096 && vh * 2 <= 4096) opts.push([even(vw * 2), even(vh * 2), "2x upscale"]);
+      if (vw * 2 <= 4096 && vh * 2 <= 4096) opts.push([even(vw * 2), even(vh * 2), i18n("2x upscale")]);
       opts.push([even(vw), even(vh), "source"]);
-      opts.push([even(vw / 2), even(vh / 2), "half"]);
-      opts.push([even(vw / 4), even(vh / 4), "fast preview"]);
+      opts.push([even(vw / 2), even(vh / 2), i18n("half")]);
+      opts.push([even(vw / 4), even(vh / 4), i18n("fast preview")]);
     } else {
-      opts = [[1920, 1080, ""], [1280, 720, ""], [3840, 2160, ""], [854, 480, "fast preview"]];
+      opts = [[1920, 1080, ""], [1280, 720, ""], [3840, 2160, ""], [854, 480, i18n("fast preview")]];
     }
     sel.innerHTML = opts.map(([w, h, tag], i) =>
-      `<option value="${w}x${h}"${(hasVideo ? tag === "source" : i === 0) ? " selected" : ""}>${w} × ${h}${tag ? " (" + tag + ")" : ""}</option>`).join("");
+      `<option value="${w}x${h}"${(hasVideo ? tag === "source" : i === 0) ? " selected" : ""}>${w} × ${h}${tag ? " (" + (tag === "source" ? i18n("source") : tag) + ")" : ""}</option>`).join("");
   }
   // Frame-rate options: the detected source rate first (so matching it is
   // one click and needs no resampling), then the common broadcast rates.
   function buildFpsOptions() {
     const sel = $("xp-fps");
     const rows = [];
-    if (videoFps) rows.push([videoFps, "source"]);
+    if (videoFps) rows.push([videoFps, i18n("source")]);
     for (const f of [60, 50, 30, 25, 24]) rows.push([f, ""]);
     const seen = new Set(), opts = [];
     for (const [f, tag] of rows) {
@@ -1695,21 +1697,21 @@
     const trimmed = cfg.trimStart > 0.05 || s1 < S.dur - 0.05;
     if (hasVideo) {
       sel.innerHTML =
-        '<option value="video">Whole video</option>' +
-        '<option value="trip">Trip (in-out markers)</option>' +
-        '<option value="trip-chroma">In-out markers + chroma tails</option>';
+        '<option value="video">' + i18n("Whole video") + '</option>' +
+        '<option value="trip">' + i18n("Trip (in-out markers)") + '</option>' +
+        '<option value="trip-chroma">' + i18n("In-out markers + chroma tails") + '</option>';
       sel.value = trimmed ? "trip" : "video";
     } else {
       // With no in-out markers set the two are identical, so default to
       // Whole trip and disable the redundant in-out option.
       sel.innerHTML =
-        `<option value="trip"${trimmed ? "" : " disabled"}>Trip (in-out markers)</option>` +
-        '<option value="whole-trip">Whole trip</option>';
+        `<option value="trip"${trimmed ? "" : " disabled"}>${i18n("Trip (in-out markers)")}</option>` +
+        '<option value="whole-trip">' + i18n("Whole trip") + '</option>';
       sel.value = trimmed ? "trip" : "whole-trip";
     }
   }
   function openExport() {
-    if (!S) { toast("Load a trip first."); return; }
+    if (!S) { toast(i18n("Load a trip first.")); return; }
     buildResOptions();
     buildFpsOptions();
     buildRangeOptions();
@@ -1756,7 +1758,7 @@
     // off the footage; block the export and say why.
     const empty = dur < 0.3;
     $("xp-start").disabled = empty;
-    $("xp-start").textContent = empty ? "Trip trim is outside the video" : "Start";
+    $("xp-start").textContent = empty ? i18n("Trip trim is outside the video") : i18n("Start");
   }
 
   let cancelExport = false;
@@ -1774,10 +1776,10 @@
     try {
       if ("VideoEncoder" in window && window.Mp4Muxer) await exportWebCodecs(w, h, fps);
       else await exportMediaRecorder(w, h, fps);
-      if (!cancelExport) toast("Video exported." + (exportAudioNote ? " " + exportAudioNote : ""), exportAudioNote ? 6000 : 3500);
+      if (!cancelExport) toast(i18n("Video exported.") + (exportAudioNote ? " " + exportAudioNote : ""), exportAudioNote ? 6000 : 3500);
     } catch (err) {
       console.error(err);
-      toast("Export failed: " + err.message, 6000);
+      toast(i18n("Export failed: {error}", { error: err.message }), 6000);
     }
     exporting = false;
     xpModal.classList.add("hidden");
@@ -1814,14 +1816,14 @@
     let audioBuf = null;
     let audioSkip = "";
     if (hasVideo) {
-      if (videoFile.size > 2e9) audioSkip = "video over 2 GB";
-      else if (dur > 3 * 3600) audioSkip = "over 3 hours";
+      if (videoFile.size > 2e9) audioSkip = i18n("video over 2 GB");
+      else if (dur > 3 * 3600) audioSkip = i18n("over 3 hours");
       else {
-        xpStatus("Decoding audio…", 0);
+        xpStatus(i18n("Decoding audio…"), 0);
         try {
           const ac = new OfflineAudioContext(2, 2, 48000);
           audioBuf = await ac.decodeAudioData(await videoFile.arrayBuffer());
-        } catch { audioBuf = null; audioSkip = "audio track could not be decoded"; }
+        } catch { audioBuf = null; audioSkip = i18n("audio track could not be decoded"); }
       }
     }
     let audioCodec = null;
@@ -1833,9 +1835,9 @@
         }).catch(() => null);
         if (sup && sup.supported) { audioCodec = { codec: cand[0], mux: cand[1], chans }; break; }
       }
-      if (!audioCodec) audioSkip = "no supported audio encoder";
+      if (!audioCodec) audioSkip = i18n("no supported audio encoder");
     }
-    exportAudioNote = audioCodec ? "" : (audioSkip ? "Exported without sound: " + audioSkip + "." : "");
+    exportAudioNote = audioCodec ? "" : (audioSkip ? i18n("Exported without sound: {reason}.", { reason: audioSkip }) : "");
 
     // The muxer needs an integer timescale. Broadcast rates like 29.97
     // (30000/1001) are handled by scaling the timescale ×1000 so the
@@ -1905,12 +1907,12 @@
         const el = (performance.now() - t0) / 1000;
         const rate = (i / fps) / (el || 1);
         const eta = el / Math.max(1, i) * (total - i);
-        xpStatus(`Frame ${i + 1} / ${total} · ${rate.toFixed(1)}x realtime · ~${fmtT(eta)} left${audioCodec ? "" : (hasVideo && audioSkip) ? " · no sound (" + audioSkip + ")" : ""}`, i / total);
+        xpStatus(audioCodec ? i18n("Frame {i} / {total} · {rate}x realtime · ~{eta} left", { i: i + 1, total, rate: rate.toFixed(1), eta: fmtT(eta) }) : (hasVideo && audioSkip) ? i18n("Frame {i} / {total} · {rate}x realtime · ~{eta} left · no sound ({reason})", { i: i + 1, total, rate: rate.toFixed(1), eta: fmtT(eta), reason: audioSkip }) : i18n("Frame {i} / {total} · {rate}x realtime · ~{eta} left", { i: i + 1, total, rate: rate.toFixed(1), eta: fmtT(eta) }), i / total);
         await new Promise((r) => setTimeout(r, 0));
       }
     }
     if (cancelExport) { try { encoder.close(); } catch (_) {} return; }
-    xpStatus("Finalizing…", 1);
+    xpStatus(i18n("Finalizing…"), 1);
     await encoder.flush();
     encoder.close();
     muxer.finalize();
@@ -1953,7 +1955,7 @@
         const rt = hasVideo ? videoEl.currentTime : (playStart + (performance.now() - t0) / 1000);
         drawFrame(ctx, W, H, rt, false);
         const prog = (rt - playStart) / dur;
-        xpStatus(`Recording ${fmtT(rt - playStart)} / ${fmtT(dur)} (realtime)`, prog);
+        xpStatus(i18n("Recording {t} / {dur} (realtime)", { t: fmtT(rt - playStart), dur: fmtT(dur) }), prog);
         if (cancelExport || rt >= playEnd - 0.05 || (hasVideo && videoEl.ended)) return res();
         requestAnimationFrame(step);
       };

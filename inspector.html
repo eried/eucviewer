@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Trip Inspector - EUC Planet</title>
+    <title data-i18n>Trip Inspector - EUC Planet</title>
     <link rel="icon" href="static/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
     <link rel="stylesheet" href="static/css/inspector.css?v=70" />
@@ -32,7 +32,7 @@
                     <circle cx="60" cy="60" r="4" class="gauge-hub" />
                 </svg>
                 <div class="gauge-value"><span id="speedo-value">0</span></div>
-                <div class="gauge-label">Speed</div>
+                <div class="gauge-label" data-i18n>Speed</div>
             </div>
 
             <div class="gauge gauge-battery">
@@ -40,34 +40,34 @@
                     <div class="battery-fill" id="battery-fill"></div>
                     <div class="battery-text" id="battery-value">&mdash;</div>
                 </div>
-                <div class="gauge-label">Battery</div>
+                <div class="gauge-label" data-i18n>Battery</div>
             </div>
 
-            <div class="gauge gauge-gforce hidden" id="gforce-gauge" title="Instantaneous G-Force (lateral / longitudinal)">
+            <div class="gauge gauge-gforce hidden" id="gforce-gauge" title="Instantaneous G-Force (lateral / longitudinal)" data-i18n-attrs="title">
                 <canvas id="gforce-canvas" class="gforce-canvas"></canvas>
                 <div class="gforce-info">
-                    <div class="gauge-label">G-Force</div>
+                    <div class="gauge-label" data-i18n>G-Force</div>
                     <div class="gforce-num"><span id="gforce-value">0.00</span><small>g</small></div>
                 </div>
             </div>
 
             <div class="readout">
-                <div class="readout-label">Distance</div>
+                <div class="readout-label" data-i18n>Distance</div>
                 <div class="readout-value"><span id="odo-value">0.00</span><small class="unit-dist">km</small></div>
             </div>
 
             <div class="readout">
-                <div class="readout-label">Voltage</div>
+                <div class="readout-label" data-i18n>Voltage</div>
                 <div class="readout-value"><span id="volt-value">&mdash;</span><small>V</small></div>
             </div>
 
             <div class="readout">
-                <div class="readout-label">Temp</div>
+                <div class="readout-label" data-i18n>Temp</div>
                 <div class="readout-value"><span id="temp-value">&mdash;</span><small class="unit-temp">&deg;C</small></div>
             </div>
 
             <div class="readout">
-                <div class="readout-label">Altitude</div>
+                <div class="readout-label" data-i18n>Altitude</div>
                 <div class="readout-value"><span id="alt-value">&mdash;</span><small class="unit-alt">m</small></div>
             </div>
 
@@ -78,7 +78,7 @@
             </div>
             </div>
 
-            <button type="button" id="dash-toggle" class="dash-toggle" aria-label="Collapse dashboard" title="Collapse / expand">
+            <button type="button" id="dash-toggle" class="dash-toggle" aria-label="Collapse dashboard" title="Collapse / expand" data-i18n-attrs="aria-label title">
                 <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 6 8 10 12 6"/></svg>
             </button>
         </header>
@@ -86,86 +86,86 @@
         <main id="stage">
             <div id="map">
                 <div id="map-controls" class="hidden collapsed">
-                    <button type="button" id="map-controls-toggle" title="Map settings" aria-label="Map settings">
+                    <button type="button" id="map-controls-toggle" title="Map settings" aria-label="Map settings" data-i18n-attrs="title aria-label">
                         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
                     </button>
                     <div class="map-controls-body">
                         <label>
-                            <span>Map style</span>
+                            <span data-i18n>Map style</span>
                             <select id="theme-select">
-                                <option value="standard">Standard (OSM)</option>
+                                <option value="standard" data-i18n>Standard (OSM)</option>
                                 <option value="cyclosm">CyclOSM</option>
                                 <option value="topo">OpenTopoMap</option>
-                                <option value="hot">Humanitarian</option>
-                                <option value="voyager">Streets</option>
-                                <option value="cartodark">Dark</option>
-                                <option value="satellite" selected>Satellite</option>
+                                <option value="hot" data-i18n>Humanitarian</option>
+                                <option value="voyager" data-i18n>Streets</option>
+                                <option value="cartodark" data-i18n>Dark</option>
+                                <option value="satellite" selected data-i18n>Satellite</option>
                             </select>
                         </label>
                         <label>
-                            <span>Trace color</span>
+                            <span data-i18n>Trace color</span>
                             <select id="color-select">
-                                <option value="solid">Solid</option>
-                                <optgroup label="Metric">
-                                    <option value="speed" selected>Speed</option>
-                                    <option value="gpsspeed">GPS speed</option>
+                                <option value="solid" data-i18n>Solid</option>
+                                <optgroup label="Metric" data-i18n-attrs="label">
+                                    <option value="speed" selected data-i18n>Speed</option>
+                                    <option value="gpsspeed" data-i18n>GPS speed</option>
                                     <option value="pwm">PWM</option>
-                                    <option value="power">Power</option>
-                                    <option value="current">Current</option>
-                                    <option value="torque">Torque</option>
-                                    <option value="phase">Phase current</option>
-                                    <option value="battery">Battery</option>
-                                    <option value="voltage">Voltage</option>
-                                    <option value="temp">Temp</option>
-                                    <option value="altitude">Altitude</option>
+                                    <option value="power" data-i18n>Power</option>
+                                    <option value="current" data-i18n>Current</option>
+                                    <option value="torque" data-i18n>Torque</option>
+                                    <option value="phase" data-i18n>Phase current</option>
+                                    <option value="battery" data-i18n>Battery</option>
+                                    <option value="voltage" data-i18n>Voltage</option>
+                                    <option value="temp" data-i18n>Temp</option>
+                                    <option value="altitude" data-i18n>Altitude</option>
                                 </optgroup>
-                                <optgroup label="Movement">
-                                    <option value="moving">Moving</option>
-                                    <option value="still">Stopped</option>
-                                    <option value="mix">Mix</option>
+                                <optgroup label="Movement" data-i18n-attrs="label">
+                                    <option value="moving" data-i18n>Moving</option>
+                                    <option value="still" data-i18n>Stopped</option>
+                                    <option value="mix" data-i18n>Mix</option>
                                 </optgroup>
                             </select>
                         </label>
                         <label>
-                            <span>Palette</span>
-                            <select id="palette-select" title="Colour scheme for the metric trace gradients.">
-                                <option value="default">Default</option>
-                                <option value="reverse">Reverse</option>
-                                <option value="legacy">Legacy</option>
-                                <option value="rainbow">Rainbow</option>
-                                <option value="reverse-rainbow">Rainbow inv.</option>
-                                <option value="viridis">Viridis</option>
+                            <span data-i18n>Palette</span>
+                            <select id="palette-select" title="Colour scheme for the metric trace gradients." data-i18n-attrs="title">
+                                <option value="default" data-i18n>Default</option>
+                                <option value="reverse" data-i18n>Reverse</option>
+                                <option value="legacy" data-i18n>Legacy</option>
+                                <option value="rainbow" data-i18n>Rainbow</option>
+                                <option value="reverse-rainbow" data-i18n>Rainbow inv.</option>
+                                <option value="viridis" data-i18n>Viridis</option>
                             </select>
                         </label>
                         <label>
-                            <span>Trace style</span>
-                            <select id="trace-style-select" title="How track lines are drawn. Follows the map style automatically until you pick one.">
-                                <option value="normal">Normal</option>
-                                <option value="neon">Neon</option>
-                                <option value="dark">Dark</option>
+                            <span data-i18n>Trace style</span>
+                            <select id="trace-style-select" title="How track lines are drawn. Follows the map style automatically until you pick one." data-i18n-attrs="title">
+                                <option value="normal" data-i18n>Normal</option>
+                                <option value="neon" data-i18n>Neon</option>
+                                <option value="dark" data-i18n>Dark</option>
                             </select>
                         </label>
                         <label>
-                            <span>Trace mode</span>
+                            <span data-i18n>Trace mode</span>
                             <select id="trace-mode-select">
-                                <option value="trail-fixed" selected>Trail</option>
-                                <option value="trail-dynamic">Trail dynamic</option>
-                                <option value="whole">Whole route</option>
+                                <option value="trail-fixed" selected data-i18n>Trail</option>
+                                <option value="trail-dynamic" data-i18n>Trail dynamic</option>
+                                <option value="whole" data-i18n>Whole route</option>
                             </select>
                         </label>
                         <div class="follow-group">
-                            <span class="follow-label">Follow</span>
+                            <span class="follow-label" data-i18n>Follow</span>
                             <label class="follow-row">
                                 <input type="checkbox" id="follow-pan" checked />
-                                <span>Pan</span>
+                                <span data-i18n>Pan</span>
                             </label>
                             <label class="follow-row">
                                 <input type="checkbox" id="follow-rotate" checked />
-                                <span>Rot</span>
+                                <span data-i18n>Rot</span>
                             </label>
                             <label class="follow-row">
                                 <input type="checkbox" id="follow-zoom" checked />
-                                <span>Zoom</span>
+                                <span data-i18n>Zoom</span>
                             </label>
                         </div>
                         <div id="color-legend" class="hidden">
@@ -181,29 +181,29 @@
 
             <aside id="charts">
                 <div class="charts-toolbar">
-                    <span class="ct-title">Metrics</span>
+                    <span class="ct-title" data-i18n>Metrics</span>
                     <span class="ct-spacer"></span>
-                    <button type="button" id="charts-collapse-all" class="ct-iconbtn" title="Collapse all graphs">
+                    <button type="button" id="charts-collapse-all" class="ct-iconbtn" title="Collapse all graphs" data-i18n-attrs="title">
                         <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 6 8 10 12 6"/></svg>
                     </button>
-                    <button type="button" id="charts-trim" class="ct-btn" title="Set the playback section by typing or dragging">
+                    <button type="button" id="charts-trim" class="ct-btn" title="Set the playback section by typing or dragging" data-i18n-attrs="title">
                         <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M3 2v12M13 2v12"/><path d="M3 8h10"/></svg>
-                        Trim
+                        <span data-i18n>Trim</span>
                     </button>
-                    <button type="button" id="charts-customize" class="ct-btn" title="Reorder, hide, or add graphs">
+                    <button type="button" id="charts-customize" class="ct-btn" title="Reorder, hide, or add graphs" data-i18n-attrs="title">
                         <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M2 4h9M2 8h6M2 12h9"/><circle cx="13" cy="4" r="1.6"/><circle cx="10" cy="8" r="1.6"/><circle cx="13" cy="12" r="1.6"/></svg>
-                        Customize
+                        <span data-i18n>Customize</span>
                     </button>
                     <span class="ct-split" id="charts-compare-split">
-                        <button type="button" id="charts-compare" class="ct-btn" title="Overlay another trip on these graphs">
+                        <button type="button" id="charts-compare" class="ct-btn" title="Overlay another trip on these graphs" data-i18n-attrs="title">
                             <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 5.5h10M10 3l3 2.5-3 2.5M13.5 10.5h-10M6 8l-3 2.5 3 2.5"/></svg>
-                            Compare
+                            <span data-i18n>Compare</span>
                         </button>
-                        <button type="button" class="ct-x" id="charts-compare-off" title="Stop comparing" aria-label="Stop comparing">&times;</button>
+                        <button type="button" class="ct-x" id="charts-compare-off" title="Stop comparing" aria-label="Stop comparing" data-i18n-attrs="title aria-label">&times;</button>
                     </span>
                 </div>
                 <!-- Shown when every graph is hidden (all toggled off in Customize). -->
-                <div class="charts-empty hidden" id="charts-empty">
+                <div class="charts-empty hidden" id="charts-empty" data-i18n>
                     No graphs to show here. Create a new one or enable some in Customize.
                 </div>
                 <!-- Each block's header (label + min/value/max + collapse caret)
@@ -227,7 +227,7 @@
             <!-- Drag handle on the boundary between the map and the graphs.
                  It sits on #stage, not inside #charts: that column scrolls,
                  and a handle parked in it slid away with the content. -->
-            <div id="sidebar-resize" title="Drag to resize the graphs. Double-click to reset."><span></span></div>
+            <div id="sidebar-resize" title="Drag to resize the graphs. Double-click to reset." data-i18n-attrs="title"><span></span></div>
         </main>
 
         <footer id="playback">
@@ -238,15 +238,15 @@
             <div class="scrub-wrap">
                 <div id="scrub-ab-fill" class="scrub-ab-fill hidden"></div>
                 <div id="time-marker" class="time-marker hidden">0:00</div>
-                <div id="zoom-handle-a" class="zoom-handle hidden" title="Drag to refine section start"></div>
-                <div id="zoom-handle-b" class="zoom-handle hidden" title="Drag to refine section end"></div>
+                <div id="zoom-handle-a" class="zoom-handle hidden" title="Drag to refine section start" data-i18n-attrs="title"></div>
+                <div id="zoom-handle-b" class="zoom-handle hidden" title="Drag to refine section end" data-i18n-attrs="title"></div>
                 <input id="scrub" type="range" min="0" max="1000" step="1" value="0" />
-                <div id="zoom-indicator" class="zoom-indicator hidden" title="Click to reset zoom">
+                <div id="zoom-indicator" class="zoom-indicator hidden" title="Click to reset zoom" data-i18n-attrs="title">
                     <span id="zoom-range">0:00 → 0:00</span>
                 </div>
             </div>
             <div class="speed-group">
-                <label>Speed</label>
+                <label data-i18n>Speed</label>
                 <select id="speed-select">
                     <option value="0.25">&frac14;&times;</option>
                     <option value="0.5">&frac12;&times;</option>
@@ -266,95 +266,95 @@
         <div id="error-banner" class="hidden"></div>
     </div>
 
-    <div id="charts-dialog" class="cd-modal hidden" role="dialog" aria-label="Customize graphs">
+    <div id="charts-dialog" class="cd-modal hidden" role="dialog" aria-label="Customize graphs" data-i18n-attrs="aria-label">
         <div class="cd-backdrop" data-cd-close></div>
         <div class="cd-panel">
             <header class="cd-head">
-                <h3>Customize graphs</h3>
-                <button type="button" class="cd-icon" id="cd-import" title="Import layout (.json)">
+                <h3 data-i18n>Customize graphs</h3>
+                <button type="button" class="cd-icon" id="cd-import" title="Import layout (.json)" data-i18n-attrs="title">
                     <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 10V2M4.5 5.5 8 2l3.5 3.5"/><path d="M2 10v3a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-3"/></svg>
                 </button>
-                <button type="button" class="cd-icon" id="cd-export" title="Export layout (.json)">
+                <button type="button" class="cd-icon" id="cd-export" title="Export layout (.json)" data-i18n-attrs="title">
                     <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v8M4.5 6.5 8 10l3.5-3.5"/><path d="M2 10v3a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-3"/></svg>
                 </button>
                 <input type="file" id="cd-import-file" accept=".json,application/json" class="hidden" />
-                <button type="button" class="cd-close" data-cd-close aria-label="Close">&times;</button>
+                <button type="button" class="cd-close" data-cd-close aria-label="Close" data-i18n-attrs="aria-label">&times;</button>
             </header>
             <div class="cd-body">
                 <div id="cd-main">
-                    <div class="cd-hint">Drag to reorder. Toggle to show or hide.</div>
+                    <div class="cd-hint" data-i18n>Drag to reorder. Toggle to show or hide.</div>
                     <ul class="cd-list" id="cd-list"></ul>
                 </div>
                 <div id="cd-editor" class="hidden">
                     <div class="cd-edit-head">
-                        <input type="text" id="cd-edit-name" class="cd-edit-name" placeholder="Graph name" maxlength="40" />
+                        <input type="text" id="cd-edit-name" class="cd-edit-name" placeholder="Graph name" maxlength="40" data-i18n-attrs="placeholder" />
                     </div>
-                    <div class="cd-sub">Metrics to combine</div>
+                    <div class="cd-sub" data-i18n>Metrics to combine</div>
                     <div class="cd-metrics" id="cd-metrics"></div>
-                    <div class="cd-hint cd-edit-note">Each series is scaled to its own range, so different units line up.</div>
+                    <div class="cd-hint cd-edit-note" data-i18n>Each series is scaled to its own range, so different units line up.</div>
                 </div>
             </div>
             <footer class="cd-foot">
                 <button type="button" class="cd-new" id="cd-new">+ New graph</button>
                 <span class="cd-spacer"></span>
-                <button type="button" class="cd-reset" id="cd-reset">Reset</button>
-                <button type="button" class="cd-done" id="cd-close-btn" data-cd-close>Close</button>
-                <button type="button" class="cd-cancel" id="cd-edit-cancel">Cancel</button>
-                <button type="button" class="cd-create" id="cd-edit-create">Create</button>
+                <button type="button" class="cd-reset" id="cd-reset" data-i18n>Reset</button>
+                <button type="button" class="cd-done" id="cd-close-btn" data-cd-close data-i18n>Close</button>
+                <button type="button" class="cd-cancel" id="cd-edit-cancel" data-i18n>Cancel</button>
+                <button type="button" class="cd-create" id="cd-edit-create" data-i18n>Create</button>
             </footer>
         </div>
     </div>
 
     <!-- Trim: a typed / dragged way to set the same playback section the
          pinch gesture makes. Never touches the trip data. -->
-    <div id="trim-dialog" class="cd-modal hidden" role="dialog" aria-label="Trim to section">
+    <div id="trim-dialog" class="cd-modal hidden" role="dialog" aria-label="Trim to section" data-i18n-attrs="aria-label">
         <div class="cd-backdrop" data-trim-close></div>
         <div class="cd-panel trim-panel">
             <header class="cd-head">
-                <h3>Trim to section</h3>
-                <button type="button" class="cd-close" data-trim-close aria-label="Close">&times;</button>
+                <h3 data-i18n>Trim to section</h3>
+                <button type="button" class="cd-close" data-trim-close aria-label="Close" data-i18n-attrs="aria-label">&times;</button>
             </header>
             <div class="cd-body">
                 <div class="trim-track" id="trim-track">
                     <canvas id="trim-spark" class="trim-spark"></canvas>
                     <div class="trim-band" id="trim-band"></div>
-                    <div class="trim-grip" id="trim-grip-a" tabindex="0" role="slider" aria-label="Section start"></div>
-                    <div class="trim-grip" id="trim-grip-b" tabindex="0" role="slider" aria-label="Section end"></div>
+                    <div class="trim-grip" id="trim-grip-a" tabindex="0" role="slider" aria-label="Section start" data-i18n-attrs="aria-label"></div>
+                    <div class="trim-grip" id="trim-grip-b" tabindex="0" role="slider" aria-label="Section end" data-i18n-attrs="aria-label"></div>
                 </div>
                 <div class="trim-scale"><span>0:00</span><span id="trim-total">0:00</span></div>
                 <div class="trim-fields">
-                    <label class="trim-field">Start
+                    <label class="trim-field"><span data-i18n>Start</span>
                         <input type="text" id="trim-start" inputmode="numeric" autocomplete="off" spellcheck="false" />
                     </label>
-                    <label class="trim-field">End
+                    <label class="trim-field"><span data-i18n>End</span>
                         <input type="text" id="trim-end" inputmode="numeric" autocomplete="off" spellcheck="false" />
                     </label>
                 </div>
                 <div class="trim-sum" id="trim-sum"></div>
-                <div class="cd-hint">The trip itself is never changed. This is the same section the pinch gesture sets.</div>
+                <div class="cd-hint" data-i18n>The trip itself is never changed. This is the same section the pinch gesture sets.</div>
             </div>
             <footer class="cd-foot">
-                <button type="button" class="cd-reset" id="trim-reset" title="Put the whole trip back and close">Reset</button>
+                <button type="button" class="cd-reset" id="trim-reset" title="Put the whole trip back and close" data-i18n-attrs="title" data-i18n>Reset</button>
                 <span class="cd-spacer"></span>
-                <button type="button" class="cd-cancel" data-trim-close>Cancel</button>
-                <button type="button" class="cd-create" id="trim-apply">Apply</button>
+                <button type="button" class="cd-cancel" data-trim-close data-i18n>Cancel</button>
+                <button type="button" class="cd-create" id="trim-apply" data-i18n>Apply</button>
             </footer>
         </div>
     </div>
 
     <!-- Compare: pick a second trip, line it up, and ride it along in the
          graphs and the info bar. Nothing here changes either trip. -->
-    <div id="compare-dialog" class="cd-modal hidden" role="dialog" aria-label="Compare trips">
+    <div id="compare-dialog" class="cd-modal hidden" role="dialog" aria-label="Compare trips" data-i18n-attrs="aria-label">
         <div class="cd-backdrop" data-cmp-close></div>
         <div class="cd-panel cmp-panel">
             <header class="cd-head">
-                <h3>Compare trips</h3>
-                <button type="button" class="cd-close" data-cmp-close aria-label="Close">&times;</button>
+                <h3 data-i18n>Compare trips</h3>
+                <button type="button" class="cd-close" data-cmp-close aria-label="Close" data-i18n-attrs="aria-label">&times;</button>
             </header>
             <div class="cd-body">
                 <!-- Step 1: which trip -->
                 <div id="cmp-pick">
-                    <input type="search" id="cmp-search" class="cmp-search" placeholder="Filter trips" autocomplete="off" spellcheck="false" />
+                    <input type="search" id="cmp-search" class="cmp-search" placeholder="Filter trips" autocomplete="off" spellcheck="false" data-i18n-attrs="placeholder" />
                     <ul class="cmp-list" id="cmp-list"></ul>
                 </div>
 
@@ -363,54 +363,55 @@
                     <div class="cmp-chosen">
                         <span class="cmp-dot cmp-dot-b"></span>
                         <span id="cmp-chosen-name"></span>
-                        <button type="button" class="cmp-change" id="cmp-change">Change</button>
+                        <button type="button" class="cmp-change" id="cmp-change" data-i18n>Change</button>
                     </div>
 
                     <div class="cmp-shared" id="cmp-shared"></div>
 
-                    <div class="cd-sub cmp-aligntitle">Alignment</div>
+                    <div class="cd-sub cmp-aligntitle" data-i18n>Alignment</div>
                     <div class="cmp-strip" id="cmp-strip">
                         <canvas id="cmp-strip-canvas"></canvas>
                     </div>
 
                     <div class="cmp-alignrow">
-                        <label class="cmp-lbl" for="cmp-align">Metric</label>
+                        <label class="cmp-lbl" for="cmp-align" data-i18n>Metric</label>
                         <select id="cmp-align"></select>
-                        <label class="cmp-lbl" for="cmp-offset">Offset</label>
+                        <label class="cmp-lbl" for="cmp-offset" data-i18n>Offset</label>
                         <input type="text" id="cmp-offset" class="cmp-offin" inputmode="text" autocomplete="off" spellcheck="false" />
-                        <button type="button" class="cmp-auto" id="cmp-auto" title="Find the offset that lines the two traces up best">Auto</button>
+                        <button type="button" class="cmp-auto" id="cmp-auto" title="Find the offset that lines the two traces up best" data-i18n-attrs="title" data-i18n>Auto</button>
                     </div>
 
-                    <div class="cd-sub cmp-viewtitle">View</div>
+                    <div class="cd-sub cmp-viewtitle" data-i18n>View</div>
                     <div class="cmp-opts">
-                        <div class="cmp-seg" role="group" aria-label="Graph layout">
-                            <button type="button" id="cmp-mode-stack" class="on" title="Each trip gets its own band, one above the other, both on one shared scale">
+                        <div class="cmp-seg" role="group" aria-label="Graph layout" data-i18n-attrs="aria-label">
+                            <button type="button" id="cmp-mode-stack" class="on" title="Each trip gets its own band, one above the other, both on one shared scale" data-i18n-attrs="title">
                                 <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2.5" width="12" height="4.5" rx="1"/><rect x="2" y="9" width="12" height="4.5" rx="1"/></svg>
-                                Stacked
+                                <span data-i18n>Stacked</span>
                             </button>
-                            <button type="button" id="cmp-mode-over" title="Both traces drawn on the same plot">
+                            <button type="button" id="cmp-mode-over" title="Both traces drawn on the same plot" data-i18n-attrs="title">
                                 <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 11.5 5 5l3 4 3-6 2.5 9"/><path d="M1.5 8.5 5 10l3-4 3 4 2.5-3" opacity=".55" stroke-dasharray="2.5 2"/></svg>
-                                Overlay
+                                <span data-i18n>Overlay</span>
                             </button>
                         </div>
                     </div>
-                    <label class="cmp-check" title="Show the difference from this trip instead of the other trip's own value">
+                    <label class="cmp-check" title="Show the difference from this trip instead of the other trip's own value" data-i18n-attrs="title">
                         <input type="checkbox" id="cmp-delta" />
-                        <span>Show deltas</span>
+                        <span data-i18n>Show deltas</span>
                     </label>
                 </div>
             </div>
             <footer class="cd-foot">
-                <button type="button" class="cd-reset hidden" id="cmp-reset" title="Stop comparing and close">Reset</button>
+                <button type="button" class="cd-reset hidden" id="cmp-reset" title="Stop comparing and close" data-i18n-attrs="title" data-i18n>Reset</button>
                 <span class="cd-spacer"></span>
-                <button type="button" class="cd-cancel" data-cmp-close>Cancel</button>
-                <button type="button" class="cd-create" id="cmp-apply">Apply</button>
+                <button type="button" class="cd-cancel" data-cmp-close data-i18n>Cancel</button>
+                <button type="button" class="cd-create" id="cmp-apply" data-i18n>Apply</button>
             </footer>
         </div>
     </div>
 
     <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
     <script src="static/js/units.js?v=3"></script>
-    <script src="static/js/inspector.js?v=138"></script>
+    <script src="static/js/i18n.js?v=6"></script>
+    <script src="static/js/inspector.js?v=139"></script>
 </body>
 </html>

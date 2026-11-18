@@ -10,9 +10,10 @@ data-i18n-html or data-i18n-attrs in the *.html pages.
 
 A dictionary (static/i18n/<code>.js) is one line of wrapper around a JSON
 object. It passes when it has every key and nothing else, keeps each key's
-{placeholders}, and keeps its HTML tags.
+{placeholders}, keeps its HTML tags, and keeps unit symbols as written.
 """
 import glob
+import html
 import io
 import json
 import os
@@ -85,6 +86,16 @@ class Markup(HTMLParser):
             self.open = None
 
 
+ENTITY = re.compile(r"&(#\d+|#x[0-9a-fA-F]+|\w+);")
+KEPT = {"amp", "lt", "gt", "nbsp"}
+
+
+def as_inner_html(src):
+    """Source markup as the browser hands it back from innerHTML: every
+    entity but the four it must keep becomes the character itself."""
+    return ENTITY.sub(lambda m: m.group(0) if m.group(1) in KEPT else html.unescape(m.group(0)), src)
+
+
 HTML_BLOCK = re.compile(r"<(\w+)\b[^>]*\bdata-i18n-html(?:=\"\")?[^>]*>(.*?)</\1>", re.S)
 
 
@@ -96,7 +107,7 @@ def html_keys(path, problems):
     keys = p.keys
     # The markup key is the browser's innerHTML, which for the plain,
     # double-quoted, lower-case markup these pages use is the source itself.
-    keys += [squash(m.group(2)) for m in HTML_BLOCK.finditer(src)]
+    keys += [squash(as_inner_html(m.group(2))) for m in HTML_BLOCK.finditer(src)]
     return keys
 
 
@@ -111,6 +122,9 @@ def collect():
     return sorted(set(k for k in keys if k)), problems
 
 
+# Forensics converts units inside its static copy by finding these symbols,
+# after translation. A localised unit would be left in metric.
+UNITS = ["km/h", "mph", "Wh/km", "Wh/mi", "°C", "°F", "km/%", "%/h"]
 PLACEHOLDER = re.compile(r"\{(\w+)\}")
 TAG = re.compile(r"</?\s*(\w+)")
 
@@ -145,6 +159,10 @@ def check(keys):
                 problems.append("%s: placeholders differ for %r" % (name, k[:50]))
             if sorted(t.lower() for t in TAG.findall(k)) != sorted(t.lower() for t in TAG.findall(v)):
                 problems.append("%s: tags differ for %r" % (name, k[:50]))
+            for unit in UNITS:
+                if k.count(unit) != v.count(unit):
+                    problems.append("%s: unit %s changed in %r" % (name, unit, k[:50]))
+                    break
     return problems
 
 

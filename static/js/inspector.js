@@ -3,6 +3,8 @@
 
   // Units are decided and converted in units.js, shared by every page.
   const UNITS = window.EucUnits.UNITS;
+  // Every string the rider reads goes through this (i18n.js).
+  const i18n = window.EucI18n.t;
 
   // Date order follows where the rider is, not what language the computer is
   // set to. navigator.language reports the UI language, so Windows set to
@@ -96,13 +98,13 @@
   }
 
   if (!tracks || !Array.isArray(tracks) || isNaN(trackIdx) || !tracks[trackIdx]) {
-    showError("Trip not found. Open the main viewer and click a trip's inspect button.");
+    showError(i18n("Trip not found. Open the main viewer and click a trip's inspect button."));
     return;
   }
   const track = tracks[trackIdx];
   const ts = track.timeseries || [];
   if (ts.length < 2) {
-    showError("Trip has no timeseries data to play back.");
+    showError(i18n("Trip has no timeseries data to play back."));
     return;
   }
 
@@ -334,7 +336,7 @@
   // Title is the trip's datetime; the raw filename (when there is one)
   // lives in the hover tooltip instead of the headline.
   const nameEl = document.getElementById("trip-name");
-  let dateTitle = track.date || track.name || "Trip";
+  let dateTitle = track.date || track.name || i18n("Trip");
   if (track.dateStart) {
     const d = new Date(track.dateStart);
     if (!isNaN(d.getTime())) {
@@ -359,9 +361,9 @@
     if (track.stats.distanceKm) gRide.push(UNITS.dist(track.stats.distanceKm).toFixed(2) + " " + UNITS.distUnit);
     const durMin = Math.round(duration / 60);
     if (durMin > 0) gRide.push(durMin >= 60 ? Math.floor(durMin / 60) + "h " + (durMin % 60) + "m" : durMin + "m");
-    if (track.stats.maxSpeed) gSpeed.push(UNITS.speed(track.stats.maxSpeed).toFixed(0) + " " + UNITS.speedUnit + " max");
+    if (track.stats.maxSpeed) gSpeed.push(i18n("{v} {unit} max", { v: UNITS.speed(track.stats.maxSpeed).toFixed(0), unit: UNITS.speedUnit }));
     if (durMin > 0 && totalKm > 0) {
-      gSpeed.push("avg " + UNITS.speed(totalKm / (duration / 3600)).toFixed(1) + " " + UNITS.speedUnit);
+      gSpeed.push(i18n("avg {v} {unit}", { v: UNITS.speed(totalKm / (duration / 3600)).toFixed(1), unit: UNITS.speedUnit }));
     }
     // Torque / phase current (EUC Planet 0.19+): peak drive and peak regen
     // shown separately (both are bipolar), only when the trip records them.
@@ -374,15 +376,15 @@
     }
     const driveRegen = (drv, rgn, unit, dp) => {
       const p = [];
-      if (drv > 0) p.push(drv.toFixed(dp) + " " + unit + " drive");
-      if (rgn > 0) p.push(rgn.toFixed(dp) + " " + unit + " regen");
+      if (drv > 0) p.push(i18n("{v} {unit} drive", { v: drv.toFixed(dp), unit: unit }));
+      if (rgn > 0) p.push(i18n("{v} {unit} regen", { v: rgn.toFixed(dp), unit: unit }));
       return p.join(" / ");
     };
     const tqLabel = driveRegen(tqDrive, tqRegen, "Nm", 1);
     const phLabel = driveRegen(phDrive, phRegen, "A", 0);
     if (tqLabel) gTorque.push(tqLabel);
     if (phLabel) gPhase.push(phLabel);
-    gMeta.push((track.stats.rows || ts.length).toLocaleString() + " samples");
+    gMeta.push(i18n("{n} samples", { n: (track.stats.rows || ts.length).toLocaleString() }));
   }
   // Every stat is unbreakable and carries its own leading separator, so a
   // group wide enough to still wrap breaks between stats and the dot travels
@@ -990,9 +992,9 @@
     bar.classList.remove("inverted");
     bar.style.backgroundImage = gradientCssFor(mode); // per-metric ramp
     if (stats.threshold) {
-      legend.querySelector("[data-legend-min]").textContent = stats.threshold === "mix" ? "Stops" : "Slow";
+      legend.querySelector("[data-legend-min]").textContent = stats.threshold === "mix" ? i18n("Stops") : i18n("Slow");
       legend.querySelector("[data-legend-max]").textContent =
-        stats.threshold === "moving" ? "Fast" : stats.threshold === "mix" ? "Riding" : "Still";
+        stats.threshold === "moving" ? i18n("Fast") : stats.threshold === "mix" ? i18n("Riding") : i18n("Still");
       legend.classList.remove("hidden");
       return;
     }
@@ -1148,7 +1150,7 @@
     // "Speed" trace is the wheel's dial speed; name it "Wheel speed" when GPS
     // speed is also available so the two metrics read distinctly.
     const speedOpt = sel.querySelector('option[value="speed"]');
-    if (speedOpt) speedOpt.textContent = hasGpsSpeed ? "Wheel speed" : "Speed";
+    if (speedOpt) speedOpt.textContent = hasGpsSpeed ? i18n("Wheel speed") : i18n("Speed");
     if (currentColorMode !== "solid") {
       const active = sel.querySelector(`option[value="${currentColorMode}"]`);
       if (active && active.disabled) {
@@ -1391,7 +1393,7 @@
     });
   } else {
     document.getElementById("map").innerHTML =
-      '<div style="padding:40px;color:#888;text-align:center;">No GPS data for this trip.</div>';
+      '<div style="padding:40px;color:#888;text-align:center;">' + i18n("No GPS data for this trip.") + '</div>';
   }
 
   // ---------- Charts ----------
@@ -1403,21 +1405,21 @@
   // changes, so axis scaling is independent of the locale. The unit string
   // is appended to the live value (min/max stay unit-less for compactness).
   const CHART_CONFIG = {
-    speed:    { color: "#00e5ff", idx: SPD,     label: "Speed",    dp: 1, unitKind: "speed" },
+    speed:    { color: "#00e5ff", idx: SPD,     label: i18n("Speed"),    dp: 1, unitKind: "speed" },
     pwm:      { color: "#ff4081", idx: PWM,     label: "PWM",      dp: 1, unit: "%" },
-    power:    { color: "#7c4dff", idx: POWER,   label: "Power",    dp: 0, unit: "W" },
-    current:  { color: "#ffd740", idx: CURRENT, label: "Current",  dp: 1, render: "current", unit: "A" },
-    torque:   { color: "#ff7043", idx: TORQUE,  label: "Torque",   dp: 1, render: "current", unit: "Nm" },
-    phase:    { color: "#4db6ac", idx: PHASE,   label: "Phase current", dp: 1, render: "current", unit: "A" },
-    battery:  { color: "#69f0ae", idx: BATT,    label: "Battery",  dp: 0, unit: "%" },
-    voltage:  { color: "#ff5252", idx: VOLT,    label: "Voltage",  dp: 1, unit: "V" },
-    temp:     { color: "#ffa000", idx: TEMP,    label: "Temp",     dp: 1, render: "line", unitKind: "temp" },
-    altitude: { color: "#ce93d8", idx: ALT,     label: "Altitude", dp: 0, unitKind: "alt" },
-    speedavg:   { color: "#4dd0e1", idx: SPEEDAVG,   label: "Speed avg",   dp: 1, render: "line", unitKind: "speed" },
-    batteryavg: { color: "#b9f6ca", idx: BATTERYAVG, label: "Battery avg", dp: 0, render: "line", unit: "%" },
-    currentavg: { color: "#ffe57f", idx: CURRENTAVG, label: "Current avg", dp: 1, render: "line", unit: "A" },
-    pwmavg:     { color: "#ff80ab", idx: PWMAVG,     label: "PWM avg",     dp: 1, render: "line", unit: "%" },
-    batterysoc: { color: "#40c4ff", idx: SOC,        label: "Battery envelope", dp: 0, render: "line", unit: "%" },
+    power:    { color: "#7c4dff", idx: POWER,   label: i18n("Power"),    dp: 0, unit: "W" },
+    current:  { color: "#ffd740", idx: CURRENT, label: i18n("Current"),  dp: 1, render: "current", unit: "A" },
+    torque:   { color: "#ff7043", idx: TORQUE,  label: i18n("Torque"),   dp: 1, render: "current", unit: "Nm" },
+    phase:    { color: "#4db6ac", idx: PHASE,   label: i18n("Phase current"), dp: 1, render: "current", unit: "A" },
+    battery:  { color: "#69f0ae", idx: BATT,    label: i18n("Battery"),  dp: 0, unit: "%" },
+    voltage:  { color: "#ff5252", idx: VOLT,    label: i18n("Voltage"),  dp: 1, unit: "V" },
+    temp:     { color: "#ffa000", idx: TEMP,    label: i18n("Temp"),     dp: 1, render: "line", unitKind: "temp" },
+    altitude: { color: "#ce93d8", idx: ALT,     label: i18n("Altitude"), dp: 0, unitKind: "alt" },
+    speedavg:   { color: "#4dd0e1", idx: SPEEDAVG,   label: i18n("Speed avg"),   dp: 1, render: "line", unitKind: "speed" },
+    batteryavg: { color: "#b9f6ca", idx: BATTERYAVG, label: i18n("Battery avg"), dp: 0, render: "line", unit: "%" },
+    currentavg: { color: "#ffe57f", idx: CURRENTAVG, label: i18n("Current avg"), dp: 1, render: "line", unit: "A" },
+    pwmavg:     { color: "#ff80ab", idx: PWMAVG,     label: i18n("PWM avg"),     dp: 1, render: "line", unit: "%" },
+    batterysoc: { color: "#40c4ff", idx: SOC,        label: i18n("Battery envelope"), dp: 0, render: "line", unit: "%" },
   };
   function chartUnit(cfg) {
     if (cfg.unitKind === "speed") return UNITS.speedUnit;
@@ -1487,8 +1489,8 @@
         return s;
       };
       // With GPS as a companion, the wheel's own dial speed is "Wheel Speed".
-      const sWheel = mkRow("Wheel Speed", false, c.cfg.color);
-      const sGps = mkRow("GPS Speed", true, c.extra.color);
+      const sWheel = mkRow(i18n("Wheel Speed"), false, c.cfg.color);
+      const sGps = mkRow(i18n("GPS Speed"), true, c.extra.color);
       const rDiff = makeEl("div", "ch-row ch-row-diff");
       rDiff.appendChild(makeEl("span", "ch-label", ""));
       const sDiff = makeStatline();
@@ -1571,7 +1573,7 @@
     if (OPTIONAL_CHARTS.has(k) && !chartHasData(cfg.idx)) return;
     CUSTOM_AVAIL.push({ key: k, idx: cfg.idx, color: cfg.color, label: cfg.label, unitKind: cfg.unitKind, unit: cfg.unit, dp: cfg.dp });
   });
-  if (hasGpsSpeed) CUSTOM_AVAIL.push({ key: "gpsspeed", idx: GPSSPD, color: GPS_COLOR, label: "GPS Speed", unitKind: "speed", dp: 1 });
+  if (hasGpsSpeed) CUSTOM_AVAIL.push({ key: "gpsspeed", idx: GPSSPD, color: GPS_COLOR, label: i18n("GPS Speed"), unitKind: "speed", dp: 1 });
 
   // Combined graphs: user-built overlays, created / edited / reordered from
   // the customize dialog. Multiple are allowed. Each series is normalised to
@@ -1585,7 +1587,7 @@
     block.dataset.key = def.id;
     const head = makeEl("div", "chart-head");
     head.appendChild(makeEl("span", "ch-caret", "▾"));
-    const nameEl = makeEl("span", "ch-label", def.name || "Combined");
+    const nameEl = makeEl("span", "ch-label", def.name || i18n("Combined"));
     head.appendChild(nameEl);
     const legend = makeEl("div", "custom-legend");
     const body = makeEl("div", "chart-body");
@@ -1599,7 +1601,7 @@
     cg.rebuildLegend = function () {
       legend.innerHTML = "";
       const sel = cg.selected();
-      if (!sel.length) { legend.innerHTML = '<span class="cc-empty">No metrics yet, add them in Customize.</span>'; return; }
+      if (!sel.length) { legend.innerHTML = '<span class="cc-empty">' + i18n("No metrics yet, add them in Customize.") + '</span>'; return; }
       sel.forEach((a) => {
         const item = makeEl("span", "cc-leg");
         const dot = makeEl("span", "cc-dot"); dot.style.background = a.color;
@@ -1610,7 +1612,7 @@
       });
     };
     cg.setMetrics = (arr) => { cg.metricKeys = (arr || []).filter((k) => CUSTOM_AVAIL.some((a) => a.key === k)); cg.rebuildLegend(); if (!cg.collapsed) { resizeChart(cg); drawCombined(cg); } };
-    cg.setName = (nm) => { cg.name = nm; nameEl.textContent = nm || "Combined"; };
+    cg.setName = (nm) => { cg.name = nm; nameEl.textContent = nm || i18n("Combined"); };
     head.addEventListener("click", () => {
       cg.collapsed = !cg.collapsed;
       block.classList.toggle("collapsed", cg.collapsed);
@@ -1671,7 +1673,7 @@
       ctx.fillStyle = "rgba(255,255,255,0.35)";
       ctx.font = (12 * dpr) + "px ui-sans-serif, system-ui, sans-serif";
       ctx.textAlign = "center"; ctx.textBaseline = "middle";
-      ctx.fillText("Add metrics in Customize", w / 2, h / 2);
+      ctx.fillText(i18n("Add metrics in Customize"), w / 2, h / 2);
       ctx.restore();
       cg._px = null;
       return;
@@ -2150,7 +2152,7 @@
         }).format(d);
       }
     }
-    return tr.date || tr.name || "Trip";
+    return tr.date || tr.name || i18n("Trip");
   }
 
   // B's cumulative distance, built the same way the primary trip's is, so
@@ -2213,7 +2215,7 @@
       const bits = [];
       if (st.distanceKm) bits.push(UNITS.dist(st.distanceKm).toFixed(2) + " " + UNITS.distUnit);
       bits.push(fmtTime(cmp.dur));
-      if (st.maxSpeed) bits.push(UNITS.speed(st.maxSpeed).toFixed(0) + " max");
+      if (st.maxSpeed) bits.push(i18n("{v} max", { v: UNITS.speed(st.maxSpeed).toFixed(0) }));
       add("div", "cmp-sub-b", titleEl, bits.join(" · "));
     }
 
@@ -2287,7 +2289,7 @@
     if (!cmpMarker) {
       const el = document.createElement("div");
       el.className = "rider-dot rider-dot-b";
-      el.title = "Compared trip";
+      el.title = i18n("Compared trip");
       cmpMarker = new maplibregl.Marker({ element: el }).setLngLat([lon, lat]).addTo(map);
     } else {
       cmpMarker.setLngLat([lon, lat]);
@@ -2716,7 +2718,7 @@
   }
   if (timeMarker && isFinite(tripStartMs)) {
     timeMarker.style.cursor = "pointer";
-    timeMarker.title = "Click: elapsed → time of day → both";
+    timeMarker.title = i18n("Click: elapsed → time of day → both");
     timeMarker.addEventListener("click", (e) => {
       e.stopPropagation();
       timeMarkerMode = (timeMarkerMode + 1) % 3;
@@ -2746,7 +2748,7 @@
     const themeSel = document.getElementById("theme-select");
     if (themeSel) {
       themeSel.disabled = playing;
-      themeSel.title = playing ? "Pause to change map style" : "";
+      themeSel.title = playing ? i18n("Pause to change map style") : "";
     }
   }
 
@@ -3033,7 +3035,7 @@
       el.className = "scrub-gap";
       el.style.left = (g.start / duration * 100) + "%";
       el.style.width = ((g.end - g.start) / duration * 100) + "%";
-      el.title = "No recording here (wheel off), playback skips it";
+      el.title = i18n("No recording here (wheel off), playback skips it");
       scrub.parentElement.appendChild(el);
     }
   }
@@ -3091,11 +3093,11 @@
     if (zoomed) {
       el.textContent = fmtTime(Math.max(0, currentTime - viewT0));
       total.textContent = fmtTime(viewT1 - viewT0);
-      if (label) label.textContent = "Section";
+      if (label) label.textContent = i18n("Section");
     } else {
       el.textContent = fmtTime(currentTime);
       total.textContent = fmtTime(duration);
-      if (label) label.textContent = "Time";
+      if (label) label.textContent = i18n("Time");
     }
   }
 
@@ -3130,11 +3132,10 @@
     }
     loopBtn.classList.toggle("ab-set", loopOn);
     // Tooltip tracks whether a section is actually selected (no em-dashes).
-    const loopScope = isZoomed() ? "the selected section" : "the whole trip";
     loopBtn.title = loopOn
-      ? `Loop is on, playback repeats ${loopScope}`
-      : `Loop ${loopScope}`;
-    playBtn.title = "Play / Pause (Space)";
+      ? (isZoomed() ? i18n("Loop is on, playback repeats the selected section") : i18n("Loop is on, playback repeats the whole trip"))
+      : (isZoomed() ? i18n("Loop the selected section") : i18n("Loop the whole trip"));
+    playBtn.title = i18n("Play / Pause (Space)");
   }
 
   // Suppress handle hit-testing when the playhead sits on top of it so
@@ -3474,7 +3475,7 @@
 
     let layout = { order: STATIC_ORDER.slice(), hidden: DEFAULT_HIDDEN.slice(), combined: [] };
     const combDef = (k) => layout.combined.find((d) => d.id === k);
-    const labelOf = (k) => isCombined(k) ? ((combDef(k) || {}).name || "Combined") : ((CHART_CONFIG[k] && CHART_CONFIG[k].label) || k);
+    const labelOf = (k) => isCombined(k) ? ((combDef(k) || {}).name || i18n("Combined")) : ((CHART_CONFIG[k] && CHART_CONFIG[k].label) || k);
     const cleanMetrics = (arr) => (Array.isArray(arr) ? arr.filter((k) => CUSTOM_AVAIL.some((a) => a.key === k)) : []);
 
     (function load() {
@@ -3483,14 +3484,14 @@
         if (s && typeof s === "object") {
           if (Array.isArray(s.combined)) {
             layout.combined = s.combined.filter((d) => d && typeof d.id === "string")
-              .map((d) => ({ id: d.id, name: String(d.name || "Combined"), metrics: cleanMetrics(d.metrics) }));
+              .map((d) => ({ id: d.id, name: String(d.name || i18n("Combined")), metrics: cleanMetrics(d.metrics) }));
           }
           const valid = (k) => STATIC_ORDER.includes(k) || layout.combined.some((d) => d.id === k);
           if (Array.isArray(s.order)) layout.order = s.order.filter(valid);
           if (Array.isArray(s.hidden)) layout.hidden = s.hidden.filter(valid);
           // Migrate the earlier single custom-metrics into one combined graph.
           if (Array.isArray(s.custom) && s.custom.length && !layout.combined.length) {
-            layout.combined.push({ id: "combined-1", name: "Combined", metrics: cleanMetrics(s.custom) });
+            layout.combined.push({ id: "combined-1", name: i18n("Combined"), metrics: cleanMetrics(s.custom) });
             if (!layout.order.includes("combined-1")) layout.order.push("combined-1");
           }
         }
@@ -3547,7 +3548,7 @@
       const cb = document.getElementById("charts-collapse-all");
       if (cb) {
         cb.classList.toggle("on", collapsed);
-        cb.title = collapsed ? "Show metrics" : "Hide metrics";
+        cb.title = collapsed ? i18n("Show metrics") : i18n("Hide metrics");
       }
       updateEmptyState();
       requestAnimationFrame(() => {
@@ -3576,10 +3577,10 @@
       listEl.innerHTML = "";
       layout.order.forEach((k) => {
         const row = makeEl("li", "cd-row"); row.dataset.key = k;
-        const grip = makeEl("span", "cd-grip", "⠿"); grip.title = "Drag to reorder";
+        const grip = makeEl("span", "cd-grip", "⠿"); grip.title = i18n("Drag to reorder");
         const shown = !layout.hidden.includes(k);
         const sw = makeEl("label", "cd-switch");
-        sw.title = shown ? "Shown" : "Hidden";
+        sw.title = shown ? i18n("Shown") : i18n("Hidden");
         const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = shown;
         sw.append(cb, makeEl("span", "cd-knob"));
         sw.addEventListener("click", (e) => e.stopPropagation());
@@ -3587,12 +3588,12 @@
           if (cb.checked) layout.hidden = layout.hidden.filter((x) => x !== k);
           else if (!layout.hidden.includes(k)) layout.hidden.push(k);
           row.classList.toggle("is-hidden", !cb.checked);
-          sw.title = cb.checked ? "Shown" : "Hidden";
+          sw.title = cb.checked ? i18n("Shown") : i18n("Hidden");
           save(); apply();
         });
         const name = makeEl("span", "cd-name", labelOf(k));
-        if (AVG_KEYS.has(k)) name.append(makeEl("span", "cd-tag", "avg"));
-        if (isCombined(k)) name.append(makeEl("span", "cd-tag", "combined"));
+        if (AVG_KEYS.has(k)) name.append(makeEl("span", "cd-tag", i18n("avg")));
+        if (isCombined(k)) name.append(makeEl("span", "cd-tag", i18n("combined")));
         row.append(grip, sw, name);
         if (isCombined(k)) {
           // Per-row "Edit" is hidden for now; the graphs are simple enough
@@ -3601,11 +3602,11 @@
           // these two lines and re-adding `edit` to row.append below.
           // const edit = makeEl("button", "cd-rowbtn", "Edit"); edit.type = "button";
           // edit.addEventListener("click", (e) => { e.stopPropagation(); openEditor(k); });
-          const del = makeEl("button", "cd-rowdel"); del.type = "button"; del.title = "Delete graph";
+          const del = makeEl("button", "cd-rowdel"); del.type = "button"; del.title = i18n("Delete graph");
           del.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h10M6.5 4V2.5h3V4M5 4l.5 9a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1l.5-9"/></svg>';
           del.addEventListener("click", (e) => {
             e.stopPropagation();
-            if (!window.confirm(`Delete the "${labelOf(k)}" graph?`)) return;
+            if (!window.confirm(i18n("Delete the \"{name}\" graph?", { name: labelOf(k) }))) return;
             layout.combined = layout.combined.filter((d) => d.id !== k);
             layout.order = layout.order.filter((x) => x !== k);
             layout.hidden = layout.hidden.filter((x) => x !== k);
@@ -3618,7 +3619,7 @@
         listEl.appendChild(row);
       });
       newBtn.disabled = layout.combined.length >= MAX_COMBINED;
-      newBtn.textContent = layout.combined.length >= MAX_COMBINED ? "Max 8 graphs" : "+ New graph";
+      newBtn.textContent = layout.combined.length >= MAX_COMBINED ? i18n("Max 8 graphs") : i18n("+ New graph");
     }
 
     // Smooth drag-reorder: the grabbed row tracks the pointer while the rest
@@ -3702,7 +3703,7 @@
       editingId = id;
       editingIsNew = !!isNew;
       const def = combDef(id);
-      nameInput.value = def ? def.name : "Combined";
+      nameInput.value = def ? def.name : i18n("Combined");
       buildMetrics();
       mainView.classList.add("hidden");
       editorView.classList.remove("hidden");
@@ -3732,7 +3733,7 @@
     nameInput.addEventListener("input", () => {
       const def = combDef(editingId);
       if (!def) return;
-      def.name = nameInput.value || "Combined";
+      def.name = nameInput.value || i18n("Combined");
       save();
       const cg = combinedGraphs.find((c) => c.id === editingId);
       if (cg) cg.setName(def.name);
@@ -3745,7 +3746,7 @@
       if (layout.combined.length >= MAX_COMBINED) return;
       let n = 1; while (layout.combined.some((d) => d.id === "combined-" + n)) n++;
       const id = "combined-" + n;
-      layout.combined.push({ id, name: "Combined " + n, metrics: [] });
+      layout.combined.push({ id, name: i18n("Combined {n}", { n }), metrics: [] });
       layout.order.push(id);
       save(); apply();
       openEditor(id, true);
@@ -3797,7 +3798,7 @@
         try {
           const s = JSON.parse(rd.result);
           const next = { order: STATIC_ORDER.slice(), hidden: [], combined: [] };
-          if (Array.isArray(s.combined)) next.combined = s.combined.filter((d) => d && typeof d.id === "string").map((d) => ({ id: d.id, name: String(d.name || "Combined"), metrics: cleanMetrics(d.metrics) }));
+          if (Array.isArray(s.combined)) next.combined = s.combined.filter((d) => d && typeof d.id === "string").map((d) => ({ id: d.id, name: String(d.name || i18n("Combined")), metrics: cleanMetrics(d.metrics) }));
           const valid = (k) => STATIC_ORDER.includes(k) || next.combined.some((d) => d.id === k);
           if (Array.isArray(s.order)) next.order = s.order.filter(valid);
           if (Array.isArray(s.hidden)) next.hidden = s.hidden.filter(valid);
@@ -3805,7 +3806,7 @@
           STATIC_ORDER.forEach((k) => { if (!next.order.includes(k)) { next.order.push(k); if (DEFAULT_HIDDEN.includes(k) && !next.hidden.includes(k)) next.hidden.push(k); } });
           next.combined.forEach((d) => { if (!next.order.includes(d.id)) next.order.push(d.id); });
           layout = next; save(); apply(); backToList();
-        } catch (err) { alert("That doesn't look like a valid layout file."); }
+        } catch (err) { alert(i18n("That doesn't look like a valid layout file.")); }
       };
       rd.readAsText(f);
     });
@@ -3939,15 +3940,15 @@
         const file = cmpTripFile(tr);
         if (file) li.appendChild(makeEl("span", "cmp-li-file", file));
         if (here) {
-          const tag = makeEl("span", "cmp-here", "open");
-          tag.title = "The trip this inspector is showing";
+          const tag = makeEl("span", "cmp-here", i18n("open"));
+          tag.title = i18n("The trip this inspector is showing");
           li.appendChild(tag);
         }
         li.appendChild(makeEl("span", "cmp-li-sub", tripSummary(tr)));
         li.addEventListener("click", () => choose(i));
         listEl.appendChild(li);
       });
-      if (!shown) listEl.appendChild(makeEl("li", "cmp-empty", q ? "No trip matches that." : "No trip is loaded."));
+      if (!shown) listEl.appendChild(makeEl("li", "cmp-empty", q ? i18n("No trip matches that.") : i18n("No trip is loaded.")));
     }
 
     function choose(i) {
@@ -3959,7 +3960,7 @@
       // Only worth saying when it is bad news. Listing every shared metric
       // just repeated what the graphs are about to show anyway.
       sharedEl.innerHTML = "";
-      if (!shared.length) sharedEl.appendChild(makeEl("span", "cmp-chip cmp-none", "No metric in common"));
+      if (!shared.length) sharedEl.appendChild(makeEl("span", "cmp-chip cmp-none", i18n("No metric in common")));
 
       alignSel.innerHTML = "";
       shared.forEach((k) => {
@@ -4350,7 +4351,7 @@
       if (document.activeElement !== endIn) endIn.value = fmtMs(b);
       startIn.classList.remove("bad");
       endIn.classList.remove("bad");
-      sumEl.textContent = "Section " + fmtTime(b - a) + " of " + fmtTime(duration);
+      sumEl.textContent = i18n("Section {sel} of {total}", { sel: fmtTime(b - a), total: fmtTime(duration) });
     }
 
     function setPending(na, nb) {
