@@ -63,8 +63,9 @@ to mirroring into that repo, ignore them.)
   with `const i18n = window.EucI18n.t;` at the top of each script (`t` is taken by loop
   variables). The first argument must be one plain double-quoted literal, or
   `tools/i18n_extract.py` cannot see it. Static markup is marked instead: `data-i18n` (text),
-  `data-i18n-html` (markup), `data-i18n-attrs="title aria-label"`. The 30 languages are the
-  ones the EUC Planet app ships; each has `static/i18n/<code>.js` and only the one in use is
+  `data-i18n-html` (markup), `data-i18n-attrs="title aria-label"`. The 31 languages are the
+  ones the EUC Planet app ships plus `en-GB`, the same list eucstats has; the source strings
+  are American English and `en-GB.js` only respells them; each has `static/i18n/<code>.js` and only the one in use is
   fetched (a parser-blocking `document.write`, so it is in before `app.js` runs). Resolution
   order: `?lang=`, the `euc_lang` cookie shared with eucstats, the `eucviewer-lang`
   localStorage key, then `navigator.languages`. Only the map page (`index.html`, `app.js`,

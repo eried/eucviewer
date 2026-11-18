@@ -14,7 +14,8 @@
 //   data-i18n-html                 the element's markup, tags and all
 //   data-i18n-attrs="title alt"    the listed attributes
 //
-// The list is the one the EUC Planet app ships. One dictionary per language
+// The list is the one the EUC Planet app ships, plus English (UK), which
+// eucstats has too. One dictionary per language
 // lives in static/i18n/<code>.js and only the one in use is fetched.
 //
 // Resolution order: ?lang= URL param, the cookie shared with eucstats, the
@@ -30,11 +31,12 @@
   const STORAGE_KEY = "eucviewer-lang";
   const COOKIE = "euc_lang";
   // Bump when any dictionary changes, so nobody keeps a stale one.
-  const DICT_VERSION = "4";
+  const DICT_VERSION = "5";
 
   // Native names, never translated.
   const LANGS = {
-    "en": "English",
+    "en": "English (US)",
+    "en-GB": "English (UK)",
     "bg": "Български",
     "cs": "Čeština",
     "da": "Dansk",
@@ -77,6 +79,7 @@
     const lc = String(raw).toLowerCase();
     const base = lc.split("-")[0];
     const region = (lc.split("-")[1] || "").toUpperCase();
+    if (base === "en") return /^(GB|UK|IE|AU|NZ|ZA|IN)$/.test(region) ? "en-GB" : "en";
     if (base === "pt") return PT_PT.indexOf(region) >= 0 ? "pt-PT" : "pt-BR";
     if (base === "zh") return /(^|-)(tw|hk|mo|hant)(-|$)/.test(lc) ? "zh-Hant" : "zh";
     if (base === "nb" || base === "nn" || base === "no") return "no";
