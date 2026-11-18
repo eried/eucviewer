@@ -46,6 +46,14 @@ with the library, with archive, upload, and a stop button for long runs.
 **Video Overlay Studio.** Composites telemetry over ride footage in the browser and
 renders out an MP4 via WebCodecs. An optional Dragy `.vbo` adds GPS speed.
 
+**Languages and units.** The map page speaks the 30 languages the EUC Planet app
+ships, picked from the browser and changeable in the cogwheel. The inspector, forensics
+and video studio are English for now. Units are three separate switches (`km | mi`,
+`°C | °F`, `m | ft`), defaulting from the timezone, not the browser language: miles,
+°F and feet in the US, miles with °C and metres in the UK, metric everywhere else. Both
+choices are shared with [eucstats](https://github.com/eried/eucstats) through a cookie
+on `ried.no`, so changing one site changes the other.
+
 ## Structure
 
 ```
@@ -63,6 +71,9 @@ static/
   css/analytics.css        Forensics styles (incl. print rules)
   css/video.css            Video studio styles
   js/app.js                Main app (Leaflet map, trip tree, recent files, Dropbox UI)
+  js/units.js              Units: the three switches, conversion, timezone default
+  js/i18n.js               Languages: detection, lookup, the cogwheel's picker
+  js/wheel-identity.js     Naming, keying and folding of wheels (map + forensics)
   js/inspector.js          Inspector (MapLibre GL 3D map, charts, playback, compare)
   js/analytics.js          Forensics metrics, trend charts, weather normalisation
   js/parser-worker.js      Web Worker: parses .dbb/.csv/.gpx/.xlsx with JSZip + SheetJS
@@ -71,6 +82,9 @@ static/
   js/source-hints.js       Upload-screen "how to export from DarknessBot / euc.world"
   js/video-editor.js       Video studio (WebCodecs render, mp4-muxer)
   js/euc-game.js           Minigame on the load screen (hold the logo, or #skills)
+  i18n/<code>.js           One dictionary per language; only the one in use is fetched
+  i18n/keys.json           Every English string, as collected by the tool below
+tools/i18n_extract.py      Collects the strings and checks every dictionary
 serve.cmd                  python -m http.server 8000
 ```
 
@@ -92,6 +106,9 @@ No build step. Commit and push; GitHub Pages serves `main` from the root.
   - `weatherCache`: daily ambient temperatures from Open-Meteo, keyed by
     `"{lat}|{lon}"` rounded to 0.1°
 - **localStorage** `dbb_tracks`, fallback for small datasets (silently fails over quota)
+- **localStorage** `eucviewer-units` and `eucviewer-lang`, the cogwheel's choices
+- **Cookies** `euc_units` (e.g. `mi-c-m`) and `euc_lang` (e.g. `pt-BR`) on `ried.no`,
+  the same two choices where eucstats can read them. The viewer sets no other cookie of its own.
 
 The inspector (`inspector.html?i=<index>`) and the forensics page read IndexedDB
 first, then fall back to localStorage. `<index>` is the position in `allTracks`
@@ -134,3 +151,13 @@ serve.cmd            # or: python -m http.server 8000
 # then open http://localhost:8000/
 ```
 Web Workers and IndexedDB require `http://`, not `file://`.
+
+Add `?lang=de` or `?units=mi-c-m` to force a language or units while testing.
+
+## Translating
+
+The English text is the key: `i18n("Upload trips")` in the scripts, `data-i18n` on
+static markup. After adding or changing a string, run `python tools/i18n_extract.py`.
+It rewrites `static/i18n/keys.json` and lists what each dictionary is missing, along
+with any placeholder or tag a translation dropped. To fix a translation, edit the
+value in `static/i18n/<code>.js` and bump `DICT_VERSION` in `static/js/i18n.js`.
