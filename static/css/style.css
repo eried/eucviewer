@@ -1991,8 +1991,13 @@ body:has(#upload-overlay:not(.hidden)) #map-controls .map-only { display: none !
 /* And the other way round: rows that only make sense before a map is up. */
 #map-controls .start-only { display: none; }
 body:has(#upload-overlay:not(.hidden)) #map-controls .start-only { display: flex; }
-/* A plain action in the cogwheel, the same shape as the selects around it. */
+/* A plain action in the cogwheel: half the width of the selects above it
+   (wider only when a language's word needs it),
+   against the right edge, like Replay on eucstats. */
 .menu-btn {
+    flex: 0 0 auto;
+    min-width: 60px;
+    margin-left: auto;
     background: rgba(0, 0, 0, 0.55);
     color: #8fa7b0;
     border: 1px solid rgba(0, 229, 255, 0.22);
@@ -2044,7 +2049,6 @@ body:has(#upload-overlay:not(.hidden)) #map-controls .start-only { display: flex
    else's 120, and since the column is right-aligned that shows up as a
    ragged left edge. */
 #map-controls select,
-#map-controls .menu-btn,
 #map-controls .units-toggle {
     flex: 0 0 124px;
     width: 124px;
