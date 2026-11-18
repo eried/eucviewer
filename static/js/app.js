@@ -1,17 +1,7 @@
 document.addEventListener("DOMContentLoaded", function () {
-  // Imperial unit toggle: drives display labels and converters everywhere
-  // values are shown. Resolution order: ?units= URL param, then localStorage
-  // (the cogwheel toggle persists here), then timezone-based inference.
-  //
-  // We deliberately do NOT use navigator.language any more: English Windows
-  // installations everywhere, including all of Europe, send en-US by
-  // default, so language was misclassifying metric users as imperial.
-  // Timezone is OS-set from the user's actual location and is the strongest
-  // signal we can get without geolocation. Imperial is opt-in: it only
-  // fires when the timezone is unambiguously in the US, a US territory,
-  // Liberia or Myanmar. Anything else (including unknown / missing tz)
-  // falls through to metric so a European never sees miles by accident.
-  const UNITS_STORAGE_KEY = "eucviewer-units";
+  // Units (km or miles, °C or °F, metres or feet) are decided and converted
+  // in units.js, shared by every page.
+  const UNITS = window.EucUnits.UNITS;
 
   // Graph resolution: samples kept per trip after downsampling. Chosen in
   // the settings cogwheel, applied at parse time (see the worker). Higher =
@@ -24,34 +14,12 @@ document.addEventListener("DOMContentLoaded", function () {
     return GRAPHRES_VALUES.includes(v) ? v : GRAPHRES_DEFAULT;
   }
 
-  const IMPERIAL_TZ_RE = new RegExp("^(?:" +
-    "America/(?:Adak|Anchorage|Boise|Chicago|Denver|Detroit|Indiana/[^/]+|Juneau|Kentucky/[^/]+|Los_Angeles|Menominee|Metlakatla|New_York|Nome|North_Dakota/[^/]+|Phoenix|Puerto_Rico|Sitka|St_Thomas|Yakutat)" +
-    "|Pacific/(?:Honolulu|Pago_Pago|Guam|Saipan|Midway|Wake)" +
-    "|Africa/Monrovia" +
-    "|Asia/(?:Yangon|Rangoon)" +
-    ")$");
-  function detectUnits() {
-    try {
-      const force = new URLSearchParams(location.search).get("units");
-      if (force === "imperial" || force === "metric") return force;
-    } catch (_) {}
-    try {
-      const stored = localStorage.getItem(UNITS_STORAGE_KEY);
-      if (stored === "imperial" || stored === "metric") return stored;
-    } catch (_) {}
-    try {
-      const tz = (Intl.DateTimeFormat().resolvedOptions().timeZone || "").trim();
-      if (IMPERIAL_TZ_RE.test(tz)) return "imperial";
-    } catch (_) {}
-    return "metric";
-  }
-
   // Date order follows where the rider is, not what language the computer is
   // set to. navigator.language reports the UI language, so Windows set to
   // English in Norway says en-US, and the US is just about the only place on
   // earth that writes the month first: 08/06 then silently means August 6th
   // on a screen that should read 8 June. The timezone is the location signal
-  // (the same one the metric guess uses above), so a month-first language
+  // (the same one units.js guesses metric from), so a month-first language
   // outside a US zone keeps its language and borrows a day-first region.
   const MDY_TZ_RE = new RegExp("^(?:" +
     "America/(?:Adak|Anchorage|Boise|Chicago|Denver|Detroit|Indiana/[^/]+|Juneau|Kentucky/[^/]+|Los_Angeles|Menominee|Metlakatla|New_York|Nome|North_Dakota/[^/]+|Phoenix|Sitka|Yakutat)" +
@@ -76,35 +44,21 @@ document.addEventListener("DOMContentLoaded", function () {
     return sys;
   }
   const DATE_LOCALE = detectDateLocale();
-  const UNITS = (() => {
-    const imperial = detectUnits() === "imperial";
-    return imperial
-      ? {
-          imperial: true,
-          dist:  (km) => km * 0.621371,
-          speed: (kmh) => kmh * 0.621371,
-          temp:  (c) => c * 9 / 5 + 32,
-          alt:   (m) => m * 3.28084,
-          distUnit: "mi", speedUnit: "mph", tempUnit: "°F", altUnit: "ft",
-        }
-      : {
-          imperial: false,
-          dist:  (km) => km, speed: (kmh) => kmh, temp: (c) => c, alt: (m) => m,
-          distUnit: "km", speedUnit: "km/h", tempUnit: "°C", altUnit: "m",
-        };
-  })();
 
-  // Wire up the cogwheel's Metric/Imperial toggle. Persists to localStorage
-  // and reloads: UNITS is captured into countless render closures, so a
-  // hot-swap would mean re-rendering everything; reload is simpler & cleaner.
+  // Wire up the cogwheel's units toggle. Persists (units.js, which also
+  // tells eucstats) and reloads: UNITS is captured into countless render
+  // closures, so a hot-swap would mean re-rendering everything; reload is
+  // simpler & cleaner.
   (function setupUnitsToggle() {
-    const current = UNITS.imperial ? "imperial" : "metric";
+    const current = UNITS.profile;
     document.querySelectorAll(".units-btn").forEach((btn) => {
-      if (btn.dataset.units === current) btn.classList.add("active");
+      const on = btn.dataset.units === current;
+      btn.classList.toggle("active", on);
+      btn.setAttribute("aria-checked", on ? "true" : "false");
       btn.addEventListener("click", () => {
         const next = btn.dataset.units;
         if (next === current) return;
-        try { localStorage.setItem(UNITS_STORAGE_KEY, next); } catch (_) {}
+        window.EucUnits.set(next);
         location.reload();
       });
     });
@@ -1395,7 +1349,7 @@ document.addEventListener("DOMContentLoaded", function () {
     for (const t of nearTracks) {
       const tr = allTracks[t];
       const label = tr.date || tr.name;
-      popupHtml += `<div class="track-popup-item" data-tidx="${t}">${label} <span>${tr.stats.distanceKm} km</span></div>`;
+      popupHtml += `<div class="track-popup-item" data-tidx="${t}">${label} <span>${UNITS.dist(tr.stats.distanceKm).toFixed(2)} ${UNITS.distUnit}</span></div>`;
     }
     popupHtml += "</div>";
 
@@ -1926,7 +1880,7 @@ document.addEventListener("DOMContentLoaded", function () {
         row.innerHTML = `
           <button type="button" class="recent-file-load">
             <span class="recent-file-name"><span class="recent-file-nametext">${escapeHtml(displayName)}</span>${sourceGlyph}</span>
-            <span class="recent-file-meta">${item.tripCount} trips &middot; ${item.totalKm.toFixed(1)} km &middot; ${escapeHtml(formatRecentTime(item.loadedAt))}</span>
+            <span class="recent-file-meta">${item.tripCount} trips &middot; ${UNITS.dist(item.totalKm).toFixed(1)} ${UNITS.distUnit} &middot; ${escapeHtml(formatRecentTime(item.loadedAt))}</span>
           </button>
         `;
 
@@ -5051,12 +5005,16 @@ document.addEventListener("DOMContentLoaded", function () {
   // the derived columns are simply dropped and regenerated on the next
   // export, so they never compound. Metric exports stay byte-identical
   // to before.
-  const IMPERIAL_COLS = ["Speed (mph)", "Trip distance (mi)", "Temperature (F)"];
+  // Only the quantities shown in imperial get a column: miles on the road
+  // with Celsius (the UK) adds mph and miles and no Fahrenheit.
+  const IMPERIAL_COLS = [
+    ...(UNITS.miles ? ["Speed (mph)", "Trip distance (mi)"] : []),
+    ...(UNITS.fahrenheit ? ["Temperature (F)"] : []),
+  ];
   function imperialVals(speedKmh, tripKm, tempC) {
     return [
-      ((speedKmh || 0) * 0.621371).toFixed(1),
-      ((tripKm || 0) * 0.621371).toFixed(3),
-      ((tempC || 0) * 9 / 5 + 32).toFixed(1),
+      ...(UNITS.miles ? [((speedKmh || 0) * 0.621371).toFixed(1), ((tripKm || 0) * 0.621371).toFixed(3)] : []),
+      ...(UNITS.fahrenheit ? [((tempC || 0) * 9 / 5 + 32).toFixed(1)] : []),
     ];
   }
   // Trip-distance source for the imperial column: the recorded mileage
@@ -5119,7 +5077,7 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function trackToCSV(track) {
-    const imp = UNITS.imperial;
+    const imp = IMPERIAL_COLS.length > 0;
     const wheelPairs = extraMetaPairs(track);
     const extraCells = packExtraPairs(wheelPairs, track.timeseries.length);
     // Full telemetry export: every column the viewer carries, so a .csv export
@@ -5199,7 +5157,7 @@ document.addEventListener("DOMContentLoaded", function () {
   async function trackToXlsxBlob(track) {
     const XLSXLib = await loadXlsxLib();
     const t0 = track.dateStart ? new Date(track.dateStart).getTime() : 0;
-    const imp = UNITS.imperial;
+    const imp = IMPERIAL_COLS.length > 0;
     const headerRow = ["Date", "Speed", "Voltage", "PWM", "Current", "Power", "Battery level",
                        "Total mileage", "Temperature", "Latitude", "Longitude", "Altitude", "GPS speed"];
     if (imp) headerRow.push(...IMPERIAL_COLS);

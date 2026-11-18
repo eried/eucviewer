@@ -648,7 +648,12 @@ body.panel-resizing #trip-panel { transition: none; }
 #panel-tab:focus-visible { outline: 2px solid #00e5ff; outline-offset: -2px; }
 
 #panel-tab-text {
+    /* Reads bottom to top, feet towards the panel. The tab hangs on the
+       panel's left edge, and a label on the left of what it names turns
+       this way, like the y-axis title of a chart. vertical-rl turned half
+       round, not sideways-lr, which Safari only learnt in 18.4. */
     writing-mode: vertical-rl;
+    transform: rotate(180deg);
     text-orientation: mixed;
     color: #00e5ff;
     font-size: 0.82rem;
@@ -2034,7 +2039,9 @@ body.panel-resizing #trip-panel { transition: none; }
     color: #e4f6fa;
 }
 
-/* Metric / Imperial 2-way toggle inside the cogwheel */
+/* Metric / Imperial / UK toggle inside the cogwheel. Three have to share
+   the width two used to, so the buttons size to their words and the padding
+   is what gives. */
 .units-toggle {
     display: inline-flex;
     background: rgba(0, 0, 0, 0.55);
@@ -2044,11 +2051,11 @@ body.panel-resizing #trip-panel { transition: none; }
     min-width: 120px;
 }
 .units-btn {
-    flex: 1;
+    flex: 1 1 auto;
     background: transparent;
     color: #8fa7b0;
     border: none;
-    padding: 3px 8px;
+    padding: 3px 4px;
     font-size: 0.78rem;
     font-family: inherit;
     cursor: pointer;

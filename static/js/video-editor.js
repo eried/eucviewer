@@ -7,37 +7,8 @@
 (async function () {
   "use strict";
 
-  // --- Units: same resolution order as the viewer (?units= param, then
-  // the cogwheel's localStorage key, then US-timezone inference). ---
-  const IMPERIAL_TZ_RE = new RegExp("^(?:" +
-    "America\\/(?:Adak|Anchorage|Boise|Chicago|Denver|Detroit|Indiana/[^/]+|Juneau|Kentucky/[^/]+|Los_Angeles|Menominee|Metlakatla|New_York|Nome|North_Dakota/[^/]+|Phoenix|Puerto_Rico|Sitka|St_Thomas|Yakutat)" +
-    "|Pacific\\/(?:Honolulu|Pago_Pago|Guam|Saipan|Midway|Wake)" +
-    "|Africa/Monrovia" +
-    "|Asia\\/(?:Yangon|Rangoon)" +
-    ")$");
-  function detectUnits() {
-    try {
-      const force = new URLSearchParams(location.search).get("units");
-      if (force === "imperial" || force === "metric") return force;
-    } catch (_) {}
-    try {
-      const stored = localStorage.getItem("eucviewer-units");
-      if (stored === "imperial" || stored === "metric") return stored;
-    } catch (_) {}
-    try {
-      const tz = (Intl.DateTimeFormat().resolvedOptions().timeZone || "").trim();
-      if (IMPERIAL_TZ_RE.test(tz)) return "imperial";
-    } catch (_) {}
-    return "metric";
-  }
-  const UNITS = (() => {
-    const imperial = detectUnits() === "imperial";
-    return imperial
-      ? { imperial, dist: (km) => km * 0.621371, speed: (k) => k * 0.621371, temp: (c) => c * 9 / 5 + 32,
-          distUnit: "mi", speedUnit: "mph", tempUnit: "°F" }
-      : { imperial, dist: (km) => km, speed: (k) => k, temp: (c) => c,
-          distUnit: "km", speedUnit: "km/h", tempUnit: "°C" };
-  })();
+  // --- Units: decided and converted in units.js, shared by every page. ---
+  const UNITS = window.EucUnits.UNITS;
 
   // --- DOM ---
   const $ = (id) => document.getElementById(id);
@@ -702,7 +673,7 @@
       `videoTime=${t.toFixed(2)}  offset=${cfg.teleOffset.toFixed(2)}  tau=${s.tau.toFixed(2)}`,
       `speed=${s.speed.toFixed(1)}  pwm=${s.pwm.toFixed(0)}  volt=${s.volt.toFixed(1)}  teleDur=${S.dur.toFixed(1)}`,
       `trim=${cfg.trimStart.toFixed(1)}..${(cfg.trimEnd == null ? S.dur : cfg.trimEnd).toFixed(1)}  samples=${S.n}  vbo=${vbo ? vbo.t.length : 0}`,
-      `video=${hasVideo ? (videoEl.videoWidth + "x" + videoEl.videoHeight + " " + (videoEl.duration || 0).toFixed(1) + "s") : "none"}  units=${UNITS.imperial ? "imperial" : "metric"}`,
+      `video=${hasVideo ? (videoEl.videoWidth + "x" + videoEl.videoHeight + " " + (videoEl.duration || 0).toFixed(1) + "s") : "none"}  units=${UNITS.profile}`,
     ];
     // Follows the metrics font size so it reads at any output resolution.
     const fs = cfg.text.fontSize * k;

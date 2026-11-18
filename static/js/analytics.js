@@ -5,71 +5,38 @@
   // the viewer: ?wheel= only matches if both pages spell the key the same.
   const WI = window.WheelIdentity;
 
-  // Imperial unit toggle: drives display labels and converters everywhere
-  // values are shown. Timezone-based: imperial only when the OS timezone is
-  // in the US, US territories, Liberia or Myanmar. navigator.language is
-  // unreliable because English Windows defaults to en-US worldwide.
-  // Keep in sync with app.js / inspector.js.
-  const UNITS_STORAGE_KEY = "eucviewer-units";
-  const IMPERIAL_TZ_RE = new RegExp("^(?:" +
-    "America/(?:Adak|Anchorage|Boise|Chicago|Denver|Detroit|Indiana/[^/]+|Juneau|Kentucky/[^/]+|Los_Angeles|Menominee|Metlakatla|New_York|Nome|North_Dakota/[^/]+|Phoenix|Puerto_Rico|Sitka|St_Thomas|Yakutat)" +
-    "|Pacific/(?:Honolulu|Pago_Pago|Guam|Saipan|Midway|Wake)" +
-    "|Africa/Monrovia" +
-    "|Asia/(?:Yangon|Rangoon)" +
-    ")$");
-  function detectUnits() {
-    try {
-      const force = new URLSearchParams(location.search).get("units");
-      if (force === "imperial" || force === "metric") return force;
-    } catch (_) {}
-    try {
-      const stored = localStorage.getItem(UNITS_STORAGE_KEY);
-      if (stored === "imperial" || stored === "metric") return stored;
-    } catch (_) {}
-    try {
-      const tz = (Intl.DateTimeFormat().resolvedOptions().timeZone || "").trim();
-      if (IMPERIAL_TZ_RE.test(tz)) return "imperial";
-    } catch (_) {}
-    return "metric";
-  }
-  const UNITS = (() => {
-    const imperial = detectUnits() === "imperial";
-    return imperial
-      ? {
-          imperial: true,
-          dist:  (km) => km * 0.621371,
-          speed: (kmh) => kmh * 0.621371,
-          temp:  (c) => c * 9 / 5 + 32,
-          alt:   (m) => m * 3.28084,
-          distUnit: "mi", speedUnit: "mph", tempUnit: "°F", altUnit: "ft",
-        }
-      : {
-          imperial: false,
-          dist:  (km) => km, speed: (kmh) => kmh, temp: (c) => c, alt: (m) => m,
-          distUnit: "km", speedUnit: "km/h", tempUnit: "°C", altUnit: "m",
-        };
-  })();
+  // Units are decided and converted in units.js, shared by every page.
+  const UNITS = window.EucUnits.UNITS;
   // Temperature *differences* scale by 9/5 but must not get the +32 offset.
-  const tempDelta = (c) => (UNITS.imperial ? c * 9 / 5 : c);
+  const tempDelta = (c) => UNITS.tempDelta(c);
 
   // Static HTML copy carries metric units in chart subtitles, hints,
   // tooltips and select labels. Data values convert at render time; this
   // one-time pass converts the fixed strings around them for imperial
   // users. The anomaly threshold inputs stay km/h on purpose (their
   // stored values are metric).
-  if (UNITS.imperial) {
-    const conv = (s) => s
+  if (UNITS.miles || UNITS.fahrenheit) {
+    // Each quantity on its own flag: miles on the road with Celsius (the UK)
+    // converts the distances and leaves the temperatures alone.
+    const conv = (s) => {
       // innerHTML serializes U+00A0 back to the &nbsp; entity, which \s
       // can't match; normalize before converting.
-      .replace(/&nbsp;/g, " ")
-      .replace(/(\d+(?:\.\d+)?)\s*km\/h/g, (_, n) => `${Math.round(n * 0.621371)} mph`)
-      .replace(/km\/h/g, "mph")
-      .replace(/(\d+(?:\.\d+)?)\s*°C/g, (_, n) => `${Math.round(n * 9 / 5 + 32)} °F`)
-      .replace(/°C/g, "°F")
-      .replace(/Wh\/km/g, "Wh/mi")
-      .replace(/km\/%/g, "mi/%")
-      .replace(/meters of altitude gain per km/g, "feet of altitude gain per mi")
-      .replace(/(\d+(?:\.\d+)?)\s*km\b/g, (_, n) => `${Math.round(n * 0.621371)} mi`);
+      s = s.replace(/&nbsp;/g, " ");
+      if (UNITS.miles) s = s
+        .replace(/(\d+(?:\.\d+)?)\s*km\/h/g, (_, n) => `${Math.round(n * 0.621371)} mph`)
+        .replace(/km\/h/g, "mph");
+      if (UNITS.fahrenheit) s = s
+        .replace(/(\d+(?:\.\d+)?)\s*°C/g, (_, n) => `${Math.round(n * 9 / 5 + 32)} °F`)
+        .replace(/°C/g, "°F");
+      if (UNITS.climbUnit === "ft/mi") s = s
+        .replace(/meters of altitude gain per km/g, "feet of altitude gain per mi");
+      if (UNITS.miles) s = s
+        .replace(/Wh\/km/g, "Wh/mi")
+        .replace(/km\/%/g, "mi/%")
+        // Not the "per km" of a climb rate that stays in m/km.
+        .replace(/(\d+(?:\.\d+)?)\s*km\b/g, (_, n) => `${Math.round(n * 0.621371)} mi`);
+      return s;
+    };
     document.querySelectorAll(
       ".sec-hint, .chart-explainer, .chart-title, #group-select option, #topbar .check-label > span"
     ).forEach((el) => {
@@ -2856,8 +2823,7 @@
     return `${v >= 0 ? "" : ""}${v.toFixed(0)} ${UNITS.tempUnit}`;
   }
   function fmtClimbOut(mPerKm) {
-    if (UNITS.imperial) return `${(mPerKm * 5.2808).toFixed(0)} ft/mi`;
-    return `${mPerKm.toFixed(0)} m/km`;
+    return `${UNITS.climb(mPerKm).toFixed(0)} ${UNITS.climbUnit}`;
   }
   function refreshWhatIf() {
     const r = whatIfPredKm();
@@ -2872,23 +2838,23 @@
     const onSpeed = () => {
       const display = Number(whatIfEls.speed.value);
       // Slider stores user-units; convert to km/h internal.
-      const km = UNITS.imperial ? display / 0.621371 : display;
+      const km = UNITS.speedInv(display);
       whatIfEls.speed.dataset.km = km.toFixed(2);
       whatIfEls.speedO.value = `${display} ${UNITS.speedUnit}`;
       refreshWhatIf();
     };
     const onTemp = () => {
       const display = Number(whatIfEls.temp.value);
-      const c = UNITS.imperial ? (display - 32) * 5 / 9 : display;
+      const c = UNITS.tempInv(display);
       whatIfEls.temp.dataset.c = c.toFixed(2);
       whatIfEls.tempO.value = `${display} ${UNITS.tempUnit}`;
       refreshWhatIf();
     };
     const onClimb = () => {
       const display = Number(whatIfEls.climb.value);
-      const mPerKm = UNITS.imperial ? display / 5.2808 : display;
+      const mPerKm = UNITS.climbInv(display);
       whatIfEls.climb.dataset.mperkm = mPerKm.toFixed(3);
-      whatIfEls.climbO.value = UNITS.imperial ? `${display} ft/mi` : `${display} m/km`;
+      whatIfEls.climbO.value = `${display} ${UNITS.climbUnit}`;
       refreshWhatIf();
     };
     whatIfEls.speed.addEventListener("input", onSpeed);
@@ -2918,10 +2884,10 @@
     const sDispMax = Math.round(UNITS.speed(sMax));
     const tDispMin = Math.round(UNITS.temp(tMin));
     const tDispMax = Math.round(UNITS.temp(tMax));
-    const cDispMax = UNITS.imperial ? Math.round(cMax * 5.2808) : cMax;
+    const cDispMax = Math.round(UNITS.climb(cMax));
     const sDispDef = Math.max(sDispMin, Math.min(sDispMax, Math.round(UNITS.speed(medS))));
     const tDispDef = Math.max(tDispMin, Math.min(tDispMax, Math.round(UNITS.temp(medT))));
-    const cDispDef = Math.max(0, Math.min(cDispMax, Math.round(UNITS.imperial ? medC * 5.2808 : medC)));
+    const cDispDef = Math.max(0, Math.min(cDispMax, Math.round(UNITS.climb(medC))));
     whatIfEls.speed.min = String(sDispMin);
     whatIfEls.speed.max = String(sDispMax);
     whatIfEls.temp.min  = String(tDispMin);
@@ -3087,7 +3053,7 @@
     // nothing about temperatures outside it.
     const tempSlopeKm = multiFit ? multiFit.tempSlope : (tempFit ? tempFit.slope : null);
     if (tempSlopeKm != null) {
-      const slopeDisp = UNITS.dist(tempSlopeKm) / (UNITS.imperial ? 1.8 : 1);
+      const slopeDisp = UNITS.dist(tempSlopeKm) / UNITS.tempDelta(1);
       const ambients = dated.map((m) => m.ambientC).filter((v) => v != null).sort((a, b) => a - b);
       let envTxt = "";
       if (ambients.length >= 10) {
@@ -3142,8 +3108,8 @@
       const sortedC = climbs.slice().sort((a, b) => a - b);
       const p90Climb = sortedC.length ? sortedC[Math.floor(sortedC.length * 0.9)] : 50;
       const exampleClimbMperKm = Math.max(20, Math.round(p90Climb / 5) * 5);
-      const exampleDispRate = UNITS.imperial ? exampleClimbMperKm * 3.28084 : exampleClimbMperKm;
-      const exampleUnit = UNITS.imperial ? "ft/mi" : "m/km";
+      const exampleDispRate = UNITS.climb(exampleClimbMperKm);
+      const exampleUnit = UNITS.climbUnit;
       const examplePctGrade = (exampleClimbMperKm / 10).toFixed(1);
       const slopePerMperKm = climbSlopeKmPerMperKm;
       const lossKm = -slopePerMperKm * exampleClimbMperKm;
@@ -3176,7 +3142,7 @@
       if (isFinite(predKm) && predKm > 0 && obsMed != null) {
         const conds = `${UNITS.speed(multiFit.medSpeedKmh).toFixed(0)} ${UNITS.speedUnit}, ` +
                       `${UNITS.temp(multiFit.medTempC).toFixed(0)} ${UNITS.tempUnit}, ` +
-                      `${(UNITS.imperial ? multiFit.medClimbMperKm * 3.28084 : multiFit.medClimbMperKm).toFixed(0)} ${UNITS.imperial ? "ft/mi" : "m/km"}`;
+                      `${UNITS.climb(multiFit.medClimbMperKm).toFixed(0)} ${UNITS.climbUnit}`;
         const r2 = Math.max(0, Math.min(1, multiFit.r2 || 0));
         const agree = Math.abs(predKm - obsMed) <= sigma;
         const tag = ` <span class="model-quality">(n=${multiFit.n} · R²=${r2.toFixed(2)})</span>`;
@@ -3719,7 +3685,7 @@
     if (multiFit) {
       const sKmh = multiFit.medSpeedKmh, cMperKm = multiFit.medClimbMperKm;
       modelLine = (xDisp) => {
-        const tC = UNITS.imperial ? (xDisp - 32) * 5 / 9 : xDisp;
+        const tC = UNITS.tempInv(xDisp);
         return UNITS.dist(calcRangeKm(sKmh, tC, cMperKm));
       };
     }
@@ -3749,7 +3715,7 @@
     if (multiFit) {
       const tC = multiFit.medTempC, cMperKm = multiFit.medClimbMperKm;
       modelLine = (xDisp) => {
-        const sKmh = UNITS.imperial ? xDisp / 0.621371 : xDisp;
+        const sKmh = UNITS.speedInv(xDisp);
         return UNITS.dist(calcRangeKm(sKmh, tC, cMperKm));
       };
     }
@@ -3769,11 +3735,11 @@
       const climbPerKm = m.climbM / m.distKm;
       if (climbPerKm < 0) continue;
       pts.push({
-        x: UNITS.imperial ? climbPerKm * 3.28084 : climbPerKm,
+        x: UNITS.climb(climbPerKm),
         y: UNITS.dist(m.estRangeKm),
         epoch: m.epoch,
         meta: `<b>${m.label}</b><br>Range: <b>${fmtVal(UNITS.dist(m.estRangeKm), 1)}</b> ${UNITS.distUnit}` +
-              `<br>Climb rate: <b>${fmtVal(UNITS.imperial ? climbPerKm * 3.28084 : climbPerKm, 1)}</b> ${UNITS.imperial ? "ft" : "m"}/${UNITS.distUnit}` +
+              `<br>Climb rate: <b>${fmtVal(UNITS.climb(climbPerKm), 1)}</b> ${UNITS.climbUnit}` +
               `<br>Total climb: <b>${fmtVal(UNITS.alt(m.climbM), 0)}</b> ${UNITS.altUnit}` +
               `<br>Battery used: <b>${fmtVal(m.battDelta, 1)}</b>%`,
       });
@@ -3782,12 +3748,12 @@
     if (multiFit) {
       const sKmh = multiFit.medSpeedKmh, tC = multiFit.medTempC;
       modelLine = (xDisp) => {
-        const mPerKm = UNITS.imperial ? xDisp / 3.28084 : xDisp;
+        const mPerKm = UNITS.climbInv(xDisp);
         return UNITS.dist(calcRangeKm(sKmh, tC, mPerKm));
       };
     }
     drawRangeFactorScatter(canvas, host, pts, {
-      xLabel: (UNITS.imperial ? "ft" : "m") + "/" + UNITS.distUnit,
+      xLabel: UNITS.climbUnit,
       yLabel: "est. range (" + UNITS.distUnit + ")",
       fitColor: "rgba(255,160,0,0.8)",
       modelLine,
@@ -4172,10 +4138,10 @@
            `<span class="calc-sep">·</span>` +
            `<span class="calc-opt">${opt.toFixed(0)}${u}</span>`;
   }
-  function calcDistKm(d)  { return UNITS.imperial ? d / 0.621371 : d; }
-  function calcClimbM(c)  { return UNITS.imperial ? c / 3.28084  : c; }
-  function calcSpeedKmh(s){ return UNITS.imperial ? s / 0.621371 : s; }
-  function calcTempC(t)   { return UNITS.imperial ? (t - 32) * 5 / 9 : t; }
+  function calcDistKm(d)  { return UNITS.distInv(d); }
+  function calcClimbM(c)  { return UNITS.altInv(c); }
+  function calcSpeedKmh(s){ return UNITS.speedInv(s); }
+  function calcTempC(t)   { return UNITS.tempInv(t); }
   // Per-leg conditions. With a locked forecast, each leg samples the hourly
   // grid over its own time window (quarter-hour steps, hours clamped to the
   // fetched day) and projects the vector-averaged wind on that leg's bearing;
@@ -4247,7 +4213,7 @@
     // Headwind input (m/s internally; mph shown in imperial). No effect when
     // the active model has no wind term, so the slider is disabled then.
     const wDisp = calcEls.wind ? Number(calcEls.wind.value) : 0;
-    const windMs = UNITS.imperial ? wDisp / 2.23694 : wDisp;
+    const windMs = UNITS.windInv(wDisp);
     const fitHasWind = !!(fitA.beta && fitA.beta.w != null);
     if (calcEls.wind) {
       calcEls.wind.disabled = !fitHasWind;
@@ -4280,11 +4246,11 @@
     calcEls.battOut.textContent = `${B}%`;
     calcEls.distOut.textContent = `${dDisp} ${UNITS.distUnit}`;
     calcEls.speedOut.textContent = `${sDisp} ${UNITS.speedUnit}`;
-    const altUnit = UNITS.imperial ? "ft" : "m";
+    const altUnit = UNITS.altUnit;
     const signC = cDisp >= 0 ? "+" : "";
     calcEls.climbOut.textContent = `${signC}${cDisp} ${altUnit}`;
     calcEls.tempOut.textContent = `${tDisp} ${UNITS.tempUnit}`;
-    if (calcEls.windOut) calcEls.windOut.textContent = `${wDisp > 0 ? "+" : ""}${wDisp} ${UNITS.imperial ? "mph" : "m/s"}`;
+    if (calcEls.windOut) calcEls.windOut.textContent = `${wDisp > 0 ? "+" : ""}${wDisp} ${UNITS.windUnit}`;
 
     const sigma = calcModelSigmaKm();
     const timeH = sKmh > 0 ? distKm / sKmh : 0;
@@ -5464,7 +5430,7 @@
     calcEls.temp.value = String(tDisp);
     // A picked route gave the forecast a direction: lock the headwind too.
     if (weatherLocked.headwindMs != null && calcEls.wind) {
-      const wD = UNITS.imperial ? weatherLocked.headwindMs * 2.23694 : weatherLocked.headwindMs;
+      const wD = UNITS.wind(weatherLocked.headwindMs);
       const v = Math.round(wD * 2) / 2;
       calcEls.wind.min = String(Math.min(Number(calcEls.wind.min), v - 2));
       calcEls.wind.max = String(Math.max(Number(calcEls.wind.max), v + 2));
@@ -5751,7 +5717,7 @@
         drawTrendChart(document.getElementById("chart-range"), bins, series, { rolling, zeroBase: false, weatherGradient: weatherLoaded });
         let metaTxt = usable + " of " + dated.length + " trips usable";
         if (tempFit) {
-          const slopeDisp = UNITS.dist(tempFit.slope) / (UNITS.imperial ? 1.8 : 1);
+          const slopeDisp = UNITS.dist(tempFit.slope) / UNITS.tempDelta(1);
           metaTxt += ` · temp sensitivity ${fmtVal(slopeDisp, 2)} ${UNITS.distUnit}/${UNITS.tempUnit}`;
         }
         meta.textContent = metaTxt;
@@ -5769,7 +5735,7 @@
           // available) so both places quote one number.
           const tempSlopeKm2 = multiFit ? multiFit.tempSlope : (tempFit ? tempFit.slope : null);
           if (tempSlopeKm2 != null) {
-            const slopeDisp = UNITS.dist(tempSlopeKm2) / (UNITS.imperial ? 1.8 : 1);
+            const slopeDisp = UNITS.dist(tempSlopeKm2) / UNITS.tempDelta(1);
             // Show the per-degree cost and the 10-degree headline so readers
             // who think in big swings get the practical number too.
             const perStep = Math.abs(slopeDisp);
@@ -5842,9 +5808,9 @@
         drawRangeClimbScatter(document.getElementById("chart-range-climb"));
         const climbSlopeKmPerMperKm = multiFit ? multiFit.climbSlope : (climbFit ? climbFit.slope : null);
         if (climbSlopeKmPerMperKm != null) {
-          const slope = UNITS.dist(climbSlopeKmPerMperKm) / (UNITS.imperial ? 3.28084 : 1);
+          const slope = UNITS.dist(climbSlopeKmPerMperKm) / UNITS.climb(1);
           const perStep = Math.abs(slope);
-          const unit = UNITS.imperial ? "ft/mi" : "m/km";
+          const unit = UNITS.climbUnit;
           const tag = multiFit ? " (after factoring out temperature + speed)" : "";
           setTakeaway("range-climb-takeaway", [
             `Each <b>1 ${unit}</b> of climbing costs about <b>${perStep.toFixed(3)} ${UNITS.distUnit}</b> of range${tag}`,

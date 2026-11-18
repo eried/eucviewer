@@ -1,33 +1,8 @@
 (async function () {
   "use strict";
 
-  // Imperial unit toggle: drives display labels and converters everywhere
-  // values are shown. Timezone-based: imperial only when the OS timezone is
-  // in the US, US territories, Liberia or Myanmar. navigator.language is
-  // unreliable because English Windows defaults to en-US worldwide.
-  // Keep in sync with app.js / analytics.js.
-  const UNITS_STORAGE_KEY = "eucviewer-units";
-  const IMPERIAL_TZ_RE = new RegExp("^(?:" +
-    "America/(?:Adak|Anchorage|Boise|Chicago|Denver|Detroit|Indiana/[^/]+|Juneau|Kentucky/[^/]+|Los_Angeles|Menominee|Metlakatla|New_York|Nome|North_Dakota/[^/]+|Phoenix|Puerto_Rico|Sitka|St_Thomas|Yakutat)" +
-    "|Pacific/(?:Honolulu|Pago_Pago|Guam|Saipan|Midway|Wake)" +
-    "|Africa/Monrovia" +
-    "|Asia/(?:Yangon|Rangoon)" +
-    ")$");
-  function detectUnits() {
-    try {
-      const force = new URLSearchParams(location.search).get("units");
-      if (force === "imperial" || force === "metric") return force;
-    } catch (_) {}
-    try {
-      const stored = localStorage.getItem(UNITS_STORAGE_KEY);
-      if (stored === "imperial" || stored === "metric") return stored;
-    } catch (_) {}
-    try {
-      const tz = (Intl.DateTimeFormat().resolvedOptions().timeZone || "").trim();
-      if (IMPERIAL_TZ_RE.test(tz)) return "imperial";
-    } catch (_) {}
-    return "metric";
-  }
+  // Units are decided and converted in units.js, shared by every page.
+  const UNITS = window.EucUnits.UNITS;
 
   // Date order follows where the rider is, not what language the computer is
   // set to. navigator.language reports the UI language, so Windows set to
@@ -59,23 +34,6 @@
     return sys;
   }
   const DATE_LOCALE = detectDateLocale();
-  const UNITS = (() => {
-    const imperial = detectUnits() === "imperial";
-    return imperial
-      ? {
-          imperial: true,
-          dist:  (km) => km * 0.621371,
-          speed: (kmh) => kmh * 0.621371,
-          temp:  (c) => c * 9 / 5 + 32,
-          alt:   (m) => m * 3.28084,
-          distUnit: "mi", speedUnit: "mph", tempUnit: "°F", altUnit: "ft",
-        }
-      : {
-          imperial: false,
-          dist:  (km) => km, speed: (kmh) => kmh, temp: (c) => c, alt: (m) => m,
-          distUnit: "km", speedUnit: "km/h", tempUnit: "°C", altUnit: "m",
-        };
-  })();
   function convertByKind(kind, v) {
     if (kind === "speed") return UNITS.speed(v);
     if (kind === "temp")  return UNITS.temp(v);

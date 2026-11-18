@@ -43,6 +43,17 @@ to mirroring into that repo, ignore them.)
   ("Adventure-E0000298"). Identities sharing a serial or MAC are one wheel; one carrying
   neither joins the wheel of that name only when exactly one wheel answers to it, and the
   fullest identity names the merged group. Before this, one wheel listed as three.
+- `units.js` is the one place units are decided and converted, loaded by `index.html`,
+  `inspector.html`, `analytics.html` and `video.html` before their own script; they read
+  `window.EucUnits.UNITS`. Three profiles, the same three eucstats.ried.no has: `metric`,
+  `imperial` (US, its territories, Liberia) and `road` (UK, Myanmar: miles and mph with °C and
+  metres), so every quantity has its own flag (`miles`, `fahrenheit`, `feet`) and nothing may
+  branch on one "imperial" boolean. Resolution order: `?units=`, the `euc_units` cookie, the
+  `eucviewer-units` localStorage key, then the timezone (never the browser language). The
+  cookie is set on `ried.no` so a choice made here follows the rider to eucstats and back;
+  its name and values (`metric` / `imperial` / `road`) must match eucstats `web/public.py`.
+  Climb rate is `m/km` unless both halves are imperial (`ft/mi`); use `UNITS.climb` /
+  `UNITS.climbUnit`, never a hand-rolled factor.
 - `inspector.html` + `inspector.js` is a standalone page. It reads the `?i=<index>` query param,
   fetches tracks from IndexedDB (store `eucplanet-trip-viewer/currentSession` key `"tracks"`),
   falls back to `localStorage["dbb_tracks"]`, then drives a MapLibre terrain map + 5 canvas
