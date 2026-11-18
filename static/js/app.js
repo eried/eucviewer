@@ -52,8 +52,8 @@ document.addEventListener("DOMContentLoaded", function () {
   // closures, so a hot-swap would mean re-rendering everything; reload is
   // simpler & cleaner.
   (function setupUnitsToggle() {
-    // Two switches: data-flag names what the group decides (miles or
-    // fahrenheit), data-on which side of it the button is.
+    // Three switches: data-flag names what the group decides (miles,
+    // fahrenheit or feet), data-on which side of it the button is.
     document.querySelectorAll(".units-btn").forEach((btn) => {
       const flag = btn.dataset.flag;
       const want = btn.dataset.on === "1";

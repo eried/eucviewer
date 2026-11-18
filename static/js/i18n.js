@@ -30,7 +30,7 @@
   const STORAGE_KEY = "eucviewer-lang";
   const COOKIE = "euc_lang";
   // Bump when any dictionary changes, so nobody keeps a stale one.
-  const DICT_VERSION = "3";
+  const DICT_VERSION = "4";
 
   // Native names, never translated.
   const LANGS = {
@@ -68,14 +68,16 @@
   const has = (code) => Object.prototype.hasOwnProperty.call(LANGS, code);
 
   const LATAM = ["419", "MX", "AR", "CO", "CL", "PE", "VE", "EC", "GT", "CU", "BO",
-    "DO", "HN", "PY", "SV", "NI", "CR", "PA", "UY", "PR"];
+    "DO", "HN", "PY", "SV", "NI", "CR", "PA", "UY", "PR", "US"];
+  // Where Portuguese is the European kind. Both lists are the ones the app uses.
+  const PT_PT = ["PT", "AO", "MZ", "CV", "GW", "ST", "TL"];
   // A browser tag ("es-MX", "nb", "zh-TW") to one of ours, or null.
   function mapLang(raw) {
     if (!raw) return null;
     const lc = String(raw).toLowerCase();
     const base = lc.split("-")[0];
     const region = (lc.split("-")[1] || "").toUpperCase();
-    if (base === "pt") return region === "PT" ? "pt-PT" : "pt-BR";
+    if (base === "pt") return PT_PT.indexOf(region) >= 0 ? "pt-PT" : "pt-BR";
     if (base === "zh") return /(^|-)(tw|hk|mo|hant)(-|$)/.test(lc) ? "zh-Hant" : "zh";
     if (base === "nb" || base === "nn" || base === "no") return "no";
     if (base === "in") return "id";

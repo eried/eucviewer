@@ -36,9 +36,16 @@
             </label>
             <label>
                 <span data-i18n>Temperature</span>
-                <div class="units-toggle" role="radiogroup" aria-label="Temperature and altitude" data-i18n-attrs="aria-label">
-                    <button type="button" class="units-btn" data-flag="fahrenheit" data-on="0" role="radio" title="Celsius, altitude in metres" data-i18n-attrs="title">°C</button>
-                    <button type="button" class="units-btn" data-flag="fahrenheit" data-on="1" role="radio" title="Fahrenheit, altitude in feet" data-i18n-attrs="title">°F</button>
+                <div class="units-toggle" role="radiogroup" aria-label="Temperature" data-i18n-attrs="aria-label">
+                    <button type="button" class="units-btn" data-flag="fahrenheit" data-on="0" role="radio">°C</button>
+                    <button type="button" class="units-btn" data-flag="fahrenheit" data-on="1" role="radio">°F</button>
+                </div>
+            </label>
+            <label>
+                <span data-i18n>Altitude</span>
+                <div class="units-toggle" role="radiogroup" aria-label="Altitude" data-i18n-attrs="aria-label">
+                    <button type="button" class="units-btn" data-flag="feet" data-on="0" role="radio">m</button>
+                    <button type="button" class="units-btn" data-flag="feet" data-on="1" role="radio">ft</button>
                 </div>
             </label>
             <label class="map-only">
@@ -223,9 +230,9 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script src="static/js/wheel-identity.js?v=1"></script>
-    <script src="static/js/units.js?v=2"></script>
-    <script src="static/js/i18n.js?v=3"></script>
-    <script src="static/js/app.js?v=228"></script>
+    <script src="static/js/units.js?v=3"></script>
+    <script src="static/js/i18n.js?v=4"></script>
+    <script src="static/js/app.js?v=229"></script>
     <script src="static/js/dropbox-source.js?v=14"></script>
     <script src="static/js/source-hints.js?v=41"></script>
 </body>

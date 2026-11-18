@@ -45,12 +45,14 @@ to mirroring into that repo, ignore them.)
   fullest identity names the merged group. Before this, one wheel listed as three.
 - `units.js` is the one place units are decided and converted, loaded by `index.html`,
   `inspector.html`, `analytics.html` and `video.html` before their own script; they read
-  `window.EucUnits.UNITS`. Two switches in the cogwheel, the same two eucstats.ried.no has:
-  distance (`km` / `mi`) and temperature (`°C` / `°F`). Altitude has no switch and follows
-  temperature, so the UK (miles, °C, metres) and the US (miles, °F, feet) both come out right.
-  Every quantity still has its own flag (`miles`, `fahrenheit`, `feet`) and nothing may branch
-  on one "imperial" boolean. A choice is written `<distance>-<temperature>` (`km-c`, `mi-c`,
-  `mi-f`, `km-f`); the older names `metric` / `imperial` / `road` are still read. Resolution
+  `window.EucUnits.UNITS`. Three switches in the cogwheel, the same three eucstats.ried.no has,
+  each independent: distance (`km` / `mi`, also speed), temperature (`°C` / `°F`) and altitude
+  (`m` / `ft`). Every quantity has its own flag (`miles`, `fahrenheit`, `feet`) and nothing may
+  branch on one "imperial" boolean or derive one flag from another. A choice is written
+  `<distance>-<temperature>-<altitude>` (`km-c-m`, `mi-c-m`, `mi-f-ft`); the two-part form
+  (`mi-f`, altitude went with °F) and the names `metric` / `imperial` / `road` are still read.
+  Timezone defaults: US, its territories and Liberia `mi-f-ft`; UK, Crown Dependencies and
+  Myanmar `mi-c-m`; everything else `km-c-m`. Resolution
   order: `?units=`, the `euc_units` cookie, the `eucviewer-units` localStorage key, then the
   timezone (never the browser language). The cookie is set on `ried.no` so a choice made here
   follows the rider to eucstats and back; its name and values must match eucstats

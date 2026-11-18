@@ -3,18 +3,18 @@
 // script; they all read window.EucUnits.UNITS. Four pages used to carry
 // their own copy of this, with a comment asking to keep them in sync.
 //
-// Two choices, the same two eucstats.ried.no offers:
+// Three switches, the same three eucstats.ried.no offers, each on its own:
 //   distance     km and km/h, or mi and mph
 //   temperature  °C, or °F
-// Altitude has no switch of its own and follows temperature: everywhere
-// that reads the weather in °F also measures a hill in feet, and the UK,
-// which rides in miles, does neither. One imperial flag used to hand
-// British riders Fahrenheit and feet they never use. The three flags
-// (miles, fahrenheit, feet) stay separate so nothing downstream has to know
-// which switch moved which.
+//   altitude     m, or ft
+// One imperial flag used to hand British riders Fahrenheit and feet they
+// never use, and tying altitude to either of the others is wrong for
+// somebody. Nothing downstream may assume one flag from another.
 //
-// A choice is written as "<distance>-<temperature>": km-c, mi-c, mi-f, km-f.
-// The older profile names (metric, imperial, road) are still read.
+// A choice is written "<distance>-<temperature>-<altitude>", e.g. km-c-m,
+// mi-c-m, mi-f-ft. Still read: the two-part form (km-c, mi-f), where
+// altitude went with temperature, and the profile names before that
+// (metric, imperial, road).
 //
 // Resolution order: ?units= URL param, the cookie shared with eucstats, the
 // cogwheel's localStorage key, then the timezone.
@@ -33,19 +33,21 @@
 
   const STORAGE_KEY = "eucviewer-units";
   const COOKIE = "euc_units";
-  const LEGACY = { metric: "km-c", imperial: "mi-f", road: "mi-c" };
-  // Anything readable becomes one of the four codes, anything else null.
+  const LEGACY = { metric: "km-c-m", imperial: "mi-f-ft", road: "mi-c-m" };
+  // Anything readable becomes one of the eight codes, anything else null.
   function normalize(v) {
     if (typeof v !== "string") return null;
     v = v.trim().toLowerCase();
     if (LEGACY[v]) return LEGACY[v];
-    return /^(km|mi)-(c|f)$/.test(v) ? v : null;
+    // Two parts: from before altitude had a switch, when it went with °F.
+    if (/^(km|mi)-(c|f)$/.test(v)) return v + (v.slice(-1) === "f" ? "-ft" : "-m");
+    return /^(km|mi)-(c|f)-(m|ft)$/.test(v) ? v : null;
   }
   const flagsOf = (code) => {
-    const fahrenheit = code.slice(-1) === "f";
-    return { miles: code.slice(0, 2) === "mi", fahrenheit, feet: fahrenheit };
+    const part = code.split("-");
+    return { miles: part[0] === "mi", fahrenheit: part[1] === "f", feet: part[2] === "ft" };
   };
-  const codeOf = (miles, fahrenheit) => (miles ? "mi" : "km") + "-" + (fahrenheit ? "f" : "c");
+  const codeOf = (f) => (f.miles ? "mi" : "km") + "-" + (f.fahrenheit ? "f" : "c") + "-" + (f.feet ? "ft" : "m");
 
   const IMPERIAL_TZ_RE = new RegExp("^(?:" +
     "America/(?:Adak|Anchorage|Boise|Chicago|Denver|Detroit|Indiana/[^/]+|Juneau|Kentucky/[^/]+|Los_Angeles|Menominee|Metlakatla|New_York|Nome|North_Dakota/[^/]+|Phoenix|Puerto_Rico|Sitka|St_Thomas|Yakutat)" +
@@ -55,9 +57,9 @@
   const ROAD_TZ_RE = /^(?:Europe\/(?:London|Belfast|Jersey|Guernsey|Isle_of_Man)|Asia\/(?:Yangon|Rangoon))$/;
 
   function profileForTimezone(tz) {
-    if (IMPERIAL_TZ_RE.test(tz)) return "mi-f";
-    if (ROAD_TZ_RE.test(tz)) return "mi-c";
-    return "km-c";
+    if (IMPERIAL_TZ_RE.test(tz)) return "mi-f-ft";
+    if (ROAD_TZ_RE.test(tz)) return "mi-c-m";
+    return "km-c-m";
   }
 
   function readCookie() {
@@ -93,7 +95,7 @@
     try {
       return profileForTimezone((Intl.DateTimeFormat().resolvedOptions().timeZone || "").trim());
     } catch (_) {}
-    return "km-c";
+    return "km-c-m";
   }
 
   const MI = 0.621371, FT = 3.28084, MPH_PER_MS = 2.23694;
@@ -149,13 +151,16 @@
     profileForTimezone,
     // The cogwheel calls this with the one switch that moved, e.g.
     // { miles: true }, then reloads: UNITS is captured into too many render
-    // closures to swap live. A whole code ("mi-c") works too.
+    // closures to swap live. A whole code ("mi-c-m") works too.
     set(next) {
-      const now = flagsOf(profile);
-      const code = typeof next === "string"
-        ? normalize(next)
-        : codeOf("miles" in next ? !!next.miles : now.miles,
-                 "fahrenheit" in next ? !!next.fahrenheit : now.fahrenheit);
+      let code;
+      if (typeof next === "string") {
+        code = normalize(next);
+      } else {
+        const f = flagsOf(profile);
+        ["miles", "fahrenheit", "feet"].forEach((k) => { if (k in next) f[k] = !!next[k]; });
+        code = codeOf(f);
+      }
       if (!code) return;
       try { localStorage.setItem(STORAGE_KEY, code); } catch (_) {}
       writeCookie(code);

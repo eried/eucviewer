@@ -2048,7 +2048,7 @@ body:has(#upload-overlay:not(.hidden)) #map-controls .map-only { display: none !
     color: #e4f6fa;
 }
 
-/* The two unit switches inside the cogwheel: km | mi and °C | °F. */
+/* The unit switches inside the cogwheel: km | mi, °C | °F, m | ft. */
 .units-toggle {
     display: inline-flex;
     background: rgba(0, 0, 0, 0.55);
