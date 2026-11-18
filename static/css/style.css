@@ -2037,14 +2037,11 @@ body:has(#upload-overlay:not(.hidden)) #map-controls .map-only { display: none !
    else's 120, and since the column is right-aligned that shows up as a
    ragged left edge. */
 #map-controls select,
-#map-controls .units-pair {
+#map-controls .units-toggle {
     flex: 0 0 124px;
     width: 124px;
     min-width: 0;
 }
-/* km | mi and °C | °F side by side on the one Units row. */
-.units-pair { display: flex; gap: 4px; }
-.units-pair .units-toggle { flex: 1 1 0; min-width: 0; }
 #map-controls select:focus { outline: 1px solid #00e5ff; }
 #map-controls select option {
     background: #0f1419;
@@ -2058,13 +2055,14 @@ body:has(#upload-overlay:not(.hidden)) #map-controls .map-only { display: none !
     border: 1px solid rgba(0, 229, 255, 0.22);
     border-radius: 5px;
     overflow: hidden;
+    min-width: 120px;
 }
 .units-btn {
     flex: 1 1 0;
     background: transparent;
     color: #8fa7b0;
     border: none;
-    padding: 3px 0;
+    padding: 3px 4px;
     font-size: 0.78rem;
     font-family: inherit;
     cursor: pointer;
