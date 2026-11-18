@@ -1415,7 +1415,7 @@ document.addEventListener("DOMContentLoaded", function () {
   }
   function renderPanelTab() {
     const open = panel.classList.contains("open");
-    panelTabText.textContent = open || !panelTabCount ? i18n("Trip Explorer") : i18n("Trip Explorer ({n})", { n: panelTabCount });
+    panelTabText.textContent = open || !panelTabCount ? "Trip Explorer" : `Trip Explorer (${panelTabCount})`;
     panelTab.setAttribute("aria-expanded", open ? "true" : "false");
     panelTab.title = open ? i18n("Hide the trip list") : i18n("Show the trip list");
   }
@@ -4444,7 +4444,7 @@ document.addEventListener("DOMContentLoaded", function () {
     analyticsBtn.rel = "noopener";
     analyticsBtn.innerHTML = `
       <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M1.5 13.5 5.5 8l3 3 6-8"/><circle cx="5.5" cy="8" r="1.2" fill="currentColor"/><circle cx="8.5" cy="11" r="1.2" fill="currentColor"/></svg>
-      <span class="analytics-label">${i18n("Forensics")}</span>`;
+      <span class="analytics-label">${"Forensics"}</span>`;
     // The whole-history analysis needs a real sample of rides before its
     // trends and fits mean anything; below the floor the button explains
     // itself instead of opening a page of empty sections.
@@ -4472,7 +4472,7 @@ document.addEventListener("DOMContentLoaded", function () {
       body += "</div>";
       const cancel = ttBtn(i18n("Cancel"), "tt-ghost"); cancel.addEventListener("click", ttmodClose);
       const open = ttBtn(i18n("Open"), "tt-primary");
-      ttmodShow(i18n("FORENSICS"), i18n("Which wheel?"), "", body, [cancel, open]);
+      ttmodShow("FORENSICS", i18n("Which wheel?"), "", body, [cancel, open]);
       open.addEventListener("click", () => {
         const v = (ttmod.querySelector('input[name="fs"]:checked') || {}).value;
         if (v === undefined) return;

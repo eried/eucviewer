@@ -30,7 +30,7 @@
   const STORAGE_KEY = "eucviewer-lang";
   const COOKIE = "euc_lang";
   // Bump when any dictionary changes, so nobody keeps a stale one.
-  const DICT_VERSION = "1";
+  const DICT_VERSION = "3";
 
   // Native names, never translated.
   const LANGS = {
