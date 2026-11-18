@@ -1995,7 +1995,8 @@ body.panel-resizing #trip-panel { transition: none; }
 }
 #map-controls.collapsed .map-controls-body { display: none; }
 /* The start screen has no map yet, so the cogwheel shows up there with only
-   what is not about one: language and units. */
+   the language. Units are picked from where the rider is and only matter
+   once there are numbers to read. */
 body:has(#upload-overlay:not(.hidden)) #map-controls {
     display: flex !important;
     z-index: 1010;

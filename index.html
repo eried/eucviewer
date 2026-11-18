@@ -6,7 +6,7 @@
     <title>EUC Planet Trip Viewer</title>
     <link rel="icon" href="static/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="static/css/style.css?v=128" />
+    <link rel="stylesheet" href="static/css/style.css?v=129" />
     <script type="text/javascript">
         (function(c,l,a,r,i,t,y){
             c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
@@ -27,21 +27,21 @@
                 <span data-i18n>Language</span>
                 <select id="lang-select" aria-label="Language" data-i18n-attrs="aria-label"></select>
             </label>
-            <label>
+            <label class="map-only">
                 <span data-i18n>Distance</span>
                 <div class="units-toggle" role="radiogroup" aria-label="Distance and speed" data-i18n-attrs="aria-label">
                     <button type="button" class="units-btn" data-flag="miles" data-on="0" role="radio" title="Kilometres and km/h" data-i18n-attrs="title">km</button>
                     <button type="button" class="units-btn" data-flag="miles" data-on="1" role="radio" title="Miles and mph" data-i18n-attrs="title">mi</button>
                 </div>
             </label>
-            <label>
+            <label class="map-only">
                 <span data-i18n>Temperature</span>
                 <div class="units-toggle" role="radiogroup" aria-label="Temperature" data-i18n-attrs="aria-label">
                     <button type="button" class="units-btn" data-flag="fahrenheit" data-on="0" role="radio">°C</button>
                     <button type="button" class="units-btn" data-flag="fahrenheit" data-on="1" role="radio">°F</button>
                 </div>
             </label>
-            <label>
+            <label class="map-only">
                 <span data-i18n>Altitude</span>
                 <div class="units-toggle" role="radiogroup" aria-label="Altitude" data-i18n-attrs="aria-label">
                     <button type="button" class="units-btn" data-flag="feet" data-on="0" role="radio">m</button>
