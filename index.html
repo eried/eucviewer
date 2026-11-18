@@ -6,7 +6,7 @@
     <title>EUC Planet Trip Viewer</title>
     <link rel="icon" href="static/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="static/css/style.css?v=124" />
+    <link rel="stylesheet" href="static/css/style.css?v=126" />
     <script type="text/javascript">
         (function(c,l,a,r,i,t,y){
             c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
@@ -19,84 +19,94 @@
     <div id="map"></div>
 
     <div id="map-controls" class="hidden collapsed">
-        <button type="button" id="map-controls-toggle" title="Map settings" aria-label="Map settings">
+        <button type="button" id="map-controls-toggle" title="Settings" aria-label="Settings" data-i18n-attrs="title aria-label">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
         </button>
         <div class="map-controls-body">
             <label>
-                <span>Units</span>
-                <div class="units-toggle" role="radiogroup" aria-label="Units">
-                    <button type="button" class="units-btn" data-units="metric" role="radio">Metric</button>
-                    <button type="button" class="units-btn" data-units="imperial" role="radio">Imperial</button>
-                    <button type="button" class="units-btn" data-units="road" role="radio" title="Miles and mph, with °C and metres">UK</button>
+                <span data-i18n>Language</span>
+                <select id="lang-select" aria-label="Language" data-i18n-attrs="aria-label"></select>
+            </label>
+            <label>
+                <span data-i18n>Distance</span>
+                <div class="units-toggle" role="radiogroup" aria-label="Distance and speed" data-i18n-attrs="aria-label">
+                    <button type="button" class="units-btn" data-flag="miles" data-on="0" role="radio" title="Kilometres and km/h" data-i18n-attrs="title">km</button>
+                    <button type="button" class="units-btn" data-flag="miles" data-on="1" role="radio" title="Miles and mph" data-i18n-attrs="title">mi</button>
                 </div>
             </label>
             <label>
-                <span>Map style</span>
+                <span data-i18n>Temperature</span>
+                <div class="units-toggle" role="radiogroup" aria-label="Temperature and altitude" data-i18n-attrs="aria-label">
+                    <button type="button" class="units-btn" data-flag="fahrenheit" data-on="0" role="radio" title="Celsius, altitude in metres" data-i18n-attrs="title">°C</button>
+                    <button type="button" class="units-btn" data-flag="fahrenheit" data-on="1" role="radio" title="Fahrenheit, altitude in feet" data-i18n-attrs="title">°F</button>
+                </div>
+            </label>
+            <label class="map-only">
+                <span data-i18n>Map style</span>
                 <select id="map-style-select">
-                    <option value="standard">Standard (OSM)</option>
+                    <option value="standard" data-i18n>Standard (OSM)</option>
                     <option value="cyclosm">CyclOSM</option>
                     <option value="topo">OpenTopoMap</option>
-                    <option value="hot">Humanitarian</option>
-                    <option value="voyager">Streets</option>
-                    <option value="cartodark">Dark</option>
-                    <option value="satellite" selected>Satellite</option>
-                    <option value="satlabels">Satellite hybrid</option>
+                    <option value="hot" data-i18n>Humanitarian</option>
+                    <option value="voyager" data-i18n>Streets</option>
+                    <option value="cartodark" data-i18n>Dark</option>
+                    <option value="satellite" selected data-i18n>Satellite</option>
+                    <option value="satlabels" data-i18n>Satellite hybrid</option>
                 </select>
             </label>
-            <label>
-                <span>Trace color</span>
+            <label class="map-only">
+                <span data-i18n>Trace color</span>
                 <select id="trace-color-select">
-                    <option value="solid">Solid</option>
-                    <optgroup label="Metric">
-                        <option value="speed" selected>Speed</option>
-                        <option value="gpsspeed">GPS speed</option>
+                    <option value="solid" data-i18n>Solid</option>
+                    <optgroup label="Metric" data-i18n-attrs="label">
+                        <option value="speed" selected data-i18n>Speed</option>
+                        <option value="gpsspeed" data-i18n>GPS speed</option>
                         <option value="pwm">PWM</option>
-                        <option value="power">Power</option>
-                        <option value="current">Current</option>
-                        <option value="torque">Torque</option>
-                        <option value="phase">Phase current</option>
-                        <option value="battery">Battery</option>
-                        <option value="voltage">Voltage</option>
-                        <option value="temp">Temp</option>
-                        <option value="altitude">Altitude</option>
-                        <option value="distance">Distance</option>
+                        <option value="power" data-i18n>Power</option>
+                        <option value="current" data-i18n>Current</option>
+                        <option value="torque" data-i18n>Torque</option>
+                        <option value="phase" data-i18n>Phase current</option>
+                        <option value="battery" data-i18n>Battery</option>
+                        <option value="voltage" data-i18n>Voltage</option>
+                        <option value="temp" data-i18n>Temp</option>
+                        <option value="altitude" data-i18n>Altitude</option>
+                        <option value="distance" data-i18n>Distance</option>
                     </optgroup>
-                    <optgroup label="Movement">
-                        <option value="moving">Moving</option>
-                        <option value="still">Stopped</option>
-                        <option value="mix">Mix</option>
+                    <optgroup label="Movement" data-i18n-attrs="label">
+                        <option value="moving" data-i18n>Moving</option>
+                        <option value="still" data-i18n>Stopped</option>
+                        <option value="mix" data-i18n>Mix</option>
                     </optgroup>
                 </select>
             </label>
-            <label>
-                <span>Palette</span>
-                <select id="palette-select" title="Colour scheme for the metric trace gradients.">
-                    <option value="default">Default</option>
-                    <option value="reverse">Reverse</option>
-                    <option value="legacy">Legacy</option>
-                    <option value="rainbow">Rainbow</option>
-                    <option value="reverse-rainbow">Rainbow inv.</option>
+            <label class="map-only">
+                <span data-i18n>Palette</span>
+                <select id="palette-select" title="Colour scheme for the metric trace gradients." data-i18n-attrs="title">
+                    <option value="default" data-i18n>Default</option>
+                    <option value="reverse" data-i18n>Reverse</option>
+                    <option value="legacy" data-i18n>Legacy</option>
+                    <option value="rainbow" data-i18n>Rainbow</option>
+                    <option value="reverse-rainbow" data-i18n>Rainbow inv.</option>
                     <option value="viridis">Viridis</option>
                 </select>
             </label>
-            <label>
-                <span>Trace style</span>
-                <select id="trace-style-select" title="How track lines are drawn. Follows the map style automatically until you pick one.">
-                    <option value="normal">Normal</option>
-                    <option value="neon">Neon</option>
-                    <option value="dark">Dark</option>
+            <label class="map-only">
+                <span data-i18n>Trace style</span>
+                <select id="trace-style-select" title="How track lines are drawn. Follows the map style automatically until you pick one." data-i18n-attrs="title">
+                    <option value="normal" data-i18n>Normal</option>
+                    <option value="neon" data-i18n>Neon</option>
+                    <option value="dark" data-i18n>Dark</option>
                 </select>
             </label>
-            <label>
-                <span>Graph resolution</span>
-                <select id="graph-res-select" title="Samples kept per trip. Higher means finer graphs and gauges but more memory.">
-                    <option value="2000">Standard</option>
-                    <option value="4000">High</option>
-                    <option value="8000">Max</option>
+            <label class="map-only">
+                <span data-i18n>Graph resolution</span>
+                <select id="graph-res-select" title="Samples kept per trip. Higher means finer graphs and gauges but more memory." data-i18n-attrs="title">
+                    <option value="2000" data-i18n>Standard</option>
+                    <option value="4000" data-i18n>High</option>
+                    <option value="8000" data-i18n>Max</option>
                 </select>
             </label>
-            <div id="color-legend" class="hidden">
+            <div id="color-legend" class="hidden map-only">
                 <div class="legend-bar"></div>
                 <div class="legend-scale">
                     <span data-legend-min>&mdash;</span>
@@ -109,24 +119,24 @@
     <div id="upload-overlay">
         <div id="upload-box">
             <img id="upload-icon" src="static/favicon.svg" alt="" />
-            <h1><a id="app-link" href="https://eucplanet.ried.no/" target="_blank" rel="noopener"><strong>EUC Planet</strong></a> Trip Viewer</h1>
+            <h1><a id="app-link" href="https://eucplanet.ried.no/" target="_blank" rel="noopener"><strong>EUC Planet</strong></a> <span data-i18n>Trip Viewer</span></h1>
             <div id="upload-hint">
-                <p>In EUC Planet, open <strong>Trips</strong> and share a ride, pick <strong>Export all</strong> from the top-right menu, or enable <strong>Online backup to Dropbox</strong> under <em>Backups &amp; leaderboards</em>.</p>
-                <p class="upload-hint-aside">Exports from <a href="#" class="hint-source" data-source="darknessbot">DarknessBot</a> or <a href="#" class="hint-source" data-source="eucworld">euc.world</a> also work.</p>
+                <p data-i18n-html>In EUC Planet, open <strong>Trips</strong> and share a ride, pick <strong>Export all</strong> from the top-right menu, or enable <strong>Online backup to Dropbox</strong> under <em>Backups &amp; leaderboards</em>.</p>
+                <p class="upload-hint-aside" data-i18n-html>Exports from <a href="#" class="hint-source" data-source="darknessbot">DarknessBot</a> or <a href="#" class="hint-source" data-source="eucworld">euc.world</a> also work.</p>
             </div>
             <div id="upload-actions">
                 <label id="upload-label" for="file-input">
-                    Upload trips
+                    <span data-i18n>Upload trips</span>
                     <input type="file" id="file-input" accept=".zip,.dbb,.csv,.gpx,.xlsx" />
                 </label>
                 <div id="dropbox-split" class="dropbox-split">
-                    <button type="button" id="dropbox-btn" class="hint-source dropbox-main" data-source="dropbox" title="Load trips from Dropbox">
+                    <button type="button" id="dropbox-btn" class="hint-source dropbox-main" data-source="dropbox" title="Load trips from Dropbox" data-i18n-attrs="title">
                         <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
                             <path fill="currentColor" d="M6 2 0 6l6 4 6-4-6-4zm12 0-6 4 6 4 6-4-6-4zM0 14l6 4 6-4-6-4-6 4zm18-4-6 4 6 4 6-4-6-4zM6 19l6 4 6-4-6-4-6 4z"/>
                         </svg>
                         <span>Dropbox</span>
                     </button>
-                    <button type="button" id="dropbox-menu-btn" class="hint-source dropbox-menu" data-source="dropbox" data-dropbox-modal="1" title="Open Dropbox dialog" aria-label="Open Dropbox dialog">
+                    <button type="button" id="dropbox-menu-btn" class="hint-source dropbox-menu" data-source="dropbox" data-dropbox-modal="1" title="Open Dropbox dialog" aria-label="Open Dropbox dialog" data-i18n-attrs="title aria-label">
                         <svg viewBox="0 0 16 16" width="10" height="10" aria-hidden="true"><path fill="currentColor" d="M3 5l5 6 5-6z"/></svg>
                     </button>
                 </div>
@@ -143,7 +153,7 @@
         <div id="trip-panel" class="hidden">
             <!-- Drag the seam to widen the panel. Only there while it is open:
                  closed, it would sit on top of the tab that opens it. -->
-            <div id="panel-resize" title="Drag to resize the panel. Double-click to reset."><span></span></div>
+            <div id="panel-resize" title="Drag to resize the panel. Double-click to reset." data-i18n-attrs="title"><span></span></div>
             <button type="button" id="panel-tab" aria-controls="panel-body" aria-expanded="false"><span id="panel-tab-text">Trip Explorer</span></button>
             <div id="panel-body">
                 <div id="panel-header"></div>
@@ -154,36 +164,36 @@
         </div>
     </div>
 
-    <div id="trip-manager" class="hidden" role="dialog" aria-label="Manage trips">
+    <div id="trip-manager" class="hidden" role="dialog" aria-label="Manage trips" data-i18n-attrs="aria-label">
         <div class="tm-backdrop" data-tm-close></div>
         <div class="tm-panel">
             <header class="tm-header">
-                <span class="tm-tag">MANAGE</span>
-                <h3>Trips in this library</h3>
-                <button type="button" class="tm-close" data-tm-close aria-label="Close">&times;</button>
+                <span class="tm-tag" data-i18n>MANAGE</span>
+                <h3 data-i18n>Trips in this library</h3>
+                <button type="button" class="tm-close" data-tm-close aria-label="Close" data-i18n-attrs="aria-label">&times;</button>
             </header>
             <div class="tm-toolbar">
-                <label class="tm-selall"><input type="checkbox" id="tm-select-all"> All</label>
-                <select id="tm-select-wheel" title="Select every trip of one wheel"></select>
+                <label class="tm-selall"><input type="checkbox" id="tm-select-all"> <span data-i18n>All</span></label>
+                <select id="tm-select-wheel" title="Select every trip of one wheel" data-i18n-attrs="title"></select>
                 <span class="tm-count" id="tm-count"></span>
             </div>
             <div class="tm-list" id="tm-list"></div>
             <footer class="tm-actions">
-                <select id="tm-wheel-target" title="Wheel to assign"></select>
-                <button type="button" id="tm-apply-wheel" disabled>Set wheel</button>
-                <button type="button" id="tm-archive" title="Mark for archive: Dropbox sync moves these into /trips/archive and drops them here" disabled>Archive</button>
-                <button type="button" id="tm-delete" class="tm-danger" disabled>Remove</button>
+                <select id="tm-wheel-target" title="Wheel to assign" data-i18n-attrs="title"></select>
+                <button type="button" id="tm-apply-wheel" disabled data-i18n>Set wheel</button>
+                <button type="button" id="tm-archive" title="Mark for archive: Dropbox sync moves these into /trips/archive and drops them here" disabled data-i18n data-i18n-attrs="title">Archive</button>
+                <button type="button" id="tm-delete" class="tm-danger" disabled data-i18n>Remove</button>
             </footer>
         </div>
     </div>
 
-    <div id="trip-tool-modal" class="hidden" role="dialog" aria-label="Trip tool">
+    <div id="trip-tool-modal" class="hidden" role="dialog" aria-label="Trip tool" data-i18n-attrs="aria-label">
         <div class="tm-backdrop" data-ttmod-close></div>
         <div class="tm-panel ttmod-panel">
             <header class="tm-header">
                 <span class="tm-tag" id="ttmod-tag">TOOL</span>
                 <h3 id="ttmod-title">Tool</h3>
-                <button type="button" class="tm-close" data-ttmod-close aria-label="Close">&times;</button>
+                <button type="button" class="tm-close" data-ttmod-close aria-label="Close" data-i18n-attrs="aria-label">&times;</button>
             </header>
             <div class="ttmod-sub" id="ttmod-sub"></div>
             <div class="ttmod-body" id="ttmod-body"></div>
@@ -192,13 +202,13 @@
     </div>
 
     <div id="page-footer">
-        <a href="https://github.com/eried/eucviewer" target="_blank" rel="noopener" title="View / contribute on GitHub">
+        <a href="https://github.com/eried/eucviewer" target="_blank" rel="noopener" title="View / contribute on GitHub" data-i18n-attrs="title">
             <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
                 <path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
             </svg>
             <span>GitHub</span>
         </a>
-        <a id="page-version" href="storage.html" title="Build date. Opens the storage explorer: everything this site has saved in this browser, read only."></a>
+        <a id="page-version" href="storage.html" title="Build date. Opens the storage explorer: everything this site has saved in this browser, read only." data-i18n-attrs="title"></a>
     </div>
     <script>
         (function(){
@@ -213,9 +223,10 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script src="static/js/wheel-identity.js?v=1"></script>
-    <script src="static/js/units.js?v=1"></script>
-    <script src="static/js/app.js?v=226"></script>
-    <script src="static/js/dropbox-source.js?v=13"></script>
-    <script src="static/js/source-hints.js?v=40"></script>
+    <script src="static/js/units.js?v=2"></script>
+    <script src="static/js/i18n.js?v=1"></script>
+    <script src="static/js/app.js?v=227"></script>
+    <script src="static/js/dropbox-source.js?v=14"></script>
+    <script src="static/js/source-hints.js?v=41"></script>
 </body>
 </html>

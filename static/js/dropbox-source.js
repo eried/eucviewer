@@ -3,6 +3,7 @@
 // "Scoped App (App Folder)" with redirect URIs that include this page.
 (function () {
   "use strict";
+  const i18n = window.EucI18n.t;
 
   const APP_KEY = "5auhxf7gswy7j54";
   const TRIPS_PATH = "/trips";
@@ -155,14 +156,14 @@
   // for anyone reading the console.
   function dbxFriendlyError(status, body) {
     const b = String(body || "");
-    if (/conflict/.test(b)) return "That trip changed on Dropbox after it was loaded here, so it was left alone. Load it again to pick up the newer copy.";
-    if (RETRY_BODY_RE.test(b)) return "Dropbox is limiting writes just now. It kept retrying and gave up; try again in a minute.";
-    if (/insufficient_space/.test(b)) return "No space left in the Dropbox account.";
+    if (/conflict/.test(b)) return i18n("That trip changed on Dropbox after it was loaded here, so it was left alone. Load it again to pick up the newer copy.");
+    if (RETRY_BODY_RE.test(b)) return i18n("Dropbox is limiting writes just now. It kept retrying and gave up; try again in a minute.");
+    if (/insufficient_space/.test(b)) return i18n("No space left in the Dropbox account.");
     if (/missing_scope/.test(b)) return "missing_scope: " + b;
-    if (/not_found/.test(b)) return "Dropbox could not find that file.";
+    if (/not_found/.test(b)) return i18n("Dropbox could not find that file.");
     const m = b.match(/"\.tag"\s*:\s*"([a-z_]+)"/i);
-    if (m) return "Dropbox said " + m[1].replace(/_/g, " ") + " (" + status + ").";
-    return "Dropbox returned " + status + ".";
+    if (m) return i18n("Dropbox said {tag} ({status}).", { tag: m[1].replace(/_/g, " "), status: status });
+    return i18n("Dropbox returned {status}.", { status: status });
   }
 
   async function rpc(endpoint, body) {

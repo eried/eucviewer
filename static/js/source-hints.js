@@ -4,6 +4,7 @@
 // viewer alike, shares one Dropbox UI instead of two parallel dialogs.
 (function () {
   "use strict";
+  const i18n = window.EucI18n.t;
 
   function init() {
     const links = document.querySelectorAll(".hint-source");
@@ -70,23 +71,23 @@
       /Android|iPhone|iPad|iPod|Opera Mini/i.test(ua) ||
       (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
     if (isMobile) {
-      return { name: "Mobile", howTo: "use a desktop browser for batch export all the trips." };
+      return { name: i18n("Mobile"), howTo: i18n("use a desktop browser for batch export all the trips.") };
     }
     const mac = /Mac/.test(navigator.platform || ua);
     const mod = mac ? "⌘⇧B" : "Ctrl+Shift+B";
     if (/OPR\//.test(ua) || /Opera/.test(ua)) {
-      return { name: "Opera", howTo: "View menu → Show bookmarks bar (or " + mod + ")." };
+      return { name: "Opera", howTo: i18n("View menu → Show bookmarks bar (or {mod}).", { mod: mod }) };
     }
     if (/Edg\//.test(ua)) {
-      return { name: "Edge", howTo: mod + " toggles the favorites bar." };
+      return { name: "Edge", howTo: i18n("{mod} toggles the favorites bar.", { mod: mod }) };
     }
     if (/Firefox\//.test(ua)) {
-      return { name: "Firefox", howTo: "Right-click an empty toolbar area → Bookmarks Toolbar → Always Show. Or " + mod + "." };
+      return { name: "Firefox", howTo: i18n("Right-click an empty toolbar area → Bookmarks Toolbar → Always Show. Or {mod}.", { mod: mod }) };
     }
     if (/Safari\//.test(ua) && !/Chrome/.test(ua)) {
-      return { name: "Safari", howTo: "View menu → Show Favorites Bar (" + mod + ")." };
+      return { name: "Safari", howTo: i18n("View menu → Show Favorites Bar ({mod}).", { mod: mod }) };
     }
-    return { name: "Chrome", howTo: mod + " toggles the bookmarks bar." };
+    return { name: "Chrome", howTo: i18n("{mod} toggles the bookmarks bar.", { mod: mod }) };
   }
 
   function eucWorldBody() {
@@ -96,31 +97,31 @@
     const browser = detectBrowser();
     return `
       <header class="src-head">
-        <h3>Export your trips from euc.world</h3>
-        <button type="button" class="src-close" aria-label="Close">&times;</button>
+        <h3>${i18n("Export your trips from euc.world")}</h3>
+        <button type="button" class="src-close" aria-label="${i18n("Close")}">&times;</button>
       </header>
-      <p class="src-sub">All trips at once <span class="src-sub-tag">recommended</span></p>
+      <p class="src-sub">${i18n("All trips at once")} <span class="src-sub-tag">${i18n("recommended")}</span></p>
       <ol class="src-steps">
-        <li>Make sure the bookmarks bar is visible.
+        <li>${i18n("Make sure the bookmarks bar is visible.")}
           <div class="src-hint">${browser.name}: ${browser.howTo}</div></li>
-        <li>Drag this to your bookmarks bar:
+        <li>${i18n("Drag this to your bookmarks bar:")}
           <div class="src-bookmarklet-wrap">
             <a class="src-bookmarklet" href="${href}" onclick="return false;" draggable="true">
               <img src="${fav}" alt="" class="src-bm-icon" />
-              <span>Takeout my trips</span>
+              <span>${i18n("Takeout my trips")}</span>
             </a>
           </div></li>
-        <li>Open <a href="https://euc.world/account/tours" target="_blank" rel="noopener">euc.world</a>, sign in.</li>
-        <li>Click the <strong>Takeout my trips</strong> toolbar button.</li>
-        <li>Drop the downloaded <code>.zip</code> here.</li>
+        <li>${i18n("Open <a {attrs}>euc.world</a>, sign in.", { attrs: 'href="https://euc.world/account/tours" target="_blank" rel="noopener"' })}</li>
+        <li>${i18n("Click the <strong>Takeout my trips</strong> toolbar button.")}</li>
+        <li>${i18n("Drop the downloaded <code>.zip</code> here.")}</li>
       </ol>
-      <p class="src-sub">A single ride</p>
+      <p class="src-sub">${i18n("A single ride")}</p>
       <ol class="src-steps">
-        <li>Open <a href="https://euc.world/account/tours" target="_blank" rel="noopener">euc.world</a>, sign in.</li>
-        <li>Open a tour from the list.</li>
-        <li>Use the tour's <strong>Menu</strong> &rarr; <strong>Export to XLSX</strong> or <strong>GPX</strong>.
-          <div class="src-hint">XLSX has full telemetry. GPX is GPS only.</div></li>
-        <li>Drop the file here.</li>
+        <li>${i18n("Open <a {attrs}>euc.world</a>, sign in.", { attrs: 'href="https://euc.world/account/tours" target="_blank" rel="noopener"' })}</li>
+        <li>${i18n("Open a tour from the list.")}</li>
+        <li>${i18n("Use the tour's <strong>Menu</strong> &rarr; <strong>Export to XLSX</strong> or <strong>GPX</strong>.")}
+          <div class="src-hint">${i18n("XLSX has full telemetry. GPX is GPS only.")}</div></li>
+        <li>${i18n("Drop the file here.")}</li>
       </ol>
     `;
   }
@@ -128,20 +129,20 @@
   function darknessBotBody() {
     return `
       <header class="src-head">
-        <h3>From DarknessBot</h3>
-        <button type="button" class="src-close" aria-label="Close">&times;</button>
+        <h3>${i18n("From DarknessBot")}</h3>
+        <button type="button" class="src-close" aria-label="${i18n("Close")}">&times;</button>
       </header>
-      <p class="src-sub">All trips at once <span class="src-sub-tag">recommended</span></p>
+      <p class="src-sub">${i18n("All trips at once")} <span class="src-sub-tag">${i18n("recommended")}</span></p>
       <ol class="src-steps">
-        <li>Open <strong>Settings</strong> &rarr; <strong>Application</strong> &rarr; <strong>App data</strong>.</li>
-        <li>Tap <strong>Export trips</strong> and save the exported file.</li>
-        <li>Drop it here.</li>
+        <li>${i18n("Open <strong>Settings</strong> &rarr; <strong>Application</strong> &rarr; <strong>App data</strong>.")}</li>
+        <li>${i18n("Tap <strong>Export trips</strong> and save the exported file.")}</li>
+        <li>${i18n("Drop it here.")}</li>
       </ol>
-      <p class="src-sub">A single ride</p>
+      <p class="src-sub">${i18n("A single ride")}</p>
       <ol class="src-steps">
-        <li>Open <strong>Trips</strong> and select a ride from the list.</li>
-        <li>Tap <strong>Share</strong>, pick <strong>CSV</strong>. Send it to Files or email.</li>
-        <li>Drop the <code>.csv</code> here.</li>
+        <li>${i18n("Open <strong>Trips</strong> and select a ride from the list.")}</li>
+        <li>${i18n("Tap <strong>Share</strong>, pick <strong>CSV</strong>. Send it to Files or email.")}</li>
+        <li>${i18n("Drop the <code>.csv</code> here.")}</li>
       </ol>
     `;
   }

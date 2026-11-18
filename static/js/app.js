@@ -2,6 +2,8 @@ document.addEventListener("DOMContentLoaded", function () {
   // Units (km or miles, °C or °F, metres or feet) are decided and converted
   // in units.js, shared by every page.
   const UNITS = window.EucUnits.UNITS;
+  // Every string the rider reads goes through this (i18n.js).
+  const i18n = window.EucI18n.t;
 
   // Graph resolution: samples kept per trip after downsampling. Chosen in
   // the settings cogwheel, applied at parse time (see the worker). Higher =
@@ -50,15 +52,17 @@ document.addEventListener("DOMContentLoaded", function () {
   // closures, so a hot-swap would mean re-rendering everything; reload is
   // simpler & cleaner.
   (function setupUnitsToggle() {
-    const current = UNITS.profile;
+    // Two switches: data-flag names what the group decides (miles or
+    // fahrenheit), data-on which side of it the button is.
     document.querySelectorAll(".units-btn").forEach((btn) => {
-      const on = btn.dataset.units === current;
+      const flag = btn.dataset.flag;
+      const want = btn.dataset.on === "1";
+      const on = UNITS[flag] === want;
       btn.classList.toggle("active", on);
       btn.setAttribute("aria-checked", on ? "true" : "false");
       btn.addEventListener("click", () => {
-        const next = btn.dataset.units;
-        if (next === current) return;
-        window.EucUnits.set(next);
+        if (on) return;
+        window.EucUnits.set({ [flag]: want });
         location.reload();
       });
     });
@@ -77,7 +81,7 @@ document.addEventListener("DOMContentLoaded", function () {
       if (next === currentGraphRes()) return;
       const hasTrips = Array.isArray(allTracks) && allTracks.length > 0;
       if (hasTrips && !window.confirm(
-        "Switching graph resolution clears your loaded trips (they were parsed at the old resolution). Re-import to load them at the new one. Continue?")) {
+        i18n("Switching graph resolution clears your loaded trips (they were parsed at the old resolution). Re-import to load them at the new one. Continue?"))) {
         sel.value = String(currentGraphRes());
         return;
       }
@@ -234,7 +238,7 @@ document.addEventListener("DOMContentLoaded", function () {
       const d = new Date(iso);
       if (!isNaN(d.getTime())) return TRIP_LABEL_FMT.format(d);
     }
-    return t.date || t.name || "Trip";
+    return t.date || t.name || i18n("Trip");
   }
   // The date/time label on its own, ignoring any custom name, used as the
   // rename field's placeholder so blanking it shows what you'll fall back to.
@@ -244,7 +248,7 @@ document.addEventListener("DOMContentLoaded", function () {
       const d = new Date(iso);
       if (!isNaN(d.getTime())) return TRIP_LABEL_FMT.format(d);
     }
-    return t.date || t.name || "Trip";
+    return t.date || t.name || i18n("Trip");
   }
 
   // Trip duration in hours from the ISO timestamps, falling back to the
@@ -946,7 +950,7 @@ document.addEventListener("DOMContentLoaded", function () {
       opt.disabled = !hasData;
     }
     const speedOpt = sel.querySelector('option[value="speed"]');
-    if (speedOpt) speedOpt.textContent = hasMetric(10) ? "Wheel speed" : "Speed";
+    if (speedOpt) speedOpt.textContent = hasMetric(10) ? i18n("Wheel speed") : i18n("Speed");
     // Only drop the preference when a *selected* trip genuinely lacks the
     // metric. With nothing selected every option reads disabled, and
     // resetting then would wipe the wheel-speed default before the
@@ -996,7 +1000,7 @@ document.addEventListener("DOMContentLoaded", function () {
         if (values) push({ trackIdx: selectedIdx, values, segStyle });
         else if (allTracks.length) push({ all: true, tracks: allTracks, pointIdx: 2, segStyle });
         else push(null);
-        updateTraceLegend("mix", 0, 1, { min: "Stops", max: "Riding" });
+        updateTraceLegend("mix", 0, 1, { min: i18n("Stops"), max: i18n("Riding") });
         return;
       }
       const mask = traceColor === "moving" ? movingMask : stillMask;
@@ -1006,7 +1010,7 @@ document.addEventListener("DOMContentLoaded", function () {
       else if (allTracks.length) push({ all: true, tracks: allTracks, pointIdx: 2, mask, colorFn, widthBoost });
       else { push(null); }
       updateTraceLegend(traceColor, 0, 1,
-        traceColor === "moving" ? { min: "Slow", max: "Fast" } : { min: "Slow", max: "Still" });
+        traceColor === "moving" ? { min: i18n("Slow"), max: i18n("Fast") } : { min: i18n("Slow"), max: i18n("Still") });
       return;
     }
 
@@ -1020,7 +1024,7 @@ document.addEventListener("DOMContentLoaded", function () {
         // (start → end). A shared km number is meaningless across trips, so
         // the legend shows the ramp direction (Start → End) instead.
         push({ all: true, mode: "progress", colorFn: distanceColor });
-        updateTraceLegend("distance", 0, 1, { min: "Start", max: "End" });
+        updateTraceLegend("distance", 0, 1, { min: i18n("Start"), max: i18n("End") });
         return;
       }
       // The draw reads values straight from track points (pd.tracks +
@@ -1282,17 +1286,17 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // When GPS speed is present, the wheel value is "Wheel speed" / GPS is
     // "GPS speed", same wording the inspector and detail rows use.
-    const speedLabel = gpsSpeed ? "Wheel speed" : "Speed";
-    let html = `<i class="clr" style="background:#66bb6a"></i>Dist: <b>${UNITS.dist(cumKm).toFixed(2)}</b> ${UNITS.distUnit}`;
-    html += `<br><i class="clr" style="background:#00e5ff"></i>${speedLabel}: <b>${UNITS.speed(speed).toFixed(1)}</b> ${UNITS.speedUnit}`;
-    if (gpsSpeed) html += `<br><i class="clr" style="background:${GPS_SPEED_COLOR}"></i>GPS speed: <b>${UNITS.speed(gpsSpeed).toFixed(1)}</b> ${UNITS.speedUnit}`;
-    if (pwm)     html += `<br><i class="clr" style="background:#ff4081"></i>PWM: <b>${pwm.toFixed(1)}</b> %`;
-    if (power)   html += `<br><i class="clr" style="background:#7c4dff"></i>Power: <b>${power.toFixed(0)}</b> W`;
-    if (current) html += `<br><i class="clr" style="background:#ffd740"></i>Current: <b>${current.toFixed(1)}</b> A`;
-    if (volt) html += `<br><i class="clr" style="background:#ff5252"></i>Voltage: <b>${volt.toFixed(1)}</b> V`;
-    if (temp) html += `<br><i class="clr" style="background:#ffa000"></i>Temp: <b>${UNITS.temp(temp).toFixed(0)}</b> ${UNITS.tempUnit}`;
-    if (batt) html += `<br><i class="clr" style="background:#69f0ae"></i>Battery: <b>${batt.toFixed(0)}</b>%`;
-    if (alt)  html += `<br><i class="clr" style="background:#ce93d8"></i>Alt: <b>${UNITS.alt(alt).toFixed(0)}</b> ${UNITS.altUnit}`;
+    const speedLabel = gpsSpeed ? i18n("Wheel speed") : i18n("Speed");
+    let html = `<i class="clr" style="background:#66bb6a"></i>${i18n("Dist: <b>{v}</b> {unit}", { v: UNITS.dist(cumKm).toFixed(2), unit: UNITS.distUnit })}`;
+    html += `<br><i class="clr" style="background:#00e5ff"></i>${i18n("{label}: <b>{v}</b> {unit}", { label: speedLabel, v: UNITS.speed(speed).toFixed(1), unit: UNITS.speedUnit })}`;
+    if (gpsSpeed) html += `<br><i class="clr" style="background:${GPS_SPEED_COLOR}"></i>${i18n("GPS speed: <b>{v}</b> {unit}", { v: UNITS.speed(gpsSpeed).toFixed(1), unit: UNITS.speedUnit })}`;
+    if (pwm)     html += `<br><i class="clr" style="background:#ff4081"></i>${i18n("PWM: <b>{v}</b> %", { v: pwm.toFixed(1) })}`;
+    if (power)   html += `<br><i class="clr" style="background:#7c4dff"></i>${i18n("Power: <b>{v}</b> W", { v: power.toFixed(0) })}`;
+    if (current) html += `<br><i class="clr" style="background:#ffd740"></i>${i18n("Current: <b>{v}</b> A", { v: current.toFixed(1) })}`;
+    if (volt) html += `<br><i class="clr" style="background:#ff5252"></i>${i18n("Voltage: <b>{v}</b> V", { v: volt.toFixed(1) })}`;
+    if (temp) html += `<br><i class="clr" style="background:#ffa000"></i>${i18n("Temp: <b>{v}</b> {unit}", { v: UNITS.temp(temp).toFixed(0), unit: UNITS.tempUnit })}`;
+    if (batt) html += `<br><i class="clr" style="background:#69f0ae"></i>${i18n("Battery: <b>{v}</b>%", { v: batt.toFixed(0) })}`;
+    if (alt)  html += `<br><i class="clr" style="background:#ce93d8"></i>${i18n("Alt: <b>{v}</b> {unit}", { v: UNITS.alt(alt).toFixed(0), unit: UNITS.altUnit })}`;
 
     tooltip.innerHTML = html;
     tooltip.classList.remove("hidden");
@@ -1411,9 +1415,9 @@ document.addEventListener("DOMContentLoaded", function () {
   }
   function renderPanelTab() {
     const open = panel.classList.contains("open");
-    panelTabText.textContent = open || !panelTabCount ? "Trip Explorer" : `Trip Explorer (${panelTabCount})`;
+    panelTabText.textContent = open || !panelTabCount ? i18n("Trip Explorer") : i18n("Trip Explorer ({n})", { n: panelTabCount });
     panelTab.setAttribute("aria-expanded", open ? "true" : "false");
-    panelTab.title = open ? "Hide the trip list" : "Show the trip list";
+    panelTab.title = open ? i18n("Hide the trip list") : i18n("Show the trip list");
   }
   const tripList = document.getElementById("trip-list");
   const tripDetail = document.getElementById("trip-detail");
@@ -1484,7 +1488,7 @@ document.addEventListener("DOMContentLoaded", function () {
       // showing partial progress; otherwise resume from progressStart.
       progressFill.style.width = progressStart + "%";
     }
-    setProgress("Loading...");
+    setProgress(i18n("Loading..."));
 
     try {
       const parsedTracks = await parseFileLocally(parserWorker, file, (msg) => {
@@ -1492,15 +1496,15 @@ document.addEventListener("DOMContentLoaded", function () {
           const pct = Math.round((msg.current / msg.total) * 100);
           const display = Math.round(progressStart + pct * progressScale);
           if (!append) progressFill.style.width = display + "%";
-          setProgress(`Parsing trip ${msg.current} of ${msg.total}`);
+          setProgress(i18n("Parsing trip {current} of {total}", { current: msg.current, total: msg.total }));
         }
       });
 
       if (!parsedTracks.length) {
         setProgress(
           lname.endsWith(".zip") || lname.endsWith(".dbb")
-            ? "No trips inside this archive. It should contain .csv, .gpx or .xlsx trip files."
-            : "No trip data found in file",
+            ? i18n("No trips inside this archive. It should contain .csv, .gpx or .xlsx trip files.")
+            : i18n("No trip data found in file"),
           true
         );
         if (!append) {
@@ -1533,7 +1537,7 @@ document.addEventListener("DOMContentLoaded", function () {
       // Show the trip list immediately so the post-parse IDB write doesn't
       // look like the parser hung at "trip N of N"; for 100+ trips the
       // synchronous JSON.stringify + IDB put can take several seconds.
-      setProgressMarquee("Almost ready, finishing up…");
+      setProgressMarquee(i18n("Almost ready, finishing up…"));
       loadTracks(append ? [...allTracks, ...parsedTracks] : parsedTracks);
       saveTracks(allTracks);
       const recentSource = pendingSource;
@@ -1545,7 +1549,7 @@ document.addEventListener("DOMContentLoaded", function () {
           clearProgressMarquee();
         });
     } catch (e) {
-      setProgress("Error: " + e.message, true);
+      setProgress(i18n("Error: {msg}", { msg: e.message }), true);
       if (!append) {
         if (uploadActions) uploadActions.classList.remove("hidden");
         uploadLabel.classList.remove("hidden");
@@ -1568,10 +1572,10 @@ document.addEventListener("DOMContentLoaded", function () {
     section.className = "hidden";
     section.innerHTML = `
       <div class="recent-files-header">
-        <span>Recent files</span>
-        <button type="button" class="recent-clear hidden">Clear</button>
+        <span>${i18n("Recent files")}</span>
+        <button type="button" class="recent-clear hidden">${i18n("Clear")}</button>
       </div>
-      <div class="recent-files-empty">No recent parsed files yet.</div>
+      <div class="recent-files-empty">${i18n("No recent parsed files yet.")}</div>
       <div class="recent-files-list hidden"></div>
     `;
     uploadBox.appendChild(section);
@@ -1617,13 +1621,13 @@ document.addEventListener("DOMContentLoaded", function () {
 
         if (msg.type === "error") {
           cleanup();
-          reject(new Error(msg.error || "Failed to parse file"));
+          reject(new Error(msg.error || i18n("Failed to parse file")));
         }
       };
 
       const handleError = (event) => {
         cleanup();
-        reject(new Error(event.message || "Failed to parse file"));
+        reject(new Error(event.message || i18n("Failed to parse file")));
       };
 
       function cleanup() {
@@ -1675,7 +1679,7 @@ document.addEventListener("DOMContentLoaded", function () {
         request.onerror = () => reject(request.error || new Error("Failed to open recent files database"));
         // If another tab still holds the DB at the old version, the upgrade
         // would hang silently; surface it so the user can close the other tab.
-        request.onblocked = () => reject(new Error("Another tab is holding an older database version. Close other tabs to this site and reload."));
+        request.onblocked = () => reject(new Error(i18n("Another tab is holding an older database version. Close other tabs to this site and reload.")));
       }).catch((error) => {
         recentDbPromise = null;
         throw error;
@@ -1807,14 +1811,14 @@ document.addEventListener("DOMContentLoaded", function () {
     if (recentUi && recentUi.section) recentUi.section.classList.add("hidden");
     progressArea.classList.remove("hidden");
     progressText.classList.remove("error");
-    progressText.textContent = "Loading…";
+    progressText.textContent = i18n("Loading…");
     progressFill.classList.add("marquee");
     progressFill.style.width = "100%";
     try {
       await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
       const entry = await getRecentFile(id);
       if (!entry || !entry.tracks || !entry.tracks.length) {
-        progressText.textContent = "Recent entry was empty";
+        progressText.textContent = i18n("Recent entry was empty");
         progressText.classList.add("error");
         progressFill.classList.remove("marquee");
         if (uploadActions) uploadActions.classList.remove("hidden");
@@ -1866,7 +1870,7 @@ document.addEventListener("DOMContentLoaded", function () {
       recentUi.list.classList.remove("hidden");
       recentUi.clearBtn.classList.remove("hidden");
 
-      const dropboxGlyph = `<svg class="recent-file-source" viewBox="0 0 24 24" width="11" height="11" aria-hidden="true" title="From Dropbox"><path fill="currentColor" d="M6 2 0 6l6 4 6-4-6-4zm12 0-6 4 6 4 6-4-6-4zM0 14l6 4 6-4-6-4-6 4zm18-4-6 4 6 4 6-4-6-4zM6 19l6 4 6-4-6-4-6 4z"/></svg>`;
+      const dropboxGlyph = `<svg class="recent-file-source" viewBox="0 0 24 24" width="11" height="11" aria-hidden="true" title="${escapeHtml(i18n("From Dropbox"))}"><path fill="currentColor" d="M6 2 0 6l6 4 6-4-6-4zm12 0-6 4 6 4 6-4-6-4zM0 14l6 4 6-4-6-4-6 4zm18-4-6 4 6 4 6-4-6-4zM6 19l6 4 6-4-6-4-6 4z"/></svg>`;
       const stripExt = (n) => (n || "").replace(/\.(dbb|csv|gpx|xlsx)$/i, "");
       items.forEach((item) => {
         const row = document.createElement("div");
@@ -1880,7 +1884,7 @@ document.addEventListener("DOMContentLoaded", function () {
         row.innerHTML = `
           <button type="button" class="recent-file-load">
             <span class="recent-file-name"><span class="recent-file-nametext">${escapeHtml(displayName)}</span>${sourceGlyph}</span>
-            <span class="recent-file-meta">${item.tripCount} trips &middot; ${UNITS.dist(item.totalKm).toFixed(1)} ${UNITS.distUnit} &middot; ${escapeHtml(formatRecentTime(item.loadedAt))}</span>
+            <span class="recent-file-meta">${i18n("{n} trips &middot; {dist} {unit} &middot; {when}", { n: item.tripCount, dist: UNITS.dist(item.totalKm).toFixed(1), unit: UNITS.distUnit, when: escapeHtml(formatRecentTime(item.loadedAt)) })}</span>
           </button>
         `;
 
@@ -1974,7 +1978,7 @@ document.addEventListener("DOMContentLoaded", function () {
     overlay.classList.remove("hidden");
     panel.classList.add("hidden");
     progressArea.classList.remove("hidden");
-    progressText.textContent = "Downloading trip…";
+    progressText.textContent = i18n("Downloading trip…");
     progressText.classList.remove("error");
     try {
       const resp = await fetch(rawUrl, { redirect: "follow" });
@@ -1987,7 +1991,7 @@ document.addEventListener("DOMContentLoaded", function () {
       const file = new File([blob], fname, { type: blob.type || "text/csv" });
       await handleFile(file, false);
     } catch (e) {
-      progressText.textContent = "Couldn’t fetch the shared trip: " + (e.message || e);
+      progressText.textContent = i18n("Couldn’t fetch the shared trip: {msg}", { msg: (e.message || e) });
       progressText.classList.add("error");
     }
   }
@@ -2215,11 +2219,11 @@ document.addEventListener("DOMContentLoaded", function () {
     // Update panel tab text based on selection state
     if (total > 0) {
       if (checked === 0) {
-        setPanelTabCount(`${total} trips parsed`);
+        setPanelTabCount(i18n("{n} trips parsed", { n: total }));
       } else if (checked === total) {
-        setPanelTabCount(`${total} trips`);
+        setPanelTabCount(i18n("{n} trips", { n: total }));
       } else {
-        setPanelTabCount(`${checked} displayed of ${total} trips`);
+        setPanelTabCount(i18n("{shown} displayed of {n} trips", { shown: checked, n: total }));
       }
     }
     const footer = document.getElementById("panel-footer");
@@ -2250,10 +2254,10 @@ document.addEventListener("DOMContentLoaded", function () {
         const hrs = Math.floor(selSec / 3600);
         const mins = Math.round((selSec % 3600) / 60);
         selSummary.innerHTML = `
-          <div class="summary-row"><span>${selCount}</span> trips</div>
+          <div class="summary-row">${i18n("<span>{n}</span> trips", { n: selCount })}</div>
           <div class="summary-row"><span>${UNITS.dist(selKm).toFixed(1)}</span> ${UNITS.distUnit}</div>
-          <div class="summary-row"><span>${hrs}h ${mins}m</span> riding</div>
-          <div class="summary-row"><span>${UNITS.speed(selTop).toFixed(0)}</span> ${UNITS.speedUnit} top</div>
+          <div class="summary-row">${i18n("<span>{h}h {m}m</span> riding", { h: hrs, m: mins })}</div>
+          <div class="summary-row">${i18n("<span>{v}</span> {unit} top", { v: UNITS.speed(selTop).toFixed(0), unit: UNITS.speedUnit })}</div>
         `;
       }
     }
@@ -2319,7 +2323,7 @@ document.addEventListener("DOMContentLoaded", function () {
         g.label += " #" + seen[g.label];
       }
     }
-    if (unknown.length) groups.push({ label: "Generic wheel", indices: unknown, unknown: true });
+    if (unknown.length) groups.push({ label: i18n("Generic wheel"), indices: unknown, unknown: true });
     return groups;
   }
 
@@ -2370,10 +2374,10 @@ document.addEventListener("DOMContentLoaded", function () {
       return `<label class="tm-row${t._archive ? " tm-archived" : ""}"><input type="checkbox" data-idx="${i}"${preChecked.has(i) ? " checked" : ""}>` +
         `<span class="tm-date">${formatTripLabel(t)}</span>` +
         `<span class="tm-km">${km}</span>` +
-        `<span class="tm-wheel${label ? "" : " tm-unknown"}">${label || "Generic wheel"}</span></label>`;
+        `<span class="tm-wheel${label ? "" : " tm-unknown"}">${label || i18n("Generic wheel")}</span></label>`;
     }).join("");
 
-    selWheel.innerHTML = '<option value="">Select by wheel…</option>' +
+    selWheel.innerHTML = '<option value="">' + i18n("Select by wheel…") + '</option>' +
       groups.map((g, gi) => `<option value="${gi}">${g.label} (${g.indices.length})</option>`).join("");
 
     // Assignable wheels: every named identity in the library, plus a
@@ -2383,14 +2387,14 @@ document.addEventListener("DOMContentLoaded", function () {
       return { label: g.label, wheel: { name: w.name, mac: w.mac, make: w.make, model: w.model, serial: w.serial } };
     });
     target.innerHTML = named.map((n, i) => `<option value="${i}">→ ${n.label}</option>`).join("") +
-      '<option value="custom">→ New wheel…</option>' +
-      '<option value="clear">→ No wheel (clear)</option>';
+      '<option value="custom">→ ' + i18n("New wheel…") + '</option>' +
+      '<option value="clear">→ ' + i18n("No wheel (clear)") + '</option>';
     target._named = named;
 
     const checkedIdx = () => [...list.querySelectorAll("input:checked")].map((c) => parseInt(c.dataset.idx));
     const refresh = () => {
       const n = checkedIdx().length;
-      countEl.textContent = n ? n + " selected" : allTracks.length + " trips";
+      countEl.textContent = n ? i18n("{n} selected", { n }) : i18n("{n} trips", { n: allTracks.length });
       applyBtn.disabled = !n;
       delBtn.disabled = !n;
       if (archBtn) {
@@ -2400,11 +2404,11 @@ document.addEventListener("DOMContentLoaded", function () {
         const idxs = checkedIdx();
         const able = idxs.filter((i) => canArchiveTrip(allTracks[i]));
         archBtn.disabled = !able.length;
-        archBtn.textContent = (able.length && able.every((i) => allTracks[i]._archive)) ? "Unarchive" : "Archive";
+        archBtn.textContent = (able.length && able.every((i) => allTracks[i]._archive)) ? i18n("Unarchive") : i18n("Archive");
         archBtn.title = able.length
-          ? "Mark for archive: Dropbox sync moves these into /trips/archive and drops them here"
-          : (n ? "These trips did not come from Dropbox, so there is nothing to archive"
-               : "Select trips to archive");
+          ? i18n("Mark for archive: Dropbox sync moves these into /trips/archive and drops them here")
+          : (n ? i18n("These trips did not come from Dropbox, so there is nothing to archive")
+               : i18n("Select trips to archive"));
       }
       selAll.checked = n === allTracks.length;
     };
@@ -2449,9 +2453,9 @@ document.addEventListener("DOMContentLoaded", function () {
       saveTracks(allTracks);
       buildTripList();
       appToast((allMarked
-        ? "Archive mark removed from " + able.length + "."
-        : able.length + " marked for archive. Run the Dropbox sync to move them.")
-        + (skipped ? " " + skipped + " not on Dropbox, skipped." : ""));
+        ? i18n("Archive mark removed from {n}.", { n: able.length })
+        : i18n("{n} marked for archive. Run the Dropbox sync to move them.", { n: able.length }))
+        + (skipped ? " " + i18n("{n} not on Dropbox, skipped.", { n: skipped }) : ""));
       renderTripManager(new Set(idxs));
     };
     applyBtn.onclick = () => {
@@ -2462,7 +2466,7 @@ document.addEventListener("DOMContentLoaded", function () {
       if (v === "clear") {
         wheel = null;
       } else if (v === "custom") {
-        const name = (window.prompt("Wheel name (e.g. KS-16SZ or Lynx-2317):") || "").trim();
+        const name = (window.prompt(i18n("Wheel name (e.g. KS-16SZ or Lynx-2317):")) || "").trim();
         if (!name) return;
         wheel = { name };
       } else {
@@ -2496,15 +2500,14 @@ document.addEventListener("DOMContentLoaded", function () {
       // straight back. Easy to read as the removal not having worked, so say
       // up front which action is the one that sticks.
       const onDropbox = [...idxs].filter((i) => allTracks[i] && allTracks[i].dropboxPath).length;
-      let msg = "Remove " + idxs.size + " trip(s) from the loaded library? The original files are not touched.";
+      let msg = i18n("Remove {n} trip(s) from the loaded library? The original files are not touched.", { n: idxs.size });
       if (onDropbox) {
         const one = onDropbox === 1;
-        const subject = onDropbox === idxs.size
-          ? (one ? "It is" : "They are")
-          : onDropbox + (one ? " of them is" : " of them are");
-        const them = one ? "it" : "them";
-        msg += "\n\n" + subject + " still on Dropbox, so the next sync will offer " + them + " back. "
-          + "Archive instead to move " + them + " out of /trips and have it stick.";
+        msg += "\n\n" + (onDropbox === idxs.size
+          ? (one ? i18n("It is still on Dropbox, so the next sync will offer it back. Archive instead to move it out of /trips and have it stick.")
+                 : i18n("They are still on Dropbox, so the next sync will offer them back. Archive instead to move them out of /trips and have it stick."))
+          : (one ? i18n("{n} of them is still on Dropbox, so the next sync will offer it back. Archive instead to move it out of /trips and have it stick.", { n: onDropbox })
+                 : i18n("{n} of them are still on Dropbox, so the next sync will offer them back. Archive instead to move them out of /trips and have it stick.", { n: onDropbox })));
       }
       if (!window.confirm(msg)) return;
       const remaining = allTracks.filter((_, i) => !idxs.has(i));
@@ -2572,20 +2575,20 @@ document.addEventListener("DOMContentLoaded", function () {
     const canShare = !!t.dropboxPath;
     const canArchive = canArchiveTrip(t);
     m.innerHTML =
-      `<a class="ttm-item" href="video.html?i=${i}" target="_blank" rel="noopener">${ICON.video}Make video</a>` +
-      `<a class="ttm-item" href="inspector.html?i=${i}" target="_blank" rel="noopener">${ICON.inspect}Inspect</a>` +
-      `<a class="ttm-item" href="inspector.html?i=${i}&compare=1" target="_blank" rel="noopener">${ICON.compare}Compare with&hellip;</a>` +
+      `<a class="ttm-item" href="video.html?i=${i}" target="_blank" rel="noopener">${ICON.video}${i18n("Make video")}</a>` +
+      `<a class="ttm-item" href="inspector.html?i=${i}" target="_blank" rel="noopener">${ICON.inspect}${i18n("Inspect")}</a>` +
+      `<a class="ttm-item" href="inspector.html?i=${i}&compare=1" target="_blank" rel="noopener">${ICON.compare}${i18n("Compare with&hellip;")}</a>` +
       `<div class="ttm-sep"></div>` +
-      `<button type="button" class="ttm-item" data-act="rename">${ICON.rename}Rename trip…</button>` +
-      `<button type="button" class="ttm-item" data-act="wheel">${ICON.wheel}Change wheel…</button>` +
-      `<button type="button" class="ttm-item" data-act="split">${ICON.split}Split trip…</button>` +
-      `<button type="button" class="ttm-item" data-act="extend">${ICON.extend}Extend trip…</button>` +
+      `<button type="button" class="ttm-item" data-act="rename">${ICON.rename}${i18n("Rename trip…")}</button>` +
+      `<button type="button" class="ttm-item" data-act="wheel">${ICON.wheel}${i18n("Change wheel…")}</button>` +
+      `<button type="button" class="ttm-item" data-act="split">${ICON.split}${i18n("Split trip…")}</button>` +
+      `<button type="button" class="ttm-item" data-act="extend">${ICON.extend}${i18n("Extend trip…")}</button>` +
       ((canShare || canArchive) ? `<div class="ttm-sep"></div>` : "") +
-      (canShare ? `<button type="button" class="ttm-item" data-act="sharelink">${ICON.share}Share with viewer</button>` : "") +
-      (canShare ? `<button type="button" class="ttm-item" data-act="sharefile">${ICON.share}Share file</button>` : "") +
-      (canArchive ? `<button type="button" class="ttm-item" data-act="archive">${ICON.archive}${t._archive ? "Unmark archive" : "Mark for archive"}</button>` : "") +
+      (canShare ? `<button type="button" class="ttm-item" data-act="sharelink">${ICON.share}${i18n("Share with viewer")}</button>` : "") +
+      (canShare ? `<button type="button" class="ttm-item" data-act="sharefile">${ICON.share}${i18n("Share file")}</button>` : "") +
+      (canArchive ? `<button type="button" class="ttm-item" data-act="archive">${ICON.archive}${t._archive ? i18n("Unmark archive") : i18n("Mark for archive")}</button>` : "") +
       `<div class="ttm-sep"></div>` +
-      `<button type="button" class="ttm-item ttm-danger" data-act="remove">${ICON.remove}Remove</button>`;
+      `<button type="button" class="ttm-item ttm-danger" data-act="remove">${ICON.remove}${i18n("Remove")}</button>`;
     m.querySelectorAll("a.ttm-item").forEach((a) => a.addEventListener("click", () => closeToolsMenu()));
     // Null-safe: the Dropbox-only items aren't always present.
     const wire = (act, fn) => { const el = m.querySelector(`[data-act="${act}"]`); if (el) el.addEventListener("click", (e) => { e.stopPropagation(); closeToolsMenu(); fn(i); }); };
@@ -2616,31 +2619,31 @@ document.addEventListener("DOMContentLoaded", function () {
       if (on) btn.innerHTML = '<span class="share-spinner"></span>';
       else if (restore != null) btn.innerHTML = restore;
     };
-    if (!DS || !DS.isAuthenticated || !DS.isAuthenticated()) { appToast("Sign in to Dropbox first."); return; }
+    if (!DS || !DS.isAuthenticated || !DS.isAuthenticated()) { appToast(i18n("Sign in to Dropbox first.")); return; }
     setBusy(true);
     try {
       const direct = await DS.getOrCreateShareLink(t.dropboxPath);
       let url, label;
-      if (mode === "file") { url = direct; label = "File link copied"; }
+      if (mode === "file") { url = direct; label = i18n("File link copied"); }
       else {
         const short = encodeShortLink(direct);
         url = location.origin + location.pathname + (short ? "#" + short : "?file=" + encodeURIComponent(direct));
-        label = "Viewer link copied";
+        label = i18n("Viewer link copied");
       }
       await navigator.clipboard.writeText(url);
       appToast(label);
     } catch (err) {
       const msg = String(err && err.message || err);
       if (/session expired|not signed in/i.test(msg)) {
-        appToast("Dropbox session expired.");
+        appToast(i18n("Dropbox session expired."));
         setTimeout(() => {
-          const ok = window.confirm("Your Dropbox session has expired.\n\nReconnect now to share this trip? You'll come back to the viewer after sign-in.");
+          const ok = window.confirm(i18n("Your Dropbox session has expired.\n\nReconnect now to share this trip? You'll come back to the viewer after sign-in."));
           if (ok && DS.startOAuth) DS.startOAuth();
         }, 250);
       } else {
-        appToast(/sharing\.write/i.test(msg) ? "Enable sharing.write in Dropbox App Console"
-          : /sharing\.read/i.test(msg) ? "Enable sharing.read in Dropbox App Console"
-          : "Share failed");
+        appToast(/sharing\.write/i.test(msg) ? i18n("Enable sharing.write in Dropbox App Console")
+          : /sharing\.read/i.test(msg) ? i18n("Enable sharing.read in Dropbox App Console")
+          : i18n("Share failed"));
       }
       console.warn("Share link error:", err);
     } finally {
@@ -2655,7 +2658,7 @@ document.addEventListener("DOMContentLoaded", function () {
     if (t._archive) delete t._archive; else t._archive = true;
     saveTracks(allTracks);
     buildTripList();
-    appToast(t._archive ? "Marked for archive." : "Archive mark removed.");
+    appToast(t._archive ? i18n("Marked for archive.") : i18n("Archive mark removed."));
   }
   // Remove a trip from the loaded library (local only: the source file, and
   // any Dropbox copy, are untouched). Mirrors the batch editor's Remove.
@@ -2664,10 +2667,9 @@ document.addEventListener("DOMContentLoaded", function () {
     if (!t) return;
     // Same trap as the batch Remove: the file stays in /trips, so the next
     // sync lists it as not loaded here and offers it straight back.
-    let msg = "Remove this trip from the loaded library? The original file is not touched.";
+    let msg = i18n("Remove this trip from the loaded library? The original file is not touched.");
     if (t.dropboxPath) {
-      msg += "\n\nIt is still on Dropbox, so the next sync will offer it back. "
-        + "Archive instead to move it out of /trips and have it stick.";
+      msg += "\n\n" + i18n("It is still on Dropbox, so the next sync will offer it back. Archive instead to move it out of /trips and have it stick.");
     }
     if (!window.confirm(msg)) return;
     const remaining = allTracks.filter((_, idx) => idx !== i);
@@ -2744,10 +2746,10 @@ document.addEventListener("DOMContentLoaded", function () {
     const dateLabel = tripDateLabel(t);
     const body =
       `<div class="tt-newrow" style="padding-left:8px"><input type="text" id="rn-name" maxlength="60" value="${escapeHtml(t.customName || "")}" placeholder="${escapeHtml(dateLabel)}"></div>` +
-      `<div class="tt-hint" style="padding:0 8px">Leave blank to use the date.</div>`;
-    const cancel = ttBtn("Cancel", "tt-ghost"); cancel.addEventListener("click", ttmodClose);
-    const save = ttBtn("Save", "tt-primary");
-    ttmodShow("NAME", "Rename trip",
+      `<div class="tt-hint" style="padding:0 8px">${i18n("Leave blank to use the date.")}</div>`;
+    const cancel = ttBtn(i18n("Cancel"), "tt-ghost"); cancel.addEventListener("click", ttmodClose);
+    const save = ttBtn(i18n("Save"), "tt-primary");
+    ttmodShow(i18n("NAME"), i18n("Rename trip"),
       `<div class="tt-trip">${escapeHtml(dateLabel)}</div>`, body, [cancel, save]);
     const inp = ttmod.querySelector("#rn-name");
     setTimeout(() => { inp.focus(); inp.select(); }, 0);
@@ -2755,7 +2757,7 @@ document.addEventListener("DOMContentLoaded", function () {
       const nm = (inp.value || "").trim();
       renameTrip(i, nm);
       ttmodClose();
-      appToast(nm ? `Renamed to "${nm}".` : "Name cleared.");
+      appToast(nm ? i18n("Renamed to \"{name}\".", { name: nm }) : i18n("Name cleared."));
     };
     save.addEventListener("click", commit);
     inp.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); commit(); } });
@@ -2856,15 +2858,15 @@ document.addEventListener("DOMContentLoaded", function () {
   function openDropboxSyncDialog(opts) {
     opts = opts || {};
     const DS = window.DropboxSource;
-    if (!DS) { appToast("Dropbox is not available."); return; }
+    if (!DS) { appToast(i18n("Dropbox is not available.")); return; }
     const root = ensureSyncModal();
     root.classList.remove("hidden");
     root.innerHTML =
       `<div class="src-card is-dropbox" role="dialog" aria-modal="true">` +
         `<header class="src-head">` +
           `<svg class="dbx-brand" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M6 2 0 6l6 4 6-4-6-4zm12 0-6 4 6 4 6-4-6-4zM0 14l6 4 6-4-6-4-6 4zm18-4-6 4 6 4 6-4-6-4zM6 19l6 4 6-4-6-4-6 4z"/></svg>` +
-          `<h3>Sync with Dropbox</h3>` +
-          `<button type="button" class="src-close" aria-label="Close">&times;</button>` +
+          `<h3>${i18n("Sync with Dropbox")}</h3>` +
+          `<button type="button" class="src-close" aria-label="${i18n("Close")}">&times;</button>` +
         `</header>` +
         `<div class="dbx-sync-main"><div class="dbx-sync-loading"><span class="dbx-spinner"></span></div></div>` +
       `</div>`;
@@ -2872,8 +2874,8 @@ document.addEventListener("DOMContentLoaded", function () {
     const main = root.querySelector(".dbx-sync-main");
     if (!DS.isAuthenticated()) {
       main.innerHTML =
-        `<div class="dbx-listing"><div class="dbx-empty">Connect your Dropbox to sync trips with <code>Apps/EUC Planet/trips/</code>.</div></div>` +
-        `<div class="src-action"><div class="src-action-row"><button type="button" class="src-primary-btn" id="dbx-sync-connect">Connect Dropbox</button></div></div>`;
+        `<div class="dbx-listing"><div class="dbx-empty">${i18n("Connect your Dropbox to sync trips with <code>Apps/EUC Planet/trips/</code>.")}</div></div>` +
+        `<div class="src-action"><div class="src-action-row"><button type="button" class="src-primary-btn" id="dbx-sync-connect">${i18n("Connect Dropbox")}</button></div></div>`;
       main.querySelector("#dbx-sync-connect").addEventListener("click", () => connectDropbox(opts.autoLoadAll));
       return;
     }
@@ -2886,7 +2888,7 @@ document.addEventListener("DOMContentLoaded", function () {
           if (btn) btn.click();
         }
       })
-      .catch((e) => { main.innerHTML = `<div class="dbx-listing"><div class="dbx-err">Couldn't reach Dropbox: ${escapeHtml(e.message || String(e))}</div></div>`; });
+      .catch((e) => { main.innerHTML = `<div class="dbx-listing"><div class="dbx-err">${i18n("Couldn't reach Dropbox: {error}", { error: escapeHtml(e.message || String(e)) })}</div></div>`; });
   }
 
   // The name a trip's file goes by on both sides of the archive. Dropbox
@@ -2962,10 +2964,10 @@ document.addEventListener("DOMContentLoaded", function () {
   };
   DBX_TAG_ICONS.archived = DBX_TAG_ICONS.archive;
   DBX_TAG_ICONS.returned = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 7.5a5.5 5.5 0 1 1 1.6 3.9"/><path d="M2 4.5V8h3.5"/></svg>';
-  const DBX_TAG_TIP = { new: "Not on Dropbox yet", edited: "Changed, its file will be updated", synced: "In sync", remote: "On Dropbox, not loaded here", archive: "Superseded; moves to /trips/archive and leaves here", archived: "In /trips/archive; Restore puts it back in /trips", returned: "Archived here, but the EUC Planet app put a copy back in /trips" };
+  const DBX_TAG_TIP = { new: i18n("Not on Dropbox yet"), edited: i18n("Changed, its file will be updated"), synced: i18n("In sync"), remote: i18n("On Dropbox, not loaded here"), archive: i18n("Superseded; moves to /trips/archive and leaves here"), archived: i18n("In /trips/archive; Restore puts it back in /trips"), returned: i18n("Archived here, but the EUC Planet app put a copy back in /trips") };
   // Local status shows in the meta text; the in-sync state is carried by its
   // (disabled) button instead, so it isn't said twice.
-  const DBX_META = { new: "New", edited: "Changed", archive: "Archive", returned: "Back from the app" };
+  const DBX_META = { new: i18n("New"), edited: i18n("Changed"), archive: i18n("Archive"), returned: i18n("Back from the app") };
   function dbxFmtBytes(n) {
     if (!n) return "";
     const u = ["B", "KB", "MB", "GB"]; let i = 0, v = n;
@@ -3003,9 +3005,9 @@ document.addEventListener("DOMContentLoaded", function () {
     const upstream = up + arch;
     const bothUpstream = up > 0 && arch > 0;
     const subParts = [];
-    if (up) subParts.push(`upload ${up}`);
-    if (arch) subParts.push(`archive ${arch}`);
-    const syncMainLabel = `<span class="dbx-sync-title">Synchronize</span>` +
+    if (up) subParts.push(i18n("upload {n}", { n: up }));
+    if (arch) subParts.push(i18n("archive {n}", { n: arch }));
+    const syncMainLabel = `<span class="dbx-sync-title">${i18n("Synchronize")}</span>` +
       (subParts.length ? `<span class="dbx-sync-sub">(${subParts.join(", ")})</span>` : "");
 
     const rowsHtml = state.rows.map((r, i) => {
@@ -3015,22 +3017,22 @@ document.addEventListener("DOMContentLoaded", function () {
       // Remote rows load into the viewer; new/changed local rows upload just
       // themselves; in-sync rows need no action.
       const rowBtn = (r.kind === "remote" && r.cat === "returned")
-        ? `<button type="button" class="dbx-row-arch dbx-row-rearchive" data-i="${i}" title="Move it back into /trips/archive">Archive</button>`
+        ? `<button type="button" class="dbx-row-arch dbx-row-rearchive" data-i="${i}" title="${i18n("Move it back into /trips/archive")}">${i18n("Archive")}</button>`
         : r.kind === "remote"
-        ? `<button type="button" class="dbx-row-open" data-i="${i}">Load</button>`
+        ? `<button type="button" class="dbx-row-open" data-i="${i}">${i18n("Load")}</button>`
         : r.kind === "archived"
-          ? `<button type="button" class="dbx-row-restore" data-i="${i}" title="Move back into /trips">Restore</button>`
+          ? `<button type="button" class="dbx-row-restore" data-i="${i}" title="${i18n("Move back into /trips")}">${i18n("Restore")}</button>`
         : (r.cat === "archive" || r.cat === "returned")
-          ? `<button type="button" class="dbx-row-arch" data-i="${i}">Archive</button>`
+          ? `<button type="button" class="dbx-row-arch" data-i="${i}">${i18n("Archive")}</button>`
           : (r.cat === "new" || r.cat === "edited")
-            ? `<button type="button" class="dbx-row-sync" data-i="${i}">Upload</button>`
-            : `<button type="button" class="dbx-row-done" disabled>Loaded</button>`;
+            ? `<button type="button" class="dbx-row-sync" data-i="${i}">${i18n("Upload")}</button>`
+            : `<button type="button" class="dbx-row-done" disabled>${i18n("Loaded")}</button>`;
       // Changed rows: the amber icon is a one-click undo (revert). Archive
       // rows: the icon cancels the archive (keep the trip). Others are static.
       const tag = r.cat === "edited"
-        ? `<button type="button" class="dbx-row-tag dbx-row-revert" data-i="${i}" title="Undo changes (revert to the Dropbox version)">${DBX_TAG_ICONS.edited}</button>`
+        ? `<button type="button" class="dbx-row-tag dbx-row-revert" data-i="${i}" title="${i18n("Undo changes (revert to the Dropbox version)")}">${DBX_TAG_ICONS.edited}</button>`
         : r.cat === "archive"
-          ? `<button type="button" class="dbx-row-tag dbx-row-unarchive" data-i="${i}" title="Keep this trip (cancel archive)">${DBX_TAG_ICONS.archive}</button>`
+          ? `<button type="button" class="dbx-row-tag dbx-row-unarchive" data-i="${i}" title="${i18n("Keep this trip (cancel archive)")}">${DBX_TAG_ICONS.archive}</button>`
           : `<span class="dbx-row-tag" title="${DBX_TAG_TIP[r.cat]}">${DBX_TAG_ICONS[r.cat]}</span>`;
       const dataPath = (r.kind === "remote" || r.kind === "archived")
         ? ` data-path="${escapeHtml(r.file.path)}"`
@@ -3049,30 +3051,30 @@ document.addEventListener("DOMContentLoaded", function () {
       `<details class="dbx-conn">` +
         `<summary>` +
           `<svg viewBox="0 0 16 16" width="10" height="10" class="dbx-conn-caret" aria-hidden="true"><path fill="currentColor" d="M5 3l5 5-5 5z"/></svg>` +
-          `<span class="dbx-conn-trips">${nTrips} ${nTrips === 1 ? "trip" : "trips"}${sizeBit}</span>` +
-          `<span class="dbx-conn-account">Connected as ${escapeHtml(state.account || "Dropbox")}</span>` +
+          `<span class="dbx-conn-trips">${nTrips === 1 ? i18n("{n} trip", { n: nTrips }) : i18n("{n} trips", { n: nTrips })}${sizeBit}</span>` +
+          `<span class="dbx-conn-account">${i18n("Connected as {name}", { name: escapeHtml(state.account || "Dropbox") })}</span>` +
         `</summary>` +
         `<div class="dbx-conn-body">` +
-          `<div class="dbx-conn-row"><span class="dbx-conn-key">Folder</span><code>Apps/EUC Planet/trips/</code></div>` +
-          `<div class="dbx-conn-row" title="Trip files already downloaded from Dropbox, kept so loading them again costs no download. A file edited anywhere is fetched fresh. Clearing it only means the next load downloads again; it does not touch Dropbox or the trips loaded here."><span class="dbx-conn-key">Cache</span><span>${cache.count} file${cache.count === 1 ? "" : "s"} · ${dbxFmtBytes(cache.bytes) || "0 KB"}</span></div>` +
+          `<div class="dbx-conn-row"><span class="dbx-conn-key">${i18n("Folder")}</span><code>Apps/EUC Planet/trips/</code></div>` +
+          `<div class="dbx-conn-row" title="${i18n("Trip files already downloaded from Dropbox, kept so loading them again costs no download. A file edited anywhere is fetched fresh. Clearing it only means the next load downloads again; it does not touch Dropbox or the trips loaded here.")}"><span class="dbx-conn-key">${i18n("Cache")}</span><span>${cache.count === 1 ? i18n("{n} file", { n: cache.count }) : i18n("{n} files", { n: cache.count })} · ${dbxFmtBytes(cache.bytes) || "0 KB"}</span></div>` +
           `<div class="dbx-conn-actions">` +
-            (cache.count ? `<button type="button" class="src-link-btn" id="dbx-clear-cache">Clear cache</button>` : "") +
-            (allLocal.length ? `<button type="button" class="src-link-btn" id="dbx-upload-all" title="Rewrite every trip's file on Dropbox from the copy loaded here, in-sync ones included">Re-upload all ${allLocal.length}</button>` : "") +
-            `<button type="button" class="src-link-btn dbx-signout">Sign out of Dropbox</button>` +
+            (cache.count ? `<button type="button" class="src-link-btn" id="dbx-clear-cache">${i18n("Clear cache")}</button>` : "") +
+            (allLocal.length ? `<button type="button" class="src-link-btn" id="dbx-upload-all" title="${i18n("Rewrite every trip's file on Dropbox from the copy loaded here, in-sync ones included")}">${i18n("Re-upload all {n}", { n: allLocal.length })}</button>` : "") +
+            `<button type="button" class="src-link-btn dbx-signout">${i18n("Sign out of Dropbox")}</button>` +
           `</div>` +
         `</div>` +
       `</details>` +
-      `<div class="dbx-listing"><ul class="dbx-rows">${rowsHtml || '<li class="dbx-empty">No trips.</li>'}</ul></div>` +
+      `<div class="dbx-listing"><ul class="dbx-rows">${rowsHtml || '<li class="dbx-empty">' + i18n("No trips.") + '</li>'}</ul></div>` +
       `<div class="src-action"><div class="src-action-row">` +
         // Upstream: one Synchronize button (upload + archive). When both apply,
         // a caret splits it into the individual Upload / Archive actions.
         (upstream ? (bothUpstream
           ? `<div class="dbx-sync-split">` +
-              `<button type="button" class="src-primary-btn dbx-sync-main" id="dbx-do-all" title="Upload ${up} and archive ${arch}">${syncMainLabel}</button>` +
-              `<button type="button" class="src-primary-btn dbx-sync-caret" id="dbx-sync-menu-btn" aria-label="Individual sync actions"><svg viewBox="0 0 16 16" width="10" height="10" aria-hidden="true"><path fill="currentColor" d="M3 5l5 6 5-6z"/></svg></button>` +
+              `<button type="button" class="src-primary-btn dbx-sync-main" id="dbx-do-all" title="${i18n("Upload {up} and archive {arch}", { up, arch })}">${syncMainLabel}</button>` +
+              `<button type="button" class="src-primary-btn dbx-sync-caret" id="dbx-sync-menu-btn" aria-label="${i18n("Individual sync actions")}"><svg viewBox="0 0 16 16" width="10" height="10" aria-hidden="true"><path fill="currentColor" d="M3 5l5 6 5-6z"/></svg></button>` +
               `<div class="dbx-sync-menu hidden" id="dbx-sync-menu">` +
-                `<button type="button" class="dbx-sync-menu-item" id="dbx-do-sync">Upload ${up}</button>` +
-                `<button type="button" class="dbx-sync-menu-item" id="dbx-do-archive">Archive ${arch}</button>` +
+                `<button type="button" class="dbx-sync-menu-item" id="dbx-do-sync">${i18n("Upload {n}", { n: up })}</button>` +
+                `<button type="button" class="dbx-sync-menu-item" id="dbx-do-archive">${i18n("Archive {n}", { n: arch })}</button>` +
               `</div>` +
             `</div>`
           : `<button type="button" class="src-primary-btn dbx-sync-main" id="dbx-do-all">${syncMainLabel}</button>`)
@@ -3083,8 +3085,8 @@ document.addEventListener("DOMContentLoaded", function () {
           // With a Load button present there is already something to do, and
           // a disabled one beside it would only be in the way.
           : (remoteFiles.length ? ""
-            : `<button type="button" class="src-primary-btn dbx-sync-idle" disabled title="Every trip loaded here matches its copy on Dropbox">Nothing to sync</button>`)) +
-        (remoteFiles.length ? `<button type="button" class="${upstream ? "src-secondary-btn" : "src-primary-btn"}" id="dbx-load-remote">Load ${remoteFiles.length} from Dropbox</button>` : "") +
+            : `<button type="button" class="src-primary-btn dbx-sync-idle" disabled title="${i18n("Every trip loaded here matches its copy on Dropbox")}">${i18n("Nothing to sync")}</button>`)) +
+        (remoteFiles.length ? `<button type="button" class="${upstream ? "src-secondary-btn" : "src-primary-btn"}" id="dbx-load-remote">${i18n("Load {n} from Dropbox", { n: remoteFiles.length })}</button>` : "") +
       `</div></div>` +
       `<div class="dbx-status"></div>`;
 
@@ -3107,10 +3109,7 @@ document.addEventListener("DOMContentLoaded", function () {
     if (forceBtn) forceBtn.addEventListener("click", () => {
       const n = allLocal.length;
       if (!n) return;
-      if (!window.confirm("Re-upload all " + n + " trips to Dropbox?\n\n"
-        + "Every trip's file is rewritten from the copy loaded here, including "
-        + "the ones already in sync. Use this when local wheels or names never "
-        + "got flagged as changed.")) return;
+      if (!window.confirm(i18n("Re-upload all {n} trips to Dropbox?\n\nEvery trip's file is rewritten from the copy loaded here, including the ones already in sync. Use this when local wheels or names never got flagged as changed.", { n }))) return;
       runSync(allLocal, ui);
     });
     main.querySelectorAll(".dbx-row-open").forEach((btn) => {
@@ -3159,9 +3158,9 @@ document.addEventListener("DOMContentLoaded", function () {
           await DS.moveFile(r.file.path, DS.TRIPS_PATH + "/" + (String(r.file.path).split("/").pop() || r.file.name));
         } catch (e) {
           btn.disabled = false;
-          btn.textContent = "Restore";
+          btn.textContent = i18n("Restore");
           const st = main.querySelector(".dbx-status");
-          if (st) { st.classList.add("dbx-err"); st.textContent = "Couldn't restore: " + (e.message || e); }
+          if (st) { st.classList.add("dbx-err"); st.textContent = i18n("Couldn't restore: {error}", { error: e.message || e }); }
           return;
         }
         const s2 = await gatherSyncState().catch(() => null);
@@ -3210,18 +3209,18 @@ document.addEventListener("DOMContentLoaded", function () {
     if (actionRow) {
       const syncMainEl = actionRow.querySelector(".dbx-sync-main");
       const compactBits = [];
-      if (up) compactBits.push("Upload " + up);
-      if (arch) compactBits.push("Archive " + arch);
+      if (up) compactBits.push(i18n("Upload {n}", { n: up }));
+      if (arch) compactBits.push(i18n("Archive {n}", { n: arch }));
       const compactSyncLabel = compactBits.join(", ");
       const fitActions = () => {
         // Restore full labels first so a widened dialog can re-expand them.
         if (syncMainEl) syncMainEl.innerHTML = syncMainLabel;
-        if (loadBtn) loadBtn.textContent = "Load " + remoteFiles.length + " from Dropbox";
+        if (loadBtn) loadBtn.textContent = i18n("Load {n} from Dropbox", { n: remoteFiles.length });
         const kids = [...actionRow.children];
         if (kids.length < 2) return; // only one button, nothing to trade off
         if (new Set(kids.map((k) => k.offsetTop)).size === 1) return; // already fits
         if (syncMainEl && compactSyncLabel) syncMainEl.textContent = compactSyncLabel;
-        if (loadBtn) loadBtn.textContent = "Load " + remoteFiles.length;
+        if (loadBtn) loadBtn.textContent = i18n("Load {n}", { n: remoteFiles.length });
       };
       fitActions();
       renderSyncState._lastFit = fitActions;
@@ -3266,11 +3265,11 @@ document.addEventListener("DOMContentLoaded", function () {
   // figure rounded to ten seconds rather than a vague one. "Almost ready" is
   // the wording the parser already uses while it finishes a load.
   function etaPhrase(sec) {
-    if (sec < 10) return "Almost ready";
-    if (sec < 20) return "Nearly done";
-    if (sec < 45) return "About " + (Math.round(sec / 10) * 10) + " seconds left";
-    if (sec < 90) return "About a minute left";
-    return "About " + Math.round(sec / 60) + " minutes left";
+    if (sec < 10) return i18n("Almost ready");
+    if (sec < 20) return i18n("Nearly done");
+    if (sec < 45) return i18n("About {n} seconds left", { n: Math.round(sec / 10) * 10 });
+    if (sec < 90) return i18n("About a minute left");
+    return i18n("About {n} minutes left", { n: Math.round(sec / 60) });
   }
   // A couple of minutes staring at one unchanging line is a waste of the only
   // attention the sync ever gets, so the pill alternates the time with a short
@@ -3282,15 +3281,15 @@ document.addEventListener("DOMContentLoaded", function () {
   // never next to each other, so one that opens with "it" has nothing to
   // refer back to and reads as a fragment. Every line names its subject.
   const ETA_TIPS = [
-    "Your trips live in Apps/EUC Planet/trips",
-    "EUC Planet uploads a ride as soon as it is saved",
-    "EUC Planet re-checks Dropbox every 15 min by default",
-    "Wheel and trip names are stored inside the CSV",
-    "Edits here reach Dropbox only when you Synchronize",
-    "A trip changed on Dropbox will not be overwritten",
-    "Trips already cached cost no download next time",
-    "Archive moves a trip aside, it is not deleted",
-    "The build badge opens the storage explorer",
+    i18n("Your trips live in Apps/EUC Planet/trips"),
+    i18n("EUC Planet uploads a ride as soon as it is saved"),
+    i18n("EUC Planet re-checks Dropbox every 15 min by default"),
+    i18n("Wheel and trip names are stored inside the CSV"),
+    i18n("Edits here reach Dropbox only when you Synchronize"),
+    i18n("A trip changed on Dropbox will not be overwritten"),
+    i18n("Trips already cached cost no download next time"),
+    i18n("Archive moves a trip aside, it is not deleted"),
+    i18n("The build badge opens the storage explorer"),
   ];
   const ETA_SWAP_MS = 5000;
   function makeTipPicker() {
@@ -3412,14 +3411,14 @@ document.addEventListener("DOMContentLoaded", function () {
     const stop = document.createElement("button");
     stop.type = "button";
     stop.className = "src-primary-btn dbx-stop-btn";
-    stop.textContent = "Stop";
-    stop.title = label || "Stop after the files already in flight finish";
+    stop.textContent = i18n("Stop");
+    stop.title = label || i18n("Stop after the files already in flight finish");
     stop.addEventListener("click", () => {
       dbxStopRequested = true;
       stop.disabled = true;
       // The lanes already in the air still have to land, so do not claim it
       // has stopped until they have.
-      stop.textContent = "Stopping…";
+      stop.textContent = i18n("Stopping…");
     });
     row.appendChild(stop);
   }
@@ -3462,7 +3461,7 @@ document.addEventListener("DOMContentLoaded", function () {
       const b = li && li.querySelector(".dbx-row-rearchive");
       if (b) { b.disabled = true; b.innerHTML = '<span class="dbx-spinner sm"></span>'; }
     });
-    armStopButton(main, "Stop archiving");
+    armStopButton(main, i18n("Stop archiving"));
     let done = 0, err = null;
     for (const r of rows) {
       if (dbxStopRequested) break;
@@ -3496,10 +3495,10 @@ document.addEventListener("DOMContentLoaded", function () {
         const msg = String(err.message || err);
         st.classList.add("dbx-err");
         st.innerHTML = /missing_scope/.test(msg)
-          ? `Enable <code>files.content.write</code> in your Dropbox App Console, then reconnect.`
-          : "Archive failed: " + escapeHtml(msg);
+          ? i18n("Enable <code>files.content.write</code> in your Dropbox App Console, then reconnect.")
+          : i18n("Archive failed: {error}", { error: escapeHtml(msg) });
       } else if (dbxStopRequested) {
-        st.textContent = "Stopped. " + done + " of " + rows.length + " archived.";
+        st.textContent = i18n("Stopped. {done} of {total} archived.", { done, total: rows.length });
       }
     }
   }
@@ -3524,7 +3523,7 @@ document.addEventListener("DOMContentLoaded", function () {
       const k = dbxTrackKey(t); keyOf.set(t, k);
       const b = rowSyncBtn(k); if (b) { b.disabled = true; b.innerHTML = '<span class="dbx-spinner sm"></span>'; }
     });
-    armStopButton(main, "Stop uploading");
+    armStopButton(main, i18n("Stop uploading"));
     const eta = makeEtaNotice(main, uploadTracks.length);
     try {
       // Scrolling follows the furthest row started, so with several in flight
@@ -3582,7 +3581,7 @@ document.addEventListener("DOMContentLoaded", function () {
       // listed and Synchronize picks up where this left off.
       if (dbxStopRequested) {
         const st = main.querySelector(".dbx-status");
-        if (st) st.textContent = "Stopped. " + finished + " of " + uploadTracks.length + " uploaded.";
+        if (st) st.textContent = i18n("Stopped. {done} of {total} uploaded.", { done: finished, total: uploadTracks.length });
       }
     } catch (e) {
       eta.finish();
@@ -3601,9 +3600,9 @@ document.addEventListener("DOMContentLoaded", function () {
       if (st) {
         if (/missing_scope/.test(msg)) {
           st.classList.add("dbx-err");
-          st.innerHTML = `Enable <code>files.content.write</code> in your Dropbox App Console, then reconnect.`;
+          st.innerHTML = i18n("Enable <code>files.content.write</code> in your Dropbox App Console, then reconnect.");
           const sb = main.querySelector("#dbx-do-sync");
-          if (sb) { sb.disabled = false; sb.textContent = "Reconnect"; sb.onclick = () => connectDropbox(); }
+          if (sb) { sb.disabled = false; sb.textContent = i18n("Reconnect"); sb.onclick = () => connectDropbox(); }
         } else {
           st.textContent = msg;
           st.title = (e && e.detail) || msg;
@@ -3630,7 +3629,7 @@ document.addEventListener("DOMContentLoaded", function () {
     });
     const removed = new Set();
     let err = null;
-    armStopButton(main, "Stop archiving");
+    armStopButton(main, i18n("Stop archiving"));
     let archived = 0;
     for (const t of archiveTracks) {
       if (dbxStopRequested) break;
@@ -3680,7 +3679,7 @@ document.addEventListener("DOMContentLoaded", function () {
     if (s) renderSyncState(s, main);
     if (dbxStopRequested && !err) {
       const st = main.querySelector(".dbx-status");
-      if (st) st.textContent = "Stopped. " + archived + " of " + archiveTracks.length + " archived.";
+      if (st) st.textContent = i18n("Stopped. {done} of {total} archived.", { done: archived, total: archiveTracks.length });
     }
     if (err) {
       const st = main.querySelector(".dbx-status");
@@ -3688,8 +3687,8 @@ document.addEventListener("DOMContentLoaded", function () {
       if (st) {
         st.classList.add("dbx-err");
         st.innerHTML = /missing_scope/.test(msg)
-          ? `Enable <code>files.content.write</code> in your Dropbox App Console, then reconnect.`
-          : "Archive failed: " + escapeHtml(msg);
+          ? i18n("Enable <code>files.content.write</code> in your Dropbox App Console, then reconnect.")
+          : i18n("Archive failed: {error}", { error: escapeHtml(msg) });
       }
     }
   }
@@ -3703,7 +3702,7 @@ document.addEventListener("DOMContentLoaded", function () {
     main.classList.add("dbx-locked");
     const rowEl = (path) => main.querySelector(`.dbx-row[data-path="${String(path || "").replace(/["\\]/g, "\\$&")}"]`);
     files.forEach((f) => { const li = rowEl(f.path); const b = li && li.querySelector(".dbx-row-open"); if (b) { b.disabled = true; b.innerHTML = '<span class="dbx-spinner sm"></span>'; } });
-    armStopButton(main, "Stop loading");
+    armStopButton(main, i18n("Stop loading"));
     const eta = makeEtaNotice(main, files.length);
     try {
       const zip = new window.JSZip();
@@ -3772,7 +3771,7 @@ document.addEventListener("DOMContentLoaded", function () {
         const s0 = await gatherSyncState().catch(() => null);
         if (s0) renderSyncState(s0, main);
         const st0 = main.querySelector(".dbx-status");
-        if (st0) st0.textContent = "Stopped. Nothing was loaded.";
+        if (st0) st0.textContent = i18n("Stopped. Nothing was loaded.");
         return;
       }
       // Hand over to a bare spinner across the page. Bundling and parsing take
@@ -3819,7 +3818,7 @@ document.addEventListener("DOMContentLoaded", function () {
       if (st) {
         st.classList.add("dbx-err");
         st.textContent = /missing_scope/.test(msg)
-          ? "Enable files.content.read in your Dropbox App Console, then reconnect."
+          ? i18n("Enable files.content.read in your Dropbox App Console, then reconnect.")
           : msg;
         st.title = (e && e.detail) || msg;
       }
@@ -4146,13 +4145,13 @@ document.addEventListener("DOMContentLoaded", function () {
       const on = gi === curGi ? " checked" : "";
       body += `<label class="tt-radio"><input type="radio" name="cw" value="g:${gi}"${on}><span>${escapeHtml(g.label)}</span></label>`;
     });
-    body += `<label class="tt-radio"><input type="radio" name="cw" value="new"><span>New wheel…</span></label>`;
-    body += `<div class="tt-newrow hidden"><input type="text" id="cw-name" placeholder="e.g. KS-16SZ or Lynx-2317" maxlength="60"></div>`;
-    body += `<label class="tt-radio"><input type="radio" name="cw" value="none"${cur ? "" : " checked"}><span>No wheel</span></label>`;
+    body += `<label class="tt-radio"><input type="radio" name="cw" value="new"><span>${i18n("New wheel…")}</span></label>`;
+    body += `<div class="tt-newrow hidden"><input type="text" id="cw-name" placeholder="${i18n("e.g. KS-16SZ or Lynx-2317")}" maxlength="60"></div>`;
+    body += `<label class="tt-radio"><input type="radio" name="cw" value="none"${cur ? "" : " checked"}><span>${i18n("No wheel")}</span></label>`;
     body += "</div>";
-    const cancel = ttBtn("Cancel", "tt-ghost"); cancel.addEventListener("click", ttmodClose);
-    const apply = ttBtn("Apply", "tt-primary");
-    ttmodShow("WHEEL", "Change wheel",
+    const cancel = ttBtn(i18n("Cancel"), "tt-ghost"); cancel.addEventListener("click", ttmodClose);
+    const apply = ttBtn(i18n("Apply"), "tt-primary");
+    ttmodShow(i18n("WHEEL"), i18n("Change wheel"),
       `<div class="tt-trip">${escapeHtml(formatTripLabel(t))}</div>`, body, [cancel, apply]);
     const nameRow = ttmod.querySelector(".tt-newrow"), nameInp = ttmod.querySelector("#cw-name");
     const sync = () => {
@@ -4177,7 +4176,7 @@ document.addEventListener("DOMContentLoaded", function () {
       }
       applyWheelToTrip(i, wheel);
       ttmodClose();
-      appToast(wheel ? `Wheel set to ${wheel.name || "wheel"}.` : "Wheel cleared.");
+      appToast(wheel ? i18n("Wheel set to {name}.", { name: wheel.name || i18n("wheel") }) : i18n("Wheel cleared."));
     });
   }
 
@@ -4187,27 +4186,27 @@ document.addEventListener("DOMContentLoaded", function () {
     const cuts = detectCutPoints(t);
     const sub = `<div class="tt-trip">${escapeHtml(formatTripLabel(t))}</div>` +
       `<div class="tt-facts">${fmtDurH(tripDurH(t))} · ${UNITS.dist(t.stats.distanceKm).toFixed(1)} ${UNITS.distUnit}</div>`;
-    const cancel = ttBtn("Cancel", "tt-ghost"); cancel.addEventListener("click", ttmodClose);
+    const cancel = ttBtn(i18n("Cancel"), "tt-ghost"); cancel.addEventListener("click", ttmodClose);
     if (!cuts.length) {
-      ttmodShow("SPLIT", "Split trip", sub,
-        `<div class="tt-empty">No recording gaps or long stops to split on.</div>`,
+      ttmodShow(i18n("SPLIT"), i18n("Split trip"), sub,
+        `<div class="tt-empty">${i18n("No recording gaps or long stops to split on.")}</div>`,
         [cancel]);
       return;
     }
     const ts0 = t.timeseries[0][0];
-    let body = `<div class="tt-hint">Cut the ride at these points. The original stays.</div><div class="tt-cuts">`;
+    let body = `<div class="tt-hint">${i18n("Cut the ride at these points. The original stays.")}</div><div class="tt-cuts">`;
     cuts.forEach((c) => {
-      const why = c.kind === "gap" ? `recording gap of ${fmtGap(c.dur)}` : `stopped for ${fmtGap(c.dur)}`;
+      const why = c.kind === "gap" ? i18n("recording gap of {dur}", { dur: fmtGap(c.dur) }) : i18n("stopped for {dur}", { dur: fmtGap(c.dur) });
       body += `<label class="tt-cut"><input type="checkbox" class="tt-cutcb" data-sec="${c.sec}" checked>` +
         `<span class="tt-cut-when">${fmtClock(c.sec - ts0)}</span><span class="tt-cut-why">${why}</span></label>`;
     });
     body += "</div>";
-    const go = ttBtn("Split", "tt-primary");
-    ttmodShow("SPLIT", "Split trip", sub, body, [cancel, go]);
+    const go = ttBtn(i18n("Split"), "tt-primary");
+    ttmodShow(i18n("SPLIT"), i18n("Split trip"), sub, body, [cancel, go]);
     const cbs = [...ttmod.querySelectorAll(".tt-cutcb")];
     const sync = () => {
       const n = cbs.filter((c) => c.checked).length;
-      go.textContent = n ? `Split into ${n + 1} trips` : "Split";
+      go.textContent = n ? i18n("Split into {n} trips", { n: n + 1 }) : i18n("Split");
       go.disabled = !n;
     };
     cbs.forEach((c) => c.addEventListener("change", sync));
@@ -4221,14 +4220,14 @@ document.addEventListener("DOMContentLoaded", function () {
         const seg = sliceTrackByTime(t, bounds[k], bounds[k + 1], `${t.name || "Trip"} · part ${k + 1}`);
         if (seg) segs.push(seg);
       }
-      if (segs.length < 2) { appToast("Couldn't split (segments too short)."); return; }
+      if (segs.length < 2) { appToast(i18n("Couldn't split (segments too short).")); return; }
       // Split leaves the original untouched. Flag it for archive only when it's
       // Dropbox-backed, so the Sync dialog can move it out of /trips; otherwise
       // it just stays (remove it by hand if you want).
       if (t.dropboxPath) t._archive = true;
       allTracks.push(...segs);
       ttmodClose();
-      commitEditedTracks(`Split into ${segs.length} trips.`);
+      commitEditedTracks(i18n("Split into {n} trips.", { n: segs.length }));
       segs.forEach((s) => highlightNewTrip(s, false)); // highlight the fresh parts
     });
   }
@@ -4284,13 +4283,13 @@ document.addEventListener("DOMContentLoaded", function () {
       .filter((idx) => !overlapsAnchor(idx) && !containedInAnother(idx))
       .sort((a, b) => (Date.parse(allTracks[a].dateStart || "") || 0) - (Date.parse(allTracks[b].dateStart || "") || 0));
     const pos = order.indexOf(i); // this trip's chronological position
-    const cancel = ttBtn("Cancel", "tt-ghost"); cancel.addEventListener("click", ttmodClose);
+    const cancel = ttBtn(i18n("Cancel"), "tt-ghost"); cancel.addEventListener("click", ttmodClose);
     const sub =
-      `<div class="tt-trip">This trip <span class="tt-when">· ${escapeHtml(formatTripLabel(t))}</span></div>` +
+      `<div class="tt-trip">${i18n("This trip")} <span class="tt-when">· ${escapeHtml(formatTripLabel(t))}</span></div>` +
       `<div class="tt-facts">${fmtDurH(tripDurH(t))} · ${UNITS.dist(t.stats.distanceKm).toFixed(1)} ${UNITS.distUnit}</div>`;
     if (order.length < 2) {
-      ttmodShow("EXTEND", "Extend trip", sub,
-        `<div class="tt-empty">No other trips to combine with.</div>`, [cancel]);
+      ttmodShow(i18n("EXTEND"), i18n("Extend trip"), sub,
+        `<div class="tt-empty">${i18n("No other trips to combine with.")}</div>`, [cancel]);
       return;
     }
     const hasOlder = pos > 0, hasNewer = pos < order.length - 1;
@@ -4299,15 +4298,15 @@ document.addEventListener("DOMContentLoaded", function () {
     const MAX_EACH = 8;
     const fromPos = [pos]; for (let p = pos - 1; p >= 0 && fromPos.length <= MAX_EACH; p--) fromPos.push(p);
     const toPos = [pos]; for (let p = pos + 1; p < order.length && toPos.length <= MAX_EACH; p++) toPos.push(p);
-    const optOf = (p) => `<option value="${p}">${p === pos ? "This trip" : escapeHtml(formatTripLabel(allTracks[order[p]]))}</option>`;
+    const optOf = (p) => `<option value="${p}">${p === pos ? i18n("This trip") : escapeHtml(formatTripLabel(allTracks[order[p]]))}</option>`;
     const body =
-      `<div class="tt-hint">Combine this trip with older or newer rides into one. Everything between comes along. Originals stay.</div>` +
+      `<div class="tt-hint">${i18n("Combine this trip with older or newer rides into one. Everything between comes along. Originals stay.")}</div>` +
       `<div class="tt-range">` +
-        `<label>To (newer)<select id="ex-to"${hasNewer ? "" : " disabled"}>${toPos.map(optOf).join("")}</select></label>` +
-        `<label>From (older)<select id="ex-from"${hasOlder ? "" : " disabled"}>${fromPos.map(optOf).join("")}</select></label>` +
+        `<label>${i18n("To (newer)")}<select id="ex-to"${hasNewer ? "" : " disabled"}>${toPos.map(optOf).join("")}</select></label>` +
+        `<label>${i18n("From (older)")}<select id="ex-from"${hasOlder ? "" : " disabled"}>${fromPos.map(optOf).join("")}</select></label>` +
       `</div><div class="tt-preview" id="ex-preview"></div>`;
-    const go = ttBtn("Combine", "tt-primary");
-    ttmodShow("EXTEND", "Extend trip", sub, body, [cancel, go]);
+    const go = ttBtn(i18n("Combine"), "tt-primary");
+    ttmodShow(i18n("EXTEND"), i18n("Extend trip"), sub, body, [cancel, go]);
     const fromSel = ttmod.querySelector("#ex-from"), toSel = ttmod.querySelector("#ex-to");
     const preview = ttmod.querySelector("#ex-preview");
     const sync = () => {
@@ -4320,8 +4319,8 @@ document.addEventListener("DOMContentLoaded", function () {
       const spanH = (Date.parse(allTracks[order[b]].dateEnd || allTracks[order[b]].dateStart || "") -
         Date.parse(allTracks[order[a]].dateStart || "")) / 3600000;
       preview.textContent = idxs.length < 2
-        ? "Pick an older or newer trip."
-        : `${idxs.length} trips → ${UNITS.dist(km).toFixed(1)} ${UNITS.distUnit}${isFinite(spanH) && spanH > 0 ? `, ${fmtDurH(spanH)} span` : ""}.`;
+        ? i18n("Pick an older or newer trip.")
+        : (isFinite(spanH) && spanH > 0 ? i18n("{n} trips → {dist} {unit}, {span} span.", { n: idxs.length, dist: UNITS.dist(km).toFixed(1), unit: UNITS.distUnit, span: fmtDurH(spanH) }) : i18n("{n} trips → {dist} {unit}.", { n: idxs.length, dist: UNITS.dist(km).toFixed(1), unit: UNITS.distUnit }));
       go.disabled = idxs.length < 2;
       go._idxs = idxs;
     };
@@ -4334,14 +4333,14 @@ document.addEventListener("DOMContentLoaded", function () {
       idxs.sort((a, b) => (Date.parse(allTracks[a].dateStart || "") || 0) - (Date.parse(allTracks[b].dateStart || "") || 0));
       const sources = idxs.map((idx) => allTracks[idx]);
       const merged = mergeTracksInTime(sources, "Combined ride");
-      if (!merged) { appToast("Couldn't combine those trips."); return; }
+      if (!merged) { appToast(i18n("Couldn't combine those trips.")); return; }
       // The pieces are now redundant (their data lives in `merged`). Flag the
       // Dropbox-backed ones so the Sync dialog offers to archive them out of
       // /trips (a piece with no Dropbox origin has nothing to move).
       sources.forEach((t) => { if (t.dropboxPath) t._archive = true; });
       allTracks.push(merged);
       ttmodClose();
-      commitEditedTracks(`Combined ${idxs.length} trips.`);
+      commitEditedTracks(i18n("Combined {n} trips.", { n: idxs.length }));
       // Select the new trip (zooms the map to it) and flash its row.
       highlightNewTrip(merged, true);
     });
@@ -4373,10 +4372,10 @@ document.addEventListener("DOMContentLoaded", function () {
     const summary = document.createElement("div");
     summary.className = "trip-summary";
     summary.innerHTML = `
-      <div class="summary-row"><span>${activeTrips}</span> trips</div>
+      <div class="summary-row">${i18n("<span>{n}</span> trips", { n: activeTrips })}</div>
       <div class="summary-row"><span>${UNITS.dist(totalKm).toFixed(1)}</span> ${UNITS.distUnit}</div>
-      <div class="summary-row"><span>${hrs}h ${mins}m</span> riding</div>
-      <div class="summary-row"><span>${UNITS.speed(topSpeed).toFixed(0)}</span> ${UNITS.speedUnit} top</div>
+      <div class="summary-row">${i18n("<span>{h}h {m}m</span> riding", { h: hrs, m: mins })}</div>
+      <div class="summary-row">${i18n("<span>{speed}</span> {unit} top", { speed: UNITS.speed(topSpeed).toFixed(0), unit: UNITS.speedUnit })}</div>
     `;
     header.appendChild(summary);
 
@@ -4395,7 +4394,7 @@ document.addEventListener("DOMContentLoaded", function () {
       const wheelSel = document.createElement("select");
       wheelSel.className = "wheel-filter";
       wheelEl = wheelSel;
-      wheelSel.innerHTML = '<option value="-1">All wheels (' + allTracks.length + ")</option>" +
+      wheelSel.innerHTML = '<option value="-1">' + i18n("All wheels ({n})", { n: allTracks.length }) + "</option>" +
         wheelGroups.map((g, gi) =>
           '<option value="' + gi + '">' + g.label + " (" + g.indices.length + ")</option>").join("");
       // Picking a wheel drives the same visibility set as the checkboxes,
@@ -4433,10 +4432,10 @@ document.addEventListener("DOMContentLoaded", function () {
       wheelEl.innerHTML = '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">' +
         '<circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.5"/>' +
         '<circle cx="8" cy="8" r="1.7" fill="currentColor"/></svg><span></span>';
-      wheelEl.querySelector("span").textContent = known ? only.label : "No wheel recorded";
+      wheelEl.querySelector("span").textContent = known ? only.label : i18n("No wheel recorded");
       wheelEl.title = known
-        ? "Every loaded trip is from this wheel"
-        : "None of the loaded trips carry a wheel identity; assign one in Batch edit";
+        ? i18n("Every loaded trip is from this wheel")
+        : i18n("None of the loaded trips carry a wheel identity; assign one in Batch edit");
     }
     const analyticsBtn = document.createElement("a");
     analyticsBtn.className = "forensics-btn";
@@ -4445,7 +4444,7 @@ document.addEventListener("DOMContentLoaded", function () {
     analyticsBtn.rel = "noopener";
     analyticsBtn.innerHTML = `
       <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M1.5 13.5 5.5 8l3 3 6-8"/><circle cx="5.5" cy="8" r="1.2" fill="currentColor"/><circle cx="8.5" cy="11" r="1.2" fill="currentColor"/></svg>
-      <span class="analytics-label">Forensics</span>`;
+      <span class="analytics-label">${i18n("Forensics")}</span>`;
     // The whole-history analysis needs a real sample of rides before its
     // trends and fits mean anything; below the floor the button explains
     // itself instead of opening a page of empty sections.
@@ -4453,7 +4452,7 @@ document.addEventListener("DOMContentLoaded", function () {
     if (allTracks.length < MIN_FORENSICS_TRIPS) {
       analyticsBtn.classList.add("disabled");
       analyticsBtn.removeAttribute("href");
-      analyticsBtn.title = `${MIN_FORENSICS_TRIPS} trips required for the whole-history analysis (you have ${allTracks.length})`;
+      analyticsBtn.title = i18n("{min} trips required for the whole-history analysis (you have {n})", { min: MIN_FORENSICS_TRIPS, n: allTracks.length });
     }
     // Forensics follows one wheel over its life. Asked for every wheel at
     // once it still answers, but range, Wh/km, the sag and the temperature
@@ -4462,18 +4461,18 @@ document.addEventListener("DOMContentLoaded", function () {
     // whole library still one click away for anyone who meant it.
     const pickableWheels = wheelGroups.filter((g) => !g.unknown);
     function askForensicsScope(onPick) {
-      let body = '<div class="tt-hint">Forensics follows one wheel over its life: how its range, its Wh/km, its voltage sag and its heat have moved. Every wheel at once averages different machines together.</div>';
+      let body = '<div class="tt-hint">' + i18n("Forensics follows one wheel over its life: how its range, its Wh/km, its voltage sag and its heat have moved. Every wheel at once averages different machines together.") + '</div>';
       body += '<div class="tt-radios">';
       pickableWheels.forEach((g, gi) => {
         body += `<label class="tt-radio"><input type="radio" name="fs" value="${gi}"${gi === 0 ? " checked" : ""}>` +
           `<span>${escapeHtml(g.label)}</span><span class="tt-count">${g.indices.length}</span></label>`;
       });
       body += `<label class="tt-radio"><input type="radio" name="fs" value="all">` +
-        `<span>All wheels anyway</span><span class="tt-count">${allTracks.length}</span></label>`;
+        `<span>${i18n("All wheels anyway")}</span><span class="tt-count">${allTracks.length}</span></label>`;
       body += "</div>";
-      const cancel = ttBtn("Cancel", "tt-ghost"); cancel.addEventListener("click", ttmodClose);
-      const open = ttBtn("Open", "tt-primary");
-      ttmodShow("FORENSICS", "Which wheel?", "", body, [cancel, open]);
+      const cancel = ttBtn(i18n("Cancel"), "tt-ghost"); cancel.addEventListener("click", ttmodClose);
+      const open = ttBtn(i18n("Open"), "tt-primary");
+      ttmodShow(i18n("FORENSICS"), i18n("Which wheel?"), "", body, [cancel, open]);
       open.addEventListener("click", () => {
         const v = (ttmod.querySelector('input[name="fs"]:checked') || {}).value;
         if (v === undefined) return;
@@ -4487,7 +4486,7 @@ document.addEventListener("DOMContentLoaded", function () {
     async function openForensics(wheel) {
       const label = analyticsBtn.querySelector(".analytics-label");
       const orig = label.textContent;
-      label.textContent = "Preparing…";
+      label.textContent = i18n("Preparing…");
       analyticsBtn.style.pointerEvents = "none";
       try { await pendingSessionWrite; } catch (_) {}
       const scope = wheel
@@ -4513,27 +4512,27 @@ document.addEventListener("DOMContentLoaded", function () {
     const allRow = document.createElement("div");
     allRow.className = "all-trips-row";
     allRow.innerHTML = `
-      <label title="Show or hide every trip"><input type="checkbox" class="all-check" checked> All</label>
+      <label title="${i18n("Show or hide every trip")}"><input type="checkbox" class="all-check" checked> ${i18n("All")}</label>
       <div class="tree-actions">
-        <span class="tree-btn manage-trips" title="Batch edit: assign wheels or remove across many trips at once">
+        <span class="tree-btn manage-trips" title="${i18n("Batch edit: assign wheels or remove across many trips at once")}">
           <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <rect x="2" y="2.5" width="5" height="5" rx="1"/><rect x="9" y="2.5" width="5" height="5" rx="1"/><rect x="2" y="9.5" width="5" height="5" rx="1"/><rect x="9" y="9.5" width="5" height="5" rx="1"/>
           </svg>
-          Batch
+          ${i18n("Batch")}
         </span>
-        <span class="tree-btn customize-detail" title="Customize which details show under a trip (reorder / hide)">
+        <span class="tree-btn customize-detail" title="${i18n("Customize which details show under a trip (reorder / hide)")}">
           <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true">
             <path d="M2 4h9M2 8h6M2 12h9"/><circle cx="13" cy="4" r="1.6"/><circle cx="10" cy="8" r="1.6"/><circle cx="13" cy="12" r="1.6"/>
           </svg>
-          Customize
+          ${i18n("Customize")}
         </span>
-        <span class="tree-btn expand-all" title="Expand all">
+        <span class="tree-btn expand-all" title="${i18n("Expand all")}">
           <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <polyline points="4 6 8 2 12 6"/>
             <polyline points="4 10 8 14 12 10"/>
           </svg>
         </span>
-        <span class="tree-btn collapse-all" title="Collapse all">
+        <span class="tree-btn collapse-all" title="${i18n("Collapse all")}">
           <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <polyline points="4 2 8 6 12 2"/>
             <polyline points="4 14 8 10 12 14"/>
@@ -4575,11 +4574,11 @@ document.addEventListener("DOMContentLoaded", function () {
     header.appendChild(allRow);
 
     // Group trips by year > month
-    const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+    const MONTH_NAMES = [i18n("January"),i18n("February"),i18n("March"),i18n("April"),i18n("May"),i18n("June"),i18n("July"),i18n("August"),i18n("September"),i18n("October"),i18n("November"),i18n("December")];
     const yearOrder = [];
     const yearMap = {};
     allTracks.forEach((t, i) => {
-      let year = "Unknown", month = "Unknown";
+      let year = i18n("Unknown"), month = i18n("Unknown");
       const ds = t.dateStart || "";
       if (ds) {
         const d = new Date(ds);
@@ -4611,8 +4610,8 @@ document.addEventListener("DOMContentLoaded", function () {
       const dur = fmtDurH(tripDurH(t));
       const durBit = dur ? ` &middot; ${dur}` : "";
       const meta = s.points > 0
-        ? `${UNITS.dist(s.distanceKm).toFixed(2)} ${UNITS.distUnit} &middot; ${UNITS.speed(s.maxSpeed).toFixed(0)} ${UNITS.speedUnit} max${durBit}`
-        : `No GPS &middot; ${UNITS.speed(s.maxSpeed).toFixed(0)} ${UNITS.speedUnit} max${durBit} &middot; ${(s.rows || 0).toLocaleString()} samples`;
+        ? i18n("{dist} {distUnit} &middot; {speed} {speedUnit} max{dur}", { dist: UNITS.dist(s.distanceKm).toFixed(2), distUnit: UNITS.distUnit, speed: UNITS.speed(s.maxSpeed).toFixed(0), speedUnit: UNITS.speedUnit, dur: durBit })
+        : i18n("No GPS &middot; {speed} {speedUnit} max{dur} &middot; {n} samples", { speed: UNITS.speed(s.maxSpeed).toFixed(0), speedUnit: UNITS.speedUnit, dur: durBit, n: (s.rows || 0).toLocaleString() });
 
       li.innerHTML = `
         <div class="trip-header">
@@ -4621,10 +4620,10 @@ document.addEventListener("DOMContentLoaded", function () {
             <div class="trip-title-row">
               <div class="trip-date">${formatTripLabel(t)}</div>
               ${t.dropboxPath ? `
-              <button type="button" class="share-btn" data-idx="${i}" title="Copy a shareable viewer link">
+              <button type="button" class="share-btn" data-idx="${i}" title="${i18n("Copy a shareable viewer link")}">
                 <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="3.5" r="2"/><circle cx="4" cy="8" r="2"/><circle cx="12" cy="12.5" r="2"/><line x1="5.7" y1="7" x2="10.3" y2="4.5"/><line x1="5.7" y1="9" x2="10.3" y2="11.5"/></svg>
               </button>` : ""}
-              <button type="button" class="tools-btn" data-idx="${i}" aria-label="Trip tools" title="Trip tools: share, inspect, change wheel, split, extend, remove">
+              <button type="button" class="tools-btn" data-idx="${i}" aria-label="${i18n("Trip tools")}" title="${i18n("Trip tools: share, inspect, change wheel, split, extend, remove")}">
                 <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4z"/></svg>
                 <svg class="tools-caret" viewBox="0 0 16 16" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 6 8 10 12 6"/></svg>
               </button>
@@ -4768,7 +4767,7 @@ document.addEventListener("DOMContentLoaded", function () {
         yHeader.innerHTML = `
           <input type="checkbox" class="year-check" checked>
           <span class="year-label">${yg.year}</span>
-          <span class="year-meta">${yearTrips} trips &middot; ${UNITS.dist(yearKm).toFixed(1)} ${UNITS.distUnit}</span>
+          <span class="year-meta">${i18n("{n} trips &middot; {dist} {unit}", { n: yearTrips, dist: UNITS.dist(yearKm).toFixed(1), unit: UNITS.distUnit })}</span>
           <span class="year-chevron">&#9662;</span>
         `;
 
@@ -4822,7 +4821,7 @@ document.addEventListener("DOMContentLoaded", function () {
       header.innerHTML = `
         <input type="checkbox" class="month-check" checked>
         <span class="month-label">${mg.month}</span>
-        <span class="month-meta">${activeMonthIdx.length} trips &middot; ${UNITS.dist(groupKm).toFixed(1)} ${UNITS.distUnit}${groupDur ? ` &middot; ${groupDur}` : ""}</span>
+        <span class="month-meta">${i18n("{n} trips &middot; {dist} {unit}", { n: activeMonthIdx.length, dist: UNITS.dist(groupKm).toFixed(1), unit: UNITS.distUnit })}${groupDur ? ` &middot; ${groupDur}` : ""}</span>
         <span class="month-chevron">&#9662;</span>
       `;
 
@@ -4905,7 +4904,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const addBtn = document.createElement("label");
     addBtn.className = "add-more-btn";
-    addBtn.innerHTML = `+ Add more <input type="file" accept=".zip,.dbb,.csv,.gpx,.xlsx" style="display:none" />`;
+    addBtn.innerHTML = `${i18n("+ Add more")} <input type="file" accept=".zip,.dbb,.csv,.gpx,.xlsx" style="display:none" />`;
     addBtn.querySelector("input").addEventListener("change", (e) => {
       if (e.target.files[0]) handleFile(e.target.files[0], true);
     });
@@ -4922,7 +4921,7 @@ document.addEventListener("DOMContentLoaded", function () {
     homeBtn.className = "main-screen-btn";
     // Direction-neutral: a ?file= deep link lands here without ever having
     // seen the load screen, so "Back to main screen" read strangely.
-    homeBtn.textContent = "Home";
+    homeBtn.textContent = i18n("Home");
     homeBtn.addEventListener("click", () => navigate("#load"));
     navRow.appendChild(homeBtn);
 
@@ -4942,8 +4941,8 @@ document.addEventListener("DOMContentLoaded", function () {
     const dbxSaveBtn = document.createElement("button");
     dbxSaveBtn.type = "button";
     dbxSaveBtn.className = "dbx-save-btn";
-    dbxSaveBtn.innerHTML = `<span class="dbx-sync-label">Synchronize with</span><span class="dbx-sync-chip">Dropbox</span>`;
-    dbxSaveBtn.title = "Sync trips and your edits (names, wheels) with Dropbox, or load new ones";
+    dbxSaveBtn.innerHTML = i18n("<span {label}>Synchronize with</span><span {chip}>Dropbox</span>", { label: 'class="dbx-sync-label"', chip: 'class="dbx-sync-chip"' });
+    dbxSaveBtn.title = i18n("Sync trips and your edits (names, wheels) with Dropbox, or load new ones");
     dbxSaveBtn.addEventListener("click", () => openDropboxSyncDialog());
     footer.appendChild(dbxSaveBtn);
 
@@ -4961,7 +4960,7 @@ document.addEventListener("DOMContentLoaded", function () {
     exportBtn.onclick = null;
     if (n === 0) {
       exportBtn.classList.remove("single-mode");
-      exportBtn.textContent = "Select trip(s) to export";
+      exportBtn.textContent = i18n("Select trip(s) to export");
       exportBtn.style.opacity = "0.3";
       return;
     }
@@ -4970,13 +4969,13 @@ document.addEventListener("DOMContentLoaded", function () {
     let label;
     let chips;
     if (n === 1) {
-      label = "Export trip";
+      label = i18n("Export trip");
       chips = [["csv", ".csv"], ["xlsx", ".xlsx"], ["gpx", ".gpx"], ["dbb", ".zip"]];
     } else if (n === total) {
-      label = "Export all";
+      label = i18n("Export all");
       chips = [["dbb", ".zip"]];
     } else {
-      label = `Export selected (${n})`;
+      label = i18n("Export selected ({n})", { n });
       chips = [["dbb", ".zip"]];
     }
     exportBtn.innerHTML =
@@ -5147,8 +5146,8 @@ document.addEventListener("DOMContentLoaded", function () {
       if (typeof XLSX !== "undefined") return resolve(XLSX);
       const s = document.createElement("script");
       s.src = "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js";
-      s.onload = () => (typeof XLSX !== "undefined" ? resolve(XLSX) : reject(new Error("xlsx not available")));
-      s.onerror = () => reject(new Error("failed to load xlsx library"));
+      s.onload = () => (typeof XLSX !== "undefined" ? resolve(XLSX) : reject(new Error(i18n("xlsx not available"))));
+      s.onerror = () => reject(new Error(i18n("failed to load xlsx library")));
       document.head.appendChild(s);
     }).catch((e) => { xlsxLibPromise = null; throw e; });
     return xlsxLibPromise;
@@ -5210,7 +5209,7 @@ document.addEventListener("DOMContentLoaded", function () {
         downloadBlob(blob, baseName + ".xlsx");
       }
     } catch (e) {
-      alert("Export failed: " + (e.message || e));
+      alert(i18n("Export failed: {error}", { error: e.message || e }));
     }
   }
 
@@ -5218,7 +5217,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const indices = [...trackVisible];
     if (indices.length === 0) return;
     if (typeof JSZip === "undefined") {
-      alert("Export library not loaded. Please refresh and try again.");
+      alert(i18n("Export library not loaded. Please refresh and try again."));
       return;
     }
     // Always a .zip, even for a single trip (the raw single-file formats
@@ -5283,19 +5282,19 @@ document.addEventListener("DOMContentLoaded", function () {
   // unitKind = which UNITS converter applies to this row's values (the unit
   // label itself is taken from UNITS so it follows the user's locale).
   const DETAIL_ROWS = [
-    { key: "distance", label: "Distance",  color: null,      unitKind: "dist" },
-    { key: "speed",    label: "Speed",     color: "#00e5ff", idx: 1,  unitKind: "speed", dp: 1 },
-    { key: "gpsspeed", label: "GPS speed", color: "#80d8ff", idx: 12, unitKind: "speed", dp: 1 },
+    { key: "distance", label: i18n("Distance"),  color: null,      unitKind: "dist" },
+    { key: "speed",    label: i18n("Speed"),     color: "#00e5ff", idx: 1,  unitKind: "speed", dp: 1 },
+    { key: "gpsspeed", label: i18n("GPS speed"), color: "#80d8ff", idx: 12, unitKind: "speed", dp: 1 },
     { key: "pwm",      label: "PWM",       color: "#ff4081", idx: 9,  unit: "%",    dp: 1 },
-    { key: "power",    label: "Power",     color: "#7c4dff", idx: 11, unit: "W",    dp: 0 },
-    { key: "current",  label: "Current",   color: "#ffd740", idx: 10, unit: "A",    dp: 1 },
-    { key: "torque",   label: "Torque",    color: "#ff7043", idx: 16, unit: "Nm",   dp: 1 },
-    { key: "phase",    label: "Phase current", color: "#4db6ac", idx: 17, unit: "A", dp: 1 },
-    { key: "voltage",  label: "Voltage",   color: "#ff5252", idx: 2,  unit: "V",    dp: 1 },
-    { key: "temp",     label: "Temp",      color: "#ffa000", idx: 3,  unitKind: "temp", dp: 1 },
-    { key: "battery",  label: "Battery",   color: "#69f0ae", idx: 4,  unit: "%",    dp: 0 },
-    { key: "altitude", label: "Altitude",  color: "#ce93d8", idx: 5,  unitKind: "alt",  dp: 0 },
-    { key: "time",     label: "Time",      color: null },
+    { key: "power",    label: i18n("Power"),     color: "#7c4dff", idx: 11, unit: "W",    dp: 0 },
+    { key: "current",  label: i18n("Current"),   color: "#ffd740", idx: 10, unit: "A",    dp: 1 },
+    { key: "torque",   label: i18n("Torque"),    color: "#ff7043", idx: 16, unit: "Nm",   dp: 1 },
+    { key: "phase",    label: i18n("Phase current"), color: "#4db6ac", idx: 17, unit: "A", dp: 1 },
+    { key: "voltage",  label: i18n("Voltage"),   color: "#ff5252", idx: 2,  unit: "V",    dp: 1 },
+    { key: "temp",     label: i18n("Temp"),      color: "#ffa000", idx: 3,  unitKind: "temp", dp: 1 },
+    { key: "battery",  label: i18n("Battery"),   color: "#69f0ae", idx: 4,  unit: "%",    dp: 0 },
+    { key: "altitude", label: i18n("Altitude"),  color: "#ce93d8", idx: 5,  unitKind: "alt",  dp: 0 },
+    { key: "time",     label: i18n("Time"),      color: null },
   ];
   // Convert a metric value for display in the user's unit system.
   function convertByKind(kind, v) {
@@ -5422,7 +5421,7 @@ document.addEventListener("DOMContentLoaded", function () {
         }
       }
       if (range == null) continue;
-      const label = (hasGps && r.key === "speed") ? "Wheel speed" : r.label;
+      const label = (hasGps && r.key === "speed") ? i18n("Wheel speed") : r.label;
       // The colour is exposed as the `--c` custom property so the toggled-off
       // swatch can swap fill for border with pure CSS. Distance and Time have
       // no swatch (not chart series); a transparent placeholder keeps their
@@ -5480,28 +5479,28 @@ document.addEventListener("DOMContentLoaded", function () {
       const locked = DETAIL_NEVER_HIDE.has(key);
       const dot = r.color ? `<i class="clr" style="--c:${r.color}"></i>` : `<i class="clr clr-spacer"></i>`;
       return `<div class="dc-row${shown ? "" : " is-hidden"}" data-key="${key}">` +
-        `<span class="dc-grip" title="Drag to reorder">⠿</span>` +
-        `<label class="dc-switch${locked ? " dc-locked" : ""}" title="${locked ? "Always shown" : "Show or hide"}">` +
+        `<span class="dc-grip" title="${i18n("Drag to reorder")}">⠿</span>` +
+        `<label class="dc-switch${locked ? " dc-locked" : ""}" title="${locked ? i18n("Always shown") : i18n("Show or hide")}">` +
           `<input type="checkbox"${shown ? " checked" : ""}${locked ? " disabled" : ""}>` +
           `<span class="dc-knob"></span>` +
         `</label>` +
         `<span class="dc-name">${dot}${escapeHtml(r.label)}</span>` +
       `</div>`;
     };
-    const body = `<div class="dc-hint">Drag to reorder. Toggle to show or hide.</div>` +
+    const body = `<div class="dc-hint">${i18n("Drag to reorder. Toggle to show or hide.")}</div>` +
       `<div class="dc-list">${detailLayout.order.map(rowHtml).join("")}</div>` +
       `<input type="file" id="dc-import-file" accept="application/json,.json" style="display:none">`;
-    const reset = ttBtn("Reset", "tt-ghost");
-    const done = ttBtn("Done", "tt-primary");
-    ttmodShow("", "Customize graphs", "", body, [reset, done]);
+    const reset = ttBtn(i18n("Reset"), "tt-ghost");
+    const done = ttBtn(i18n("Done"), "tt-primary");
+    ttmodShow("", i18n("Customize graphs"), "", body, [reset, done]);
     // Import / export as title-bar icon buttons, matching the inspector dialog.
     const header = ttmod.querySelector(".tm-header");
     const closeBtn = header.querySelector(".tm-close");
     const imp = document.createElement("button");
-    imp.type = "button"; imp.className = "ttmod-icon"; imp.title = "Import layout (.json)";
+    imp.type = "button"; imp.className = "ttmod-icon"; imp.title = i18n("Import layout (.json)");
     imp.innerHTML = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 10V2M4.5 5.5 8 2l3.5 3.5"/><path d="M2 10v3a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-3"/></svg>`;
     const exp = document.createElement("button");
-    exp.type = "button"; exp.className = "ttmod-icon"; exp.title = "Export layout (.json)";
+    exp.type = "button"; exp.className = "ttmod-icon"; exp.title = i18n("Export layout (.json)");
     exp.innerHTML = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v8M4.5 6.5 8 10l3.5-3.5"/><path d="M2 10v3a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-3"/></svg>`;
     header.insertBefore(imp, closeBtn);
     header.insertBefore(exp, closeBtn);
@@ -5598,9 +5597,9 @@ document.addEventListener("DOMContentLoaded", function () {
             saveDetailLayout();
             refreshOpenDetails();
             openDetailCustomize();
-            appToast("Trip-detail layout imported.");
-          } else appToast("That file isn't a trip-detail layout.");
-        } catch (_) { appToast("Couldn't read that layout file."); }
+            appToast(i18n("Trip-detail layout imported."));
+          } else appToast(i18n("That file isn't a trip-detail layout."));
+        } catch (_) { appToast(i18n("Couldn't read that layout file.")); }
       };
       reader.readAsText(f);
     });
@@ -5672,7 +5671,7 @@ document.addEventListener("DOMContentLoaded", function () {
       ctx.fillStyle = "#555";
       ctx.font = "11px -apple-system, sans-serif";
       ctx.textAlign = "center";
-      ctx.fillText("No data", w / 2, h / 2 + 4);
+      ctx.fillText(i18n("No data"), w / 2, h / 2 + 4);
       canvas._chartData = null;
       return;
     }
@@ -6249,18 +6248,18 @@ document.addEventListener("DOMContentLoaded", function () {
 
       progressArea.classList.remove("hidden");
       progressFill.style.width = "0%";
-      progressText.textContent = "Loading...";
+      progressText.textContent = i18n("Loading...");
 
       const parsedTracks = await parseFileLocally(parserWorker, file, (msg) => {
         if (msg.type === "progress") {
           const pct = Math.round((msg.current / msg.total) * 100);
           progressFill.style.width = pct + "%";
-          progressText.textContent = "Parsing trip " + msg.current + " of " + msg.total;
+          progressText.textContent = i18n("Parsing trip {current} of {total}", { current: msg.current, total: msg.total });
         }
       });
 
       if (!parsedTracks.length) {
-        progressText.textContent = "No trip data found";
+        progressText.textContent = i18n("No trip data found");
         return { success: false, error: "No trip data found" };
       }
 
@@ -6295,7 +6294,7 @@ document.addEventListener("DOMContentLoaded", function () {
     if (recentUi && recentUi.section) recentUi.section.classList.add("hidden");
     progressArea.classList.remove("hidden");
     progressText.classList.remove("error");
-    progressText.textContent = "Fetching trip…";
+    progressText.textContent = i18n("Fetching trip…");
     progressFill.style.width = "5%";
     try {
       const res = await fetch(rawUrl, { credentials: "omit" });
@@ -6316,7 +6315,7 @@ document.addEventListener("DOMContentLoaded", function () {
           received += value.length;
           const pct = 5 + Math.round((received / total) * 45);
           progressFill.style.width = pct + "%";
-          progressText.textContent = "Fetching trip… " + Math.round((received / total) * 100) + "%";
+          progressText.textContent = i18n("Fetching trip… {pct}%", { pct: Math.round((received / total) * 100) });
         }
         blob = new Blob(chunks);
       } else {
@@ -6342,7 +6341,7 @@ document.addEventListener("DOMContentLoaded", function () {
       // maps to 50-100% instead of resetting to 0.
       await handleFile(file, { progressStart: 50 });
     } catch (e) {
-      progressText.textContent = "Couldn't load trip: " + (e.message || e);
+      progressText.textContent = i18n("Couldn't load trip: {error}", { error: e.message || e });
       progressText.classList.add("error");
       if (uploadActions) uploadActions.classList.remove("hidden");
       uploadLabel.classList.remove("hidden");
@@ -6382,7 +6381,7 @@ document.addEventListener("DOMContentLoaded", function () {
       if (!allTracks.length) {
         const hint = document.createElement("div");
         hint.style.cssText = "color:#888;font-size:13px;margin-top:12px;text-align:center;";
-        hint.innerHTML = 'Waiting for file&hellip; see <a href="https://github.com/eried/eucviewer/blob/main/INTEGRATION.md" target="_blank" style="color:#4FC3F7;">INTEGRATION.md</a> on GitHub';
+        hint.innerHTML = i18n("Waiting for file&hellip; see <a {attrs}>INTEGRATION.md</a> on GitHub", { attrs: 'href="https://github.com/eried/eucviewer/blob/main/INTEGRATION.md" target="_blank" style="color:#4FC3F7;"' });
         uploadBox.appendChild(hint);
       }
     }, 5000);

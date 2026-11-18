@@ -654,7 +654,9 @@ body.panel-resizing #trip-panel { transition: none; }
        round, not sideways-lr, which Safari only learnt in 18.4. */
     writing-mode: vertical-rl;
     transform: rotate(180deg);
-    text-orientation: mixed;
+    /* sideways, not mixed: mixed stands Japanese and Chinese upright,
+       which the half turn then puts on its head. */
+    text-orientation: sideways;
     color: #00e5ff;
     font-size: 0.82rem;
     font-weight: 600;
@@ -1992,6 +1994,13 @@ body.panel-resizing #trip-panel { transition: none; }
     min-width: 180px;
 }
 #map-controls.collapsed .map-controls-body { display: none; }
+/* The start screen has no map yet, so the cogwheel shows up there with only
+   what is not about one: language and units. */
+body:has(#upload-overlay:not(.hidden)) #map-controls {
+    display: flex !important;
+    z-index: 1010;
+}
+body:has(#upload-overlay:not(.hidden)) #map-controls .map-only { display: none !important; }
 #map-controls.collapsed { padding: 4px; }
 #map-controls .setting-hint {
     color: #6a828c;
@@ -2039,9 +2048,7 @@ body.panel-resizing #trip-panel { transition: none; }
     color: #e4f6fa;
 }
 
-/* Metric / Imperial / UK toggle inside the cogwheel. Three have to share
-   the width two used to, so the buttons size to their words and the padding
-   is what gives. */
+/* The two unit switches inside the cogwheel: km | mi and °C | °F. */
 .units-toggle {
     display: inline-flex;
     background: rgba(0, 0, 0, 0.55);
@@ -2051,7 +2058,7 @@ body.panel-resizing #trip-panel { transition: none; }
     min-width: 120px;
 }
 .units-btn {
-    flex: 1 1 auto;
+    flex: 1 1 0;
     background: transparent;
     color: #8fa7b0;
     border: none;

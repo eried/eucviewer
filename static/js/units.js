@@ -3,13 +3,18 @@
 // script; they all read window.EucUnits.UNITS. Four pages used to carry
 // their own copy of this, with a comment asking to keep them in sync.
 //
-// Three profiles, the same three eucstats.ried.no uses:
-//   metric    km, km/h, °C, m
-//   imperial  mi, mph, °F, ft      (US, its territories, Liberia)
-//   road      mi, mph, °C, m       (UK, Myanmar: miles on the road, metric
-//                                   for everything else)
-// One imperial flag handed British riders Fahrenheit and feet they never
-// use, so each quantity has its own: miles, fahrenheit, feet.
+// Two choices, the same two eucstats.ried.no offers:
+//   distance     km and km/h, or mi and mph
+//   temperature  °C, or °F
+// Altitude has no switch of its own and follows temperature: everywhere
+// that reads the weather in °F also measures a hill in feet, and the UK,
+// which rides in miles, does neither. One imperial flag used to hand
+// British riders Fahrenheit and feet they never use. The three flags
+// (miles, fahrenheit, feet) stay separate so nothing downstream has to know
+// which switch moved which.
+//
+// A choice is written as "<distance>-<temperature>": km-c, mi-c, mi-f, km-f.
+// The older profile names (metric, imperial, road) are still read.
 //
 // Resolution order: ?units= URL param, the cookie shared with eucstats, the
 // cogwheel's localStorage key, then the timezone.
@@ -28,12 +33,19 @@
 
   const STORAGE_KEY = "eucviewer-units";
   const COOKIE = "euc_units";
-  const PROFILES = {
-    metric:   { miles: false, fahrenheit: false, feet: false },
-    imperial: { miles: true,  fahrenheit: true,  feet: true },
-    road:     { miles: true,  fahrenheit: false, feet: false },
+  const LEGACY = { metric: "km-c", imperial: "mi-f", road: "mi-c" };
+  // Anything readable becomes one of the four codes, anything else null.
+  function normalize(v) {
+    if (typeof v !== "string") return null;
+    v = v.trim().toLowerCase();
+    if (LEGACY[v]) return LEGACY[v];
+    return /^(km|mi)-(c|f)$/.test(v) ? v : null;
+  }
+  const flagsOf = (code) => {
+    const fahrenheit = code.slice(-1) === "f";
+    return { miles: code.slice(0, 2) === "mi", fahrenheit, feet: fahrenheit };
   };
-  const valid = (v) => Object.prototype.hasOwnProperty.call(PROFILES, v);
+  const codeOf = (miles, fahrenheit) => (miles ? "mi" : "km") + "-" + (fahrenheit ? "f" : "c");
 
   const IMPERIAL_TZ_RE = new RegExp("^(?:" +
     "America/(?:Adak|Anchorage|Boise|Chicago|Denver|Detroit|Indiana/[^/]+|Juneau|Kentucky/[^/]+|Los_Angeles|Menominee|Metlakatla|New_York|Nome|North_Dakota/[^/]+|Phoenix|Puerto_Rico|Sitka|St_Thomas|Yakutat)" +
@@ -43,9 +55,9 @@
   const ROAD_TZ_RE = /^(?:Europe\/(?:London|Belfast|Jersey|Guernsey|Isle_of_Man)|Asia\/(?:Yangon|Rangoon))$/;
 
   function profileForTimezone(tz) {
-    if (IMPERIAL_TZ_RE.test(tz)) return "imperial";
-    if (ROAD_TZ_RE.test(tz)) return "road";
-    return "metric";
+    if (IMPERIAL_TZ_RE.test(tz)) return "mi-f";
+    if (ROAD_TZ_RE.test(tz)) return "mi-c";
+    return "km-c";
   }
 
   function readCookie() {
@@ -67,28 +79,28 @@
 
   function detect() {
     try {
-      const force = new URLSearchParams(location.search).get("units");
-      if (valid(force)) return force;
+      const force = normalize(new URLSearchParams(location.search).get("units"));
+      if (force) return force;
     } catch (_) {}
     // The cookie before localStorage: it is the newer of the two whenever
     // the choice was last made on the other site.
-    const shared = readCookie();
-    if (valid(shared)) return shared;
+    const shared = normalize(readCookie());
+    if (shared) return shared;
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (valid(stored)) return stored;
+      const stored = normalize(localStorage.getItem(STORAGE_KEY));
+      if (stored) return stored;
     } catch (_) {}
     try {
       return profileForTimezone((Intl.DateTimeFormat().resolvedOptions().timeZone || "").trim());
     } catch (_) {}
-    return "metric";
+    return "km-c";
   }
 
   const MI = 0.621371, FT = 3.28084, MPH_PER_MS = 2.23694;
   const same = (v) => v;
 
   function build(profile) {
-    const p = PROFILES[profile];
+    const p = flagsOf(profile);
     // Climb rate is metres per km unless both of its halves are imperial:
     // "metres per mile" is a unit nobody has ever asked for.
     const ftPerMi = p.miles && p.feet;
@@ -135,12 +147,18 @@
     UNITS: build(profile),
     profile,
     profileForTimezone,
-    // The cogwheel calls this, then reloads: UNITS is captured into too
-    // many render closures to swap live.
+    // The cogwheel calls this with the one switch that moved, e.g.
+    // { miles: true }, then reloads: UNITS is captured into too many render
+    // closures to swap live. A whole code ("mi-c") works too.
     set(next) {
-      if (!valid(next)) return;
-      try { localStorage.setItem(STORAGE_KEY, next); } catch (_) {}
-      writeCookie(next);
+      const now = flagsOf(profile);
+      const code = typeof next === "string"
+        ? normalize(next)
+        : codeOf("miles" in next ? !!next.miles : now.miles,
+                 "fahrenheit" in next ? !!next.fahrenheit : now.fahrenheit);
+      if (!code) return;
+      try { localStorage.setItem(STORAGE_KEY, code); } catch (_) {}
+      writeCookie(code);
     },
   };
 })();

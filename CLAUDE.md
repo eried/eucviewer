@@ -45,15 +45,32 @@ to mirroring into that repo, ignore them.)
   fullest identity names the merged group. Before this, one wheel listed as three.
 - `units.js` is the one place units are decided and converted, loaded by `index.html`,
   `inspector.html`, `analytics.html` and `video.html` before their own script; they read
-  `window.EucUnits.UNITS`. Three profiles, the same three eucstats.ried.no has: `metric`,
-  `imperial` (US, its territories, Liberia) and `road` (UK, Myanmar: miles and mph with °C and
-  metres), so every quantity has its own flag (`miles`, `fahrenheit`, `feet`) and nothing may
-  branch on one "imperial" boolean. Resolution order: `?units=`, the `euc_units` cookie, the
-  `eucviewer-units` localStorage key, then the timezone (never the browser language). The
-  cookie is set on `ried.no` so a choice made here follows the rider to eucstats and back;
-  its name and values (`metric` / `imperial` / `road`) must match eucstats `web/public.py`.
-  Climb rate is `m/km` unless both halves are imperial (`ft/mi`); use `UNITS.climb` /
-  `UNITS.climbUnit`, never a hand-rolled factor.
+  `window.EucUnits.UNITS`. Two switches in the cogwheel, the same two eucstats.ried.no has:
+  distance (`km` / `mi`) and temperature (`°C` / `°F`). Altitude has no switch and follows
+  temperature, so the UK (miles, °C, metres) and the US (miles, °F, feet) both come out right.
+  Every quantity still has its own flag (`miles`, `fahrenheit`, `feet`) and nothing may branch
+  on one "imperial" boolean. A choice is written `<distance>-<temperature>` (`km-c`, `mi-c`,
+  `mi-f`, `km-f`); the older names `metric` / `imperial` / `road` are still read. Resolution
+  order: `?units=`, the `euc_units` cookie, the `eucviewer-units` localStorage key, then the
+  timezone (never the browser language). The cookie is set on `ried.no` so a choice made here
+  follows the rider to eucstats and back; its name and values must match eucstats
+  `web/public.py`. Climb rate is `m/km` unless both halves are imperial (`ft/mi`); use
+  `UNITS.climb` / `UNITS.climbUnit`, never a hand-rolled factor.
+- `i18n.js` is the one place the language is decided and a string looked up, loaded after
+  `units.js`. The English text is the key: `i18n("Upload trips")`, `i18n("{n} trips", { n })`,
+  with `const i18n = window.EucI18n.t;` at the top of each script (`t` is taken by loop
+  variables). The first argument must be one plain double-quoted literal, or
+  `tools/i18n_extract.py` cannot see it. Static markup is marked instead: `data-i18n` (text),
+  `data-i18n-html` (markup), `data-i18n-attrs="title aria-label"`. The 30 languages are the
+  ones the EUC Planet app ships; each has `static/i18n/<code>.js` and only the one in use is
+  fetched (a parser-blocking `document.write`, so it is in before `app.js` runs). Resolution
+  order: `?lang=`, the `euc_lang` cookie shared with eucstats, the `eucviewer-lang`
+  localStorage key, then `navigator.languages`. Only the map page (`index.html`, `app.js`,
+  `dropbox-source.js`, `source-hints.js`) is translated so far. After adding or changing a
+  string: run `python tools/i18n_extract.py` (rewrites `static/i18n/keys.json` and checks
+  every dictionary for missing keys, placeholders and tags), add the key to all dictionaries,
+  and bump `DICT_VERSION` in `i18n.js` along with its `?v=`. Strings that are compared or
+  parsed (Dropbox error text matched by regex, names written into exports) stay raw.
 - `inspector.html` + `inspector.js` is a standalone page. It reads the `?i=<index>` query param,
   fetches tracks from IndexedDB (store `eucplanet-trip-viewer/currentSession` key `"tracks"`),
   falls back to `localStorage["dbb_tracks"]`, then drives a MapLibre terrain map + 5 canvas
