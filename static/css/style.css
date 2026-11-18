@@ -627,6 +627,12 @@ body.panel-resizing #trip-panel { transition: none; }
 
 /* Vertical tab on the left edge of the panel */
 #panel-tab {
+    /* A button, so the keyboard reaches it; these undo what that brings. */
+    appearance: none;
+    border: 0;
+    padding: 0;
+    margin: 0;
+    font: inherit;
     flex-shrink: 0;
     width: 32px;
     display: flex;
@@ -639,6 +645,7 @@ body.panel-resizing #trip-panel { transition: none; }
     transition: background 0.2s;
 }
 #panel-tab:hover { background: rgba(0, 229, 255, 0.08); }
+#panel-tab:focus-visible { outline: 2px solid #00e5ff; outline-offset: -2px; }
 
 #panel-tab-text {
     writing-mode: vertical-rl;

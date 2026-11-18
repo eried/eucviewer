@@ -1448,6 +1448,19 @@ document.addEventListener("DOMContentLoaded", function () {
   const panel = document.getElementById("trip-panel");
   const panelTab = document.getElementById("panel-tab");
   const panelTabText = document.getElementById("panel-tab-text");
+  // Open, the header right beside the tab already counts the trips, so the
+  // tab is only a title. Closed, it is the one place the count can be read.
+  let panelTabCount = "";
+  function setPanelTabCount(text) {
+    panelTabCount = text;
+    renderPanelTab();
+  }
+  function renderPanelTab() {
+    const open = panel.classList.contains("open");
+    panelTabText.textContent = open || !panelTabCount ? "Trip Explorer" : `Trip Explorer (${panelTabCount})`;
+    panelTab.setAttribute("aria-expanded", open ? "true" : "false");
+    panelTab.title = open ? "Hide the trip list" : "Show the trip list";
+  }
   const tripList = document.getElementById("trip-list");
   const tripDetail = document.getElementById("trip-detail");
   const parserWorker = createParserWorker();
@@ -2170,7 +2183,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // No fitAll() here; the auto-select below zooms to track 0. Calling both
     // raced two zoom animations and could leave the map un-zoomed on start.
 
-    panelTabText.textContent = `Trip Explorer (${tracks.length})`;
+    setPanelTabCount(String(tracks.length));
     buildTripList();
     mapControlsEl.classList.remove("hidden");
 
@@ -2248,11 +2261,11 @@ document.addEventListener("DOMContentLoaded", function () {
     // Update panel tab text based on selection state
     if (total > 0) {
       if (checked === 0) {
-        panelTabText.textContent = `Trip Explorer (${total} trips parsed)`;
+        setPanelTabCount(`${total} trips parsed`);
       } else if (checked === total) {
-        panelTabText.textContent = `Trip Explorer (${total} trips)`;
+        setPanelTabCount(`${total} trips`);
       } else {
-        panelTabText.textContent = `Trip Explorer (${checked} displayed of ${total} trips)`;
+        setPanelTabCount(`${checked} displayed of ${total} trips`);
       }
     }
     const footer = document.getElementById("panel-footer");
@@ -6071,6 +6084,10 @@ document.addEventListener("DOMContentLoaded", function () {
   function setPanelOpen(open) {
     panel.classList.toggle("open", open);
     document.body.classList.toggle("panel-open", open);
+    renderPanelTab();
+    // Closed, the list is parked off screen; without this the Tab key walks
+    // through every control in it, unseen.
+    document.getElementById("panel-body").inert = !open;
     const target = open ? "translateX(0px)" : "translateX(" + panelWidth() + "px)";
     panel.style.transform = target;
     clearTimeout(setPanelOpen._verify);
