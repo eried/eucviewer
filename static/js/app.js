@@ -1224,6 +1224,12 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
   if (mapControlsToggle) mapControlsToggle.addEventListener("click", () => mapControlsEl.classList.toggle("collapsed"));
+  // A click or tap anywhere else puts the menu away, as on eucstats.
+  document.addEventListener("pointerdown", (e) => {
+    if (!mapControlsEl || mapControlsEl.classList.contains("collapsed")) return;
+    if (mapControlsEl.contains(e.target)) return;
+    mapControlsEl.classList.add("collapsed");
+  }, true);
   // The menu is a different one on the start screen and on the map, so it
   // never stays open across the two: opening files or going back closes it.
   (function () {
