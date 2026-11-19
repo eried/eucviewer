@@ -75,7 +75,9 @@ to mirroring into that repo, ignore them.)
   copy by finding `km/h`, `°C`, `Wh/km` and the like (the checker enforces it). After adding or changing a
   string: run `python tools/i18n_extract.py` (rewrites `static/i18n/keys.json` and checks
   every dictionary for missing keys, placeholders and tags), add the key to all dictionaries,
-  and bump `DICT_VERSION` in `i18n.js` along with its `?v=`. Dates follow the language picked: every `Intl.DateTimeFormat` takes
+  and bump `DICT_VERSION` in `i18n.js` along with its `?v=`. Menu names of other apps (DarknessBot, euc.world) stay English
+  inside `<strong>` in every dictionary: we cannot know their translations. EUC Planet labels
+  use the app's own string for that language. Dates follow the language picked: every `Intl.DateTimeFormat` takes
   `EucI18n.dateLocale`, never `undefined`. `node tools/parity_check.js` holds the languages,
   their names, the browser-tag mapping, unit codes, timezone defaults and cookies to
   `tools/parity_rules.json`, a copy of eucstats `tests/parity_rules.json`; change it only
