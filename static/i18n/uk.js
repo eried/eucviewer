@@ -502,7 +502,6 @@ window.EUC_I18N_DICT = {
 "Make video": "Створити відео",
 "Manage trips": "Керувати поїздками",
 "Map opacity": "Непрозорість карти",
-"Map settings": "Налаштування карти",
 "Map size": "Розмір карти",
 "Map source": "Джерело карти",
 "Map style": "Стиль карти",

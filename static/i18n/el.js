@@ -502,7 +502,6 @@ window.EUC_I18N_DICT = {
 "Make video": "Δημιουργία βίντεο",
 "Manage trips": "Διαχείριση διαδρομών",
 "Map opacity": "Αδιαφάνεια χάρτη",
-"Map settings": "Ρυθμίσεις χάρτη",
 "Map size": "Μέγεθος χάρτη",
 "Map source": "Πηγή χάρτη",
 "Map style": "Στυλ χάρτη",

@@ -502,7 +502,6 @@ window.EUC_I18N_DICT = {
 "Make video": "Tạo video",
 "Manage trips": "Quản lý chuyến đi",
 "Map opacity": "Độ mờ bản đồ",
-"Map settings": "Cài đặt bản đồ",
 "Map size": "Cỡ bản đồ",
 "Map source": "Nguồn bản đồ",
 "Map style": "Kiểu bản đồ",

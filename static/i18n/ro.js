@@ -502,7 +502,6 @@ window.EUC_I18N_DICT = {
 "Make video": "Creează video",
 "Manage trips": "Gestionează cursele",
 "Map opacity": "Opacitatea hărții",
-"Map settings": "Setări hartă",
 "Map size": "Mărimea hărții",
 "Map source": "Sursa hărții",
 "Map style": "Stilul hărții",

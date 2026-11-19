@@ -502,7 +502,6 @@ window.EUC_I18N_DICT = {
 "Make video": "Tee video",
 "Manage trips": "Hallitse matkoja",
 "Map opacity": "Kartan peittävyys",
-"Map settings": "Kartan asetukset",
 "Map size": "Kartan koko",
 "Map source": "Kartan lähde",
 "Map style": "Kartan tyyli",

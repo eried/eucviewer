@@ -502,7 +502,6 @@ window.EUC_I18N_DICT = {
 "Make video": "Skapa video",
 "Manage trips": "Hantera turer",
 "Map opacity": "Kartans opacitet",
-"Map settings": "Kartinställningar",
 "Map size": "Kartstorlek",
 "Map source": "Kartkälla",
 "Map style": "Kartstil",

@@ -502,7 +502,6 @@ window.EUC_I18N_DICT = {
 "Make video": "Lag video",
 "Manage trips": "Administrer turer",
 "Map opacity": "Kartets dekkevne",
-"Map settings": "Kartinnstillinger",
 "Map size": "Kartstørrelse",
 "Map source": "Kartkilde",
 "Map style": "Kartstil",

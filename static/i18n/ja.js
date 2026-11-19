@@ -502,7 +502,6 @@ window.EUC_I18N_DICT = {
 "Make video": "動画を作成",
 "Manage trips": "トリップを管理",
 "Map opacity": "地図の不透明度",
-"Map settings": "地図設定",
 "Map size": "地図のサイズ",
 "Map source": "地図のソース",
 "Map style": "地図スタイル",

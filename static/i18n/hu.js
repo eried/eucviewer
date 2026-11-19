@@ -502,7 +502,6 @@ window.EUC_I18N_DICT = {
 "Make video": "Videó készítése",
 "Manage trips": "Menetek kezelése",
 "Map opacity": "Térkép átlátszatlansága",
-"Map settings": "Térkép beállításai",
 "Map size": "Térkép mérete",
 "Map source": "Térkép forrása",
 "Map style": "Térkép stílusa",

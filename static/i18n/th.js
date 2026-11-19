@@ -502,7 +502,6 @@ window.EUC_I18N_DICT = {
 "Make video": "สร้างวิดีโอ",
 "Manage trips": "จัดการทริป",
 "Map opacity": "ความทึบของแผนที่",
-"Map settings": "การตั้งค่าแผนที่",
 "Map size": "ขนาดแผนที่",
 "Map source": "แหล่งแผนที่",
 "Map style": "สไตล์แผนที่",

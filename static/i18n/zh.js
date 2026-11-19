@@ -502,7 +502,6 @@ window.EUC_I18N_DICT = {
 "Make video": "制作视频",
 "Manage trips": "管理行程",
 "Map opacity": "地图不透明度",
-"Map settings": "地图设置",
 "Map size": "地图大小",
 "Map source": "地图来源",
 "Map style": "地图样式",

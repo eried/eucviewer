@@ -1380,6 +1380,11 @@
         toggleBtn.addEventListener("click", () => {
           controls.classList.toggle("collapsed");
         });
+        // A click or tap anywhere else puts the menu away, as on the map page.
+        document.addEventListener("pointerdown", (e) => {
+          if (controls.classList.contains("collapsed") || controls.contains(e.target)) return;
+          controls.classList.add("collapsed");
+        }, true);
       }
       syncColorSelectOptions();
       syncTraceModeOptions();

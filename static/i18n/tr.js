@@ -502,7 +502,6 @@ window.EUC_I18N_DICT = {
 "Make video": "Video oluştur",
 "Manage trips": "Sürüşleri yönet",
 "Map opacity": "Harita opaklığı",
-"Map settings": "Harita ayarları",
 "Map size": "Harita boyutu",
 "Map source": "Harita kaynağı",
 "Map style": "Harita stili",

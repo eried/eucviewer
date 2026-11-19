@@ -502,7 +502,6 @@ window.EUC_I18N_DICT = {
 "Make video": "Video erstellen",
 "Manage trips": "Fahrten verwalten",
 "Map opacity": "Karten-Deckkraft",
-"Map settings": "Karteneinstellungen",
 "Map size": "Kartengröße",
 "Map source": "Kartenquelle",
 "Map style": "Kartenstil",

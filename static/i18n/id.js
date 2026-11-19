@@ -502,7 +502,6 @@ window.EUC_I18N_DICT = {
 "Make video": "Buat video",
 "Manage trips": "Kelola perjalanan",
 "Map opacity": "Opasitas peta",
-"Map settings": "Setelan peta",
 "Map size": "Ukuran peta",
 "Map source": "Sumber peta",
 "Map style": "Gaya peta",

@@ -86,10 +86,14 @@
         <main id="stage">
             <div id="map">
                 <div id="map-controls" class="hidden collapsed">
-                    <button type="button" id="map-controls-toggle" title="Map settings" aria-label="Map settings" data-i18n-attrs="title aria-label">
+                    <button type="button" id="map-controls-toggle" title="Settings" aria-label="Settings" data-i18n-attrs="title aria-label">
                         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
                     </button>
                     <div class="map-controls-body">
+                        <label>
+                            <span data-i18n>Language</span>
+                            <select id="lang-select" aria-label="Language" data-i18n-attrs="aria-label"></select>
+                        </label>
                         <label>
                             <span data-i18n>Map style</span>
                             <select id="theme-select">
@@ -411,7 +415,7 @@
 
     <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
     <script src="static/js/units.js?v=3"></script>
-    <script src="static/js/i18n.js?v=16"></script>
-    <script src="static/js/inspector.js?v=140"></script>
+    <script src="static/js/i18n.js?v=17"></script>
+    <script src="static/js/inspector.js?v=141"></script>
 </body>
 </html>

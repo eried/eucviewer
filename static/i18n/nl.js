@@ -502,7 +502,6 @@ window.EUC_I18N_DICT = {
 "Make video": "Video maken",
 "Manage trips": "Ritten beheren",
 "Map opacity": "Dekking van kaart",
-"Map settings": "Kaartinstellingen",
 "Map size": "Kaartgrootte",
 "Map source": "Kaartbron",
 "Map style": "Kaartstijl",

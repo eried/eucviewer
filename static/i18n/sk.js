@@ -502,7 +502,6 @@ window.EUC_I18N_DICT = {
 "Make video": "Vytvoriť video",
 "Manage trips": "Spravovať jazdy",
 "Map opacity": "Nepriehľadnosť mapy",
-"Map settings": "Nastavenia mapy",
 "Map size": "Veľkosť mapy",
 "Map source": "Zdroj mapy",
 "Map style": "Štýl mapy",
