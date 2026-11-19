@@ -1415,7 +1415,7 @@ document.addEventListener("DOMContentLoaded", function () {
   }
   function renderPanelTab() {
     const open = panel.classList.contains("open");
-    panelTabText.textContent = open || !panelTabCount ? "Trip Explorer" : `Trip Explorer (${panelTabCount})`;
+    panelTabText.textContent = open || !panelTabCount ? "Trips Explorer" : `Trips Explorer (${panelTabCount})`;
     panelTab.setAttribute("aria-expanded", open ? "true" : "false");
     panelTab.title = open ? i18n("Hide the trip list") : i18n("Show the trip list");
   }
@@ -2585,7 +2585,7 @@ document.addEventListener("DOMContentLoaded", function () {
       `<button type="button" class="ttm-item" data-act="split">${ICON.split}${i18n("Split trip…")}</button>` +
       `<button type="button" class="ttm-item" data-act="extend">${ICON.extend}${i18n("Extend trip…")}</button>` +
       ((canShare || canArchive) ? `<div class="ttm-sep"></div>` : "") +
-      (canShare ? `<button type="button" class="ttm-item" data-act="sharelink">${ICON.share}${i18n("Share with viewer")}</button>` : "") +
+      (canShare ? `<button type="button" class="ttm-item" data-act="sharelink">${ICON.share}${i18n("Share link")}</button>` : "") +
       (canShare ? `<button type="button" class="ttm-item" data-act="sharefile">${ICON.share}${i18n("Share file")}</button>` : "") +
       (canArchive ? `<button type="button" class="ttm-item" data-act="archive">${ICON.archive}${t._archive ? i18n("Unmark archive") : i18n("Mark for archive")}</button>` : "") +
       `<div class="ttm-sep"></div>` +
@@ -2922,7 +2922,13 @@ document.addEventListener("DOMContentLoaded", function () {
     const remoteByPath = new Map();
     for (const f of remote) remoteByPath.set(String(f.path).toLowerCase(), f);
     const rows = [];
-    for (const t of allTracks) {
+    // On the start screen the dialog only opens trips, whatever an earlier
+    // visit to the map left in memory: nothing is open as far as the rider can
+    // see, so every file is offered and opening starts a fresh library. The
+    // archive and what came back from the app are housekeeping for a library
+    // that is open, and there they read as trips offering the wrong button.
+    const opening = !overlay.classList.contains("hidden");
+    for (const t of (opening ? [] : allTracks)) {
       const path = t.dropboxPath ? String(t.dropboxPath).toLowerCase() : null;
       if (path) localPaths.add(path);
       // Archive wins over every other state: a superseded source (an extended
@@ -2942,10 +2948,6 @@ document.addEventListener("DOMContentLoaded", function () {
       if (cat === "returned") { row.file = remoteByPath.get(path) || null; row.twin = twinOf(path); }
       rows.push(row);
     }
-    // With nothing loaded the dialog only opens trips. The archive and what
-    // came back from the app are housekeeping for a library that is open, and
-    // on the start screen they read as trips offering the wrong button.
-    const opening = allTracks.length === 0;
     for (const f of remote) {
       if (localPaths.has(String(f.path).toLowerCase())) continue;
       const twin = twinOf(f.name);
@@ -3796,7 +3798,7 @@ document.addEventListener("DOMContentLoaded", function () {
           // turning for ever. Whichever comes first wins.
           const loaded = window.eucViewerLoadFile(
             new File([out], "dropbox_new.zip", { type: "application/zip" }),
-            { append: true, dropboxMap: map, source: "dropbox" });
+            { append: overlay.classList.contains("hidden"), dropboxMap: map, source: "dropbox" });
           await Promise.race([
             Promise.resolve(loaded).catch(() => {}),
             new Promise((r) => {
@@ -4682,7 +4684,7 @@ document.addEventListener("DOMContentLoaded", function () {
       }
 
       // Quick share icon (Dropbox trips): copies the viewer link; the tools
-      // menu's "Share with viewer" is the same action, kept as an extra.
+      // menu's "Share link" is the same action, kept as an extra.
       const shareBtn = li.querySelector(".share-btn");
       if (shareBtn) {
         shareBtn.addEventListener("click", (e) => { e.stopPropagation(); shareTripLink(i, "viewer"); });
@@ -4925,9 +4927,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const homeBtn = document.createElement("div");
     homeBtn.className = "main-screen-btn";
-    // Direction-neutral: a ?file= deep link lands here without ever having
-    // seen the load screen, so "Back to main screen" read strangely.
-    homeBtn.textContent = i18n("Home");
+    homeBtn.textContent = i18n("Back to start");
     homeBtn.addEventListener("click", () => navigate("#load"));
     navRow.appendChild(homeBtn);
 

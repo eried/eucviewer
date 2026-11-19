@@ -1989,8 +1989,8 @@ body:has(#upload-overlay:not(.hidden)) #map-controls {
 }
 body:has(#upload-overlay:not(.hidden)) #map-controls .map-only { display: none !important; }
 /* And the other way round: rows that only make sense before a map is up. */
-#map-controls .start-only { display: none; }
-body:has(#upload-overlay:not(.hidden)) #map-controls .start-only { display: flex; }
+#map-controls .start-only { display: none !important; }
+body:has(#upload-overlay:not(.hidden)) #map-controls .start-only { display: flex !important; }
 /* A plain action in the cogwheel. Its cell is the same column the selects
    fill, so it starts on their left edge like a row of a table; the button
    itself is half as wide (wider only when a language's word needs it),

@@ -70,7 +70,7 @@ to mirroring into that repo, ignore them.)
   order: `?lang=`, the `euc_lang` cookie shared with eucstats, the `eucviewer-lang`
   localStorage key, then `navigator.languages`. All four pages are translated (map, inspector,
   Forensics, video studio); only the map page has the picker. Names stay English everywhere:
-  EUC Planet, Trip Viewer, Trip Explorer, Forensics, Overlay Studio. Unit symbols stay Latin
+  EUC Planet, Trip Viewer, Trips Explorer, Forensics, Overlay Studio. Unit symbols stay Latin
   in every dictionary, because Forensics converts units inside its already translated static
   copy by finding `km/h`, `°C`, `Wh/km` and the like (the checker enforces it). After adding or changing a
   string: run `python tools/i18n_extract.py` (rewrites `static/i18n/keys.json` and checks
