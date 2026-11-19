@@ -31,7 +31,7 @@
   const STORAGE_KEY = "eucviewer-lang";
   const COOKIE = "euc_lang";
   // Bump when any dictionary changes, so nobody keeps a stale one.
-  const DICT_VERSION = "6";
+  const DICT_VERSION = "7";
 
   // Native names, never translated.
   const LANGS = {
@@ -65,7 +65,7 @@
     "uk": "Українська",
     "vi": "Tiếng Việt",
     "zh": "中文 (简体)",
-    "zh-Hant": "中文 (繁體)",
+    "zh-TW": "中文 (繁體)",
   };
   const has = (code) => Object.prototype.hasOwnProperty.call(LANGS, code);
 
@@ -81,7 +81,7 @@
     const region = (lc.split("-")[1] || "").toUpperCase();
     if (base === "en") return /^(GB|UK|IE|AU|NZ|ZA|IN)$/.test(region) ? "en-GB" : "en";
     if (base === "pt") return PT_PT.indexOf(region) >= 0 ? "pt-PT" : "pt-BR";
-    if (base === "zh") return /(^|-)(tw|hk|mo|hant)(-|$)/.test(lc) ? "zh-Hant" : "zh";
+    if (base === "zh") return /(^|-)(tw|hk|mo|hant)(-|$)/.test(lc) ? "zh-TW" : "zh";
     if (base === "nb" || base === "nn" || base === "no") return "no";
     if (base === "in") return "id";
     if (base === "es") return LATAM.indexOf(region) >= 0 ? "es-419" : "es";
