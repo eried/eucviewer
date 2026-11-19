@@ -2942,12 +2942,17 @@ document.addEventListener("DOMContentLoaded", function () {
       if (cat === "returned") { row.file = remoteByPath.get(path) || null; row.twin = twinOf(path); }
       rows.push(row);
     }
+    // With nothing loaded the dialog only opens trips. The archive and what
+    // came back from the app are housekeeping for a library that is open, and
+    // on the start screen they read as trips offering the wrong button.
+    const opening = allTracks.length === 0;
     for (const f of remote) {
       if (localPaths.has(String(f.path).toLowerCase())) continue;
       const twin = twinOf(f.name);
+      if (twin && opening) continue;
       rows.push({ kind: "remote", cat: twin ? "returned" : "remote", file: f, twin, label: f.name });
     }
-    for (const f of archived) {
+    for (const f of (opening ? [] : archived)) {
       rows.push({ kind: "archived", cat: "archived", file: f, label: f.name });
     }
     const order = { archive: 0, returned: 1, edited: 2, new: 3, remote: 4, synced: 5, archived: 6 };
