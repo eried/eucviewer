@@ -445,7 +445,7 @@ window.EUC_I18N_DICT = {
 "Impossible accel (m/s²)": "Gia tốc bất khả thi (m/s²)",
 "In": "Vào",
 "In /trips/archive; Restore puts it back in /trips": "Trong /trips/archive; Khôi phục sẽ đưa về /trips",
-"In EUC Planet, open <strong>Trip recorder</strong> and share a ride, pick <strong>Export all</strong> from the top-right menu, or enable <strong>Online backup to Dropbox</strong> under <em>Backups &amp; leaderboards</em>.": "Trong EUC Planet, mở <strong>Ghi hành trình</strong> và chia sẻ một chuyến, chọn <strong>Xuất tất cả</strong> từ menu góc trên bên phải, hoặc bật <strong>Sao lưu trực tuyến lên Dropbox</strong> trong <em>Sao lưu &amp; bảng xếp hạng</em>.",
+"In EUC Planet, open <strong>Trip recorder</strong> and share a ride, pick <strong>Export all</strong> from the top-right menu, or enable <strong>Online backup to Dropbox</strong> under <em>Backups &amp; leaderboards</em>.": "Trong EUC Planet, mở <strong>Ghi hành trình</strong> và chia sẻ một chuyến, chọn <strong>Xuất tất cả</strong> từ menu góc trên bên phải, hoặc bật <strong>Sao lưu trực tuyến lên Dropbox</strong> trong <em>Sao lưu &amp; Leaderboards</em>.",
 "In sync": "Đã đồng bộ",
 "In-out markers + chroma tails": "Mốc vào-ra + phần đuôi chroma",
 "In-ride cost of speed": "Chi phí tốc độ trong chuyến",

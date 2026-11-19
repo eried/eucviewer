@@ -445,7 +445,7 @@ window.EUC_I18N_DICT = {
 "Impossible accel (m/s²)": "Αδύνατη επιτάχυνση (m/s²)",
 "In": "Αρχή",
 "In /trips/archive; Restore puts it back in /trips": "Στο /trips/archive· η Επαναφορά τη βάζει ξανά στο /trips",
-"In EUC Planet, open <strong>Trip recorder</strong> and share a ride, pick <strong>Export all</strong> from the top-right menu, or enable <strong>Online backup to Dropbox</strong> under <em>Backups &amp; leaderboards</em>.": "Στο EUC Planet ανοίξτε τις <strong>Καταγραφέας διαδρομών</strong> και κοινοποιήστε μια διαδρομή, επιλέξτε <strong>Εξαγωγή όλων</strong> από το μενού πάνω δεξιά ή ενεργοποιήστε το <strong>Online αντίγραφο ασφαλείας στο Dropbox</strong> στο <em>Αντίγραφα &amp; κατατάξεις</em>.",
+"In EUC Planet, open <strong>Trip recorder</strong> and share a ride, pick <strong>Export all</strong> from the top-right menu, or enable <strong>Online backup to Dropbox</strong> under <em>Backups &amp; leaderboards</em>.": "Στο EUC Planet ανοίξτε τις <strong>Καταγραφέας διαδρομών</strong> και κοινοποιήστε μια διαδρομή, επιλέξτε <strong>Εξαγωγή όλων</strong> από το μενού πάνω δεξιά ή ενεργοποιήστε το <strong>Online αντίγραφο ασφαλείας στο Dropbox</strong> στο <em>Αντίγραφα &amp; Leaderboards</em>.",
 "In sync": "Συγχρονισμένη",
 "In-out markers + chroma tails": "Δείκτες αρχής-τέλους + ουρές chroma",
 "In-ride cost of speed": "Κόστος ταχύτητας μέσα στη διαδρομή",
