@@ -3,7 +3,7 @@
 // window.EucI18n.t (as `const i18n = window.EucI18n.t`; `t` is taken by a
 // hundred loop variables).
 //
-// The English text is the key: i18n("Upload trips") returns the translation,
+// The English text is the key: i18n("Open trips") returns the translation,
 // or the English itself when there is none, so a missing entry is never a
 // blank. Placeholders are named: i18n("{n} trips", { n: 12 }). The first
 // argument must be a plain string literal so tools/i18n_extract.py can find
@@ -31,7 +31,7 @@
   const STORAGE_KEY = "eucviewer-lang";
   const COOKIE = "euc_lang";
   // Bump when any dictionary changes, so nobody keeps a stale one.
-  const DICT_VERSION = "14";
+  const DICT_VERSION = "16";
 
   // Native names, never translated.
   const LANGS = {

@@ -24,7 +24,7 @@ to mirroring into that repo, ignore them.)
   The modal hosts a draggable `javascript:` bookmarklet; clicking it inside a logged-in euc.world
   tab loads `euc-world-export.js`, which paginates `POST /webapi/userTours` and fetches
   `/xlsx/{key}` per tour, then triggers a `.dbb` download (store-mode ZIP, no external libs).
-- `source-hints.js` + `dropbox-source.js` power the "Load trips from Dropbox" modal. The viewer
+- `source-hints.js` + `dropbox-source.js` power the "Open trips from Dropbox" modal. The viewer
   is a Dropbox **Scoped App (App Folder)** — read access is limited to `Apps/EUC Planet/`.
   OAuth uses **PKCE** (no client secret), token in localStorage, redirect back to the same
   page URL with `?code=...`. Once connected, `list_folder` enumerates the `/trips` subfolder,
@@ -59,7 +59,7 @@ to mirroring into that repo, ignore them.)
   `web/public.py`. Climb rate is `m/km` unless both halves are imperial (`ft/mi`); use
   `UNITS.climb` / `UNITS.climbUnit`, never a hand-rolled factor.
 - `i18n.js` is the one place the language is decided and a string looked up, loaded after
-  `units.js`. The English text is the key: `i18n("Upload trips")`, `i18n("{n} trips", { n })`,
+  `units.js`. The English text is the key: `i18n("Open trips")`, `i18n("{n} trips", { n })`,
   with `const i18n = window.EucI18n.t;` at the top of each script (`t` is taken by loop
   variables). The first argument must be one plain double-quoted literal, or
   `tools/i18n_extract.py` cannot see it. Static markup is marked instead: `data-i18n` (text),

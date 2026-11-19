@@ -4,6 +4,8 @@ document.addEventListener("DOMContentLoaded", function () {
   const UNITS = window.EucUnits.UNITS;
   // Every string the rider reads goes through this (i18n.js).
   const i18n = window.EucI18n.t;
+  // "1 trip", "12 trips": a count of one gets its own word.
+  const tripsLabel = (n) => (n === 1 ? i18n("{n} trip", { n }) : i18n("{n} trips", { n }));
 
   // Graph resolution: samples kept per trip after downsampling. Chosen in
   // the settings cogwheel, applied at parse time (see the worker). Higher =
@@ -1873,19 +1875,34 @@ document.addEventListener("DOMContentLoaded", function () {
 
       const dropboxGlyph = `<svg class="recent-file-source" viewBox="0 0 24 24" width="11" height="11" aria-hidden="true" title="${escapeHtml(i18n("From Dropbox"))}"><path fill="currentColor" d="M6 2 0 6l6 4 6-4-6-4zm12 0-6 4 6 4 6-4-6-4zM0 14l6 4 6-4-6-4-6 4zm18-4-6 4 6 4 6-4-6-4zM6 19l6 4 6-4-6-4-6 4z"/></svg>`;
       const stripExt = (n) => (n || "").replace(/\.(dbb|csv|gpx|xlsx)$/i, "");
+      const monthFmt = new Intl.DateTimeFormat(DATE_LOCALE, { month: "short", year: "numeric" });
+      const recentSpanLabel = (tracks) => {
+        if (!tracks || !tracks.length) return "";
+        if (tracks.length === 1) return formatTripLabel(tracks[0]);
+        let lo = Infinity, hi = -Infinity;
+        tracks.forEach((t) => {
+          const ms = new Date(t.dateStart || "").getTime();
+          if (!isNaN(ms)) { if (ms < lo) lo = ms; if (ms > hi) hi = ms; }
+        });
+        if (lo === Infinity) return "";
+        const a = monthFmt.format(new Date(lo)), b = monthFmt.format(new Date(hi));
+        return a === b ? a : a + " \u2013 " + b;
+      };
       items.forEach((item) => {
         const row = document.createElement("div");
         row.className = "recent-file-item";
         const sourceGlyph = item.source === "dropbox" ? dropboxGlyph : "";
-        // Dropbox multi-trip bundles get a stable label so older entries
-        // saved before the rename ("Dropbox 244 trips 2026-06-22.dbb")
-        // don't repeat info already shown by the glyph and meta line.
-        const isMultiDropbox = item.source === "dropbox" && (item.tripCount || 0) > 1;
-        const displayName = isMultiDropbox ? "all_trips" : stripExt(item.fileName);
+        // A Dropbox load has no file of its own, only the bundle it was
+        // handed over in ("dropbox_new.zip"), so it is named by what is in
+        // it: the one trip, or the months the trips span. The glyph says
+        // where it came from and the line below says how many and when.
+        const displayName = item.source === "dropbox"
+          ? (recentSpanLabel(item.tracks) || "Dropbox")
+          : stripExt(item.fileName);
         row.innerHTML = `
           <button type="button" class="recent-file-load">
             <span class="recent-file-name"><span class="recent-file-nametext">${escapeHtml(displayName)}</span>${sourceGlyph}</span>
-            <span class="recent-file-meta">${i18n("{n} trips &middot; {dist} {unit} &middot; {when}", { n: item.tripCount, dist: UNITS.dist(item.totalKm).toFixed(1), unit: UNITS.distUnit, when: escapeHtml(formatRecentTime(item.loadedAt)) })}</span>
+            <span class="recent-file-meta">${i18n("{trips} &middot; {dist} {unit} &middot; {when}", { trips: tripsLabel(item.tripCount), dist: UNITS.dist(item.totalKm).toFixed(1), unit: UNITS.distUnit, when: escapeHtml(formatRecentTime(item.loadedAt)) })}</span>
           </button>
         `;
 
@@ -2222,7 +2239,7 @@ document.addEventListener("DOMContentLoaded", function () {
       if (checked === 0) {
         setPanelTabCount(i18n("{n} trips parsed", { n: total }));
       } else if (checked === total) {
-        setPanelTabCount(i18n("{n} trips", { n: total }));
+        setPanelTabCount(tripsLabel(total));
       } else {
         setPanelTabCount(i18n("{shown} displayed of {n} trips", { shown: checked, n: total }));
       }
@@ -2395,7 +2412,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const checkedIdx = () => [...list.querySelectorAll("input:checked")].map((c) => parseInt(c.dataset.idx));
     const refresh = () => {
       const n = checkedIdx().length;
-      countEl.textContent = n ? i18n("{n} selected", { n }) : i18n("{n} trips", { n: allTracks.length });
+      countEl.textContent = n ? i18n("{n} selected", { n }) : tripsLabel(allTracks.length);
       applyBtn.disabled = !n;
       delBtn.disabled = !n;
       if (archBtn) {
@@ -3027,14 +3044,14 @@ document.addEventListener("DOMContentLoaded", function () {
       const rowBtn = (r.kind === "remote" && r.cat === "returned")
         ? `<button type="button" class="dbx-row-arch dbx-row-rearchive" data-i="${i}" title="${i18n("Move it back into /trips/archive")}">${i18n("Archive")}</button>`
         : r.kind === "remote"
-        ? `<button type="button" class="dbx-row-open" data-i="${i}">${i18n("Load")}</button>`
+        ? `<button type="button" class="dbx-row-open" data-i="${i}">${i18n("Open")}</button>`
         : r.kind === "archived"
           ? `<button type="button" class="dbx-row-restore" data-i="${i}" title="${i18n("Move back into /trips")}">${i18n("Restore")}</button>`
         : (r.cat === "archive" || r.cat === "returned")
           ? `<button type="button" class="dbx-row-arch" data-i="${i}">${i18n("Archive")}</button>`
           : (r.cat === "new" || r.cat === "edited")
             ? `<button type="button" class="dbx-row-sync" data-i="${i}">${i18n("Upload")}</button>`
-            : `<button type="button" class="dbx-row-done" disabled>${i18n("Loaded")}</button>`;
+            : `<button type="button" class="dbx-row-done" disabled>${i18n("Opened")}</button>`;
       // Changed rows: the amber icon is a one-click undo (revert). Archive
       // rows: the icon cancels the archive (keep the trip). Others are static.
       const tag = r.cat === "edited"
@@ -3059,7 +3076,7 @@ document.addEventListener("DOMContentLoaded", function () {
       `<details class="dbx-conn">` +
         `<summary>` +
           `<svg viewBox="0 0 16 16" width="10" height="10" class="dbx-conn-caret" aria-hidden="true"><path fill="currentColor" d="M5 3l5 5-5 5z"/></svg>` +
-          `<span class="dbx-conn-trips">${nTrips === 1 ? i18n("{n} trip", { n: nTrips }) : i18n("{n} trips", { n: nTrips })}${sizeBit}</span>` +
+          `<span class="dbx-conn-trips">${tripsLabel(nTrips)}${sizeBit}</span>` +
           `<span class="dbx-conn-account">${i18n("Connected as {name}", { name: escapeHtml(state.account || "Dropbox") })}</span>` +
         `</summary>` +
         `<div class="dbx-conn-body">` +
@@ -3094,7 +3111,7 @@ document.addEventListener("DOMContentLoaded", function () {
           // a disabled one beside it would only be in the way.
           : (remoteFiles.length ? ""
             : `<button type="button" class="src-primary-btn dbx-sync-idle" disabled title="${i18n("Every trip loaded here matches its copy on Dropbox")}">${i18n("Nothing to sync")}</button>`)) +
-        (remoteFiles.length ? `<button type="button" class="${upstream ? "src-secondary-btn" : "src-primary-btn"}" id="dbx-load-remote">${i18n("Load {n} from Dropbox", { n: remoteFiles.length })}</button>` : "") +
+        (remoteFiles.length ? `<button type="button" class="${upstream ? "src-secondary-btn" : "src-primary-btn"}" id="dbx-load-remote">${i18n("Open {n} from Dropbox", { n: remoteFiles.length })}</button>` : "") +
       `</div></div>` +
       `<div class="dbx-status"></div>`;
 
@@ -3223,12 +3240,12 @@ document.addEventListener("DOMContentLoaded", function () {
       const fitActions = () => {
         // Restore full labels first so a widened dialog can re-expand them.
         if (syncMainEl) syncMainEl.innerHTML = syncMainLabel;
-        if (loadBtn) loadBtn.textContent = i18n("Load {n} from Dropbox", { n: remoteFiles.length });
+        if (loadBtn) loadBtn.textContent = i18n("Open {n} from Dropbox", { n: remoteFiles.length });
         const kids = [...actionRow.children];
         if (kids.length < 2) return; // only one button, nothing to trade off
         if (new Set(kids.map((k) => k.offsetTop)).size === 1) return; // already fits
         if (syncMainEl && compactSyncLabel) syncMainEl.textContent = compactSyncLabel;
-        if (loadBtn) loadBtn.textContent = i18n("Load {n}", { n: remoteFiles.length });
+        if (loadBtn) loadBtn.textContent = i18n("Open {n}", { n: remoteFiles.length });
       };
       fitActions();
       renderSyncState._lastFit = fitActions;
@@ -4775,7 +4792,7 @@ document.addEventListener("DOMContentLoaded", function () {
         yHeader.innerHTML = `
           <input type="checkbox" class="year-check" checked>
           <span class="year-label">${yg.year}</span>
-          <span class="year-meta">${i18n("{n} trips &middot; {dist} {unit}", { n: yearTrips, dist: UNITS.dist(yearKm).toFixed(1), unit: UNITS.distUnit })}</span>
+          <span class="year-meta">${i18n("{trips} &middot; {dist} {unit}", { trips: tripsLabel(yearTrips), dist: UNITS.dist(yearKm).toFixed(1), unit: UNITS.distUnit })}</span>
           <span class="year-chevron">&#9662;</span>
         `;
 
@@ -4829,7 +4846,7 @@ document.addEventListener("DOMContentLoaded", function () {
       header.innerHTML = `
         <input type="checkbox" class="month-check" checked>
         <span class="month-label">${mg.month}</span>
-        <span class="month-meta">${i18n("{n} trips &middot; {dist} {unit}", { n: activeMonthIdx.length, dist: UNITS.dist(groupKm).toFixed(1), unit: UNITS.distUnit })}${groupDur ? ` &middot; ${groupDur}` : ""}</span>
+        <span class="month-meta">${i18n("{trips} &middot; {dist} {unit}", { trips: tripsLabel(activeMonthIdx.length), dist: UNITS.dist(groupKm).toFixed(1), unit: UNITS.distUnit })}${groupDur ? ` &middot; ${groupDur}` : ""}</span>
         <span class="month-chevron">&#9662;</span>
       `;
 

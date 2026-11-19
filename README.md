@@ -157,7 +157,7 @@ Add `?lang=de` or `?units=mi-c-m` to force a language or units while testing.
 
 ## Translating
 
-The English text is the key: `i18n("Upload trips")` in the scripts, `data-i18n` on
+The English text is the key: `i18n("Open trips")` in the scripts, `data-i18n` on
 static markup. After adding or changing a string, run `python tools/i18n_extract.py`.
 It rewrites `static/i18n/keys.json` and lists what each dictionary is missing, along
 with any placeholder or tag a translation dropped. To fix a translation, edit the
