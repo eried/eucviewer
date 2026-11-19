@@ -31,7 +31,7 @@
   const STORAGE_KEY = "eucviewer-lang";
   const COOKIE = "euc_lang";
   // Bump when any dictionary changes, so nobody keeps a stale one.
-  const DICT_VERSION = "17";
+  const DICT_VERSION = "18";
 
   // Native names, never translated.
   const LANGS = {
@@ -139,9 +139,35 @@
     return lang;
   })();
 
+  // Which form a count takes, the same rule eucstats counts with. Russian and
+  // Ukrainian say 21 like 1 and 22 like 2; Polish only the second; Czech and
+  // Slovak keep the middle form for 2, 3 and 4 alone; Romanian adds "de"
+  // from 20 on. A dictionary that needs a form other than its plain entry
+  // gives it as "<key>|one", "<key>|few" or "<key>|many", and the call sites
+  // stay as they are. Every other language answers "" and uses the plain entry.
+  function pluralForm(n) {
+    if (typeof n === "string" && /^\d+$/.test(n)) n = Number(n);
+    if (typeof n !== "number" || !isFinite(n) || n % 1) return "";
+    n = Math.abs(n);
+    const d = n % 10, h = n % 100;
+    const few = d >= 2 && d <= 4 && (h < 12 || h > 14);
+    switch (lang) {
+      case "ru": case "uk": return d === 1 && h !== 11 ? "one" : few ? "few" : "many";
+      case "pl": return n === 1 ? "one" : few ? "few" : "many";
+      case "cs": case "sk": return n === 1 ? "one" : n >= 2 && n <= 4 ? "few" : "many";
+      case "ro": return n === 1 ? "one" : n === 0 || (h >= 1 && h <= 19) ? "few" : "many";
+    }
+    return "";
+  }
+
   function t(en, vars) {
     const dict = window.EUC_I18N_DICT;
-    let s = (dict && dict[en]) || en;
+    let s = dict && dict[en];
+    if (s && vars && "n" in vars) {
+      const form = pluralForm(vars.n);
+      if (form && dict[en + "|" + form]) s = dict[en + "|" + form];
+    }
+    s = s || en;
     if (vars) s = s.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? vars[k] : m));
     return s;
   }

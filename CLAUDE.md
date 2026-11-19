@@ -81,7 +81,9 @@ to mirroring into that repo, ignore them.)
   `EucI18n.dateLocale`, never `undefined`. `node tools/parity_check.js` holds the languages,
   their names, the browser-tag mapping, unit codes, timezone defaults and cookies to
   `tools/parity_rules.json`, a copy of eucstats `tests/parity_rules.json`; change it only
-  together with eucstats and the app. Strings that are compared or
+  together with eucstats and the app. Counts: ru, uk, pl, cs, sk and ro may add `"<key>|one"`, `"<key>|few"` or `"<key>|many"` entries
+  next to a key with `{n}`; `pluralForm()` in i18n.js picks one by the eucstats rule, call sites
+  stay `n === 1 ? singular : plural`, and the checker allows the forms only in those six. Strings that are compared or
   parsed (Dropbox error text matched by regex, names written into exports) stay raw.
 - `inspector.html` + `inspector.js` is a standalone page. It reads the `?i=<index>` query param,
   fetches tracks from IndexedDB (store `eucplanet-trip-viewer/currentSession` key `"tracks"`),

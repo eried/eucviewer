@@ -129,6 +129,9 @@ PLACEHOLDER = re.compile(r"\{(\w+)\}")
 TAG = re.compile(r"</?\s*(\w+)")
 
 
+PLURAL_LANGS = ("ru", "uk", "pl", "cs", "sk", "ro")
+
+
 def check(keys):
     problems = []
     want = set(keys)
@@ -143,13 +146,26 @@ def check(keys):
         except ValueError as e:
             problems.append("%s: not JSON inside the wrapper (%s)" % (name, e))
             continue
+        # Count forms ride along as "<key>|one|few|many" in the languages
+        # i18n.js pluralForm() knows; each is checked against its key.
+        code = name[:-3]
+        forms = {}
+        for k in list(table):
+            base, bar, form = k.rpartition("|")
+            if bar and form in ("one", "few", "many") and base in want:
+                if code not in PLURAL_LANGS:
+                    problems.append("%s: count form %r in a language without them" % (name, k[:50]))
+                elif "{n}" not in base:
+                    problems.append("%s: count form for a key without {n}: %r" % (name, k[:50]))
+                forms[k] = base
         missing = sorted(want - set(table))
-        extra = sorted(set(table) - want)
+        extra = sorted(set(table) - want - set(forms))
         if missing:
             problems.append("%s: %d missing, e.g. %r" % (name, len(missing), missing[:3]))
         if extra:
             problems.append("%s: %d not in use, e.g. %r" % (name, len(extra), extra[:3]))
         for k, v in table.items():
+            k = forms.get(k, k)
             if k not in want:
                 continue
             if not isinstance(v, str) or not v.strip():

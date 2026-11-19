@@ -1155,5 +1155,17 @@ window.EUC_I18N_DICT = {
 "{v} {unit} regen": "{v} {unit} rekuperacja",
 "⚠ mixed wheels": "⚠ różne koła",
 "🔒 from forecast": "🔒 z prognozy",
-"🔒 from route": "🔒 z trasy"
+"🔒 from route": "🔒 z trasy",
+"<b>{n}</b> trips|few": "<b>{n}</b> przejazdy",
+"<span>{n}</span> trips|few": "<span>{n}</span> przejazdy",
+"{n} trips|few": "{n} przejazdy",
+"{n} trips → {dist} {unit}, {span} span.|few": "{n} przejazdy → {dist} {unit}, okres: {span}.",
+"{n} trips → {dist} {unit}.|few": "{n} przejazdy → {dist} {unit}.",
+"Scope ({n} trips)|few": "Zakres ({n} przejazdy)",
+"<b>{n}</b> flat rides (&lt;2%)|few": "<b>{n}</b> płaskie przejazdy (&lt;2%)",
+"{n} files|few": "{n} pliki",
+"{n} rows · {dur}|few": "{n} wiersze · {dur}",
+"{n} rows · {dur} · GPS track|few": "{n} wiersze · {dur} · ślad GPS",
+"VBO loaded: {n} rows, {dur}|few": "Wczytano VBO: {n} wiersze, {dur}",
+"VBO loaded: {n} rows, {dur}, GPS track|few": "Wczytano VBO: {n} wiersze, {dur}, ślad GPS"
 };
