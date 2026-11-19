@@ -85,6 +85,7 @@ static/
   i18n/<code>.js           One dictionary per language; only the one in use is fetched
   i18n/keys.json           Every English string, as collected by the tool below
 tools/i18n_extract.py      Collects the strings and checks every dictionary
+tools/parity_check.js      Holds languages, units and cookies to the rules shared with eucstats and the app
 serve.cmd                  python -m http.server 8000
 ```
 

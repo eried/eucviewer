@@ -75,7 +75,11 @@ to mirroring into that repo, ignore them.)
   copy by finding `km/h`, `°C`, `Wh/km` and the like (the checker enforces it). After adding or changing a
   string: run `python tools/i18n_extract.py` (rewrites `static/i18n/keys.json` and checks
   every dictionary for missing keys, placeholders and tags), add the key to all dictionaries,
-  and bump `DICT_VERSION` in `i18n.js` along with its `?v=`. Strings that are compared or
+  and bump `DICT_VERSION` in `i18n.js` along with its `?v=`. Dates follow the language picked: every `Intl.DateTimeFormat` takes
+  `EucI18n.dateLocale`, never `undefined`. `node tools/parity_check.js` holds the languages,
+  their names, the browser-tag mapping, unit codes, timezone defaults and cookies to
+  `tools/parity_rules.json`, a copy of eucstats `tests/parity_rules.json`; change it only
+  together with eucstats and the app. Strings that are compared or
   parsed (Dropbox error text matched by regex, names written into exports) stay raw.
 - `inspector.html` + `inspector.js` is a standalone page. It reads the `?i=<index>` query param,
   fetches tracks from IndexedDB (store `eucplanet-trip-viewer/currentSession` key `"tracks"`),

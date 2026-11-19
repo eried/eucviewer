@@ -22,7 +22,7 @@
       const force = new URLSearchParams(location.search).get("dates");
       if (force) return force;
     } catch (_) {}
-    const sys = (navigator.languages && navigator.languages[0]) || navigator.language || undefined;
+    const sys = window.EucI18n.dateLocale;
     try {
       const parts = new Intl.DateTimeFormat(sys, { year: "numeric", month: "numeric", day: "numeric" })
         .formatToParts(new Date(2020, 0, 2));

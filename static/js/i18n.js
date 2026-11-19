@@ -31,7 +31,7 @@
   const STORAGE_KEY = "eucviewer-lang";
   const COOKIE = "euc_lang";
   // Bump when any dictionary changes, so nobody keeps a stale one.
-  const DICT_VERSION = "7";
+  const DICT_VERSION = "8";
 
   // Native names, never translated.
   const LANGS = {
@@ -129,6 +129,16 @@
   const lang = detect();
   try { document.documentElement.lang = lang; } catch (_) {}
 
+  // Dates are written in the language picked. The browser's own tag is kept
+  // when it is that same language, so its regional habits survive (de-AT).
+  const dateLocale = (function () {
+    try {
+      const nav = (navigator.languages && navigator.languages[0]) || navigator.language;
+      if (nav && mapLang(nav) === lang) return nav;
+    } catch (_) {}
+    return lang;
+  })();
+
   function t(en, vars) {
     const dict = window.EUC_I18N_DICT;
     let s = (dict && dict[en]) || en;
@@ -197,7 +207,7 @@
     });
   }
 
-  window.EucI18n = { lang, LANGS, t, apply, mapLang, set };
+  window.EucI18n = { lang, dateLocale, LANGS, t, apply, mapLang, set };
   wirePicker();
 
   // The dictionary has to be in before the page script runs its first t().

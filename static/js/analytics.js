@@ -9,6 +9,8 @@
   const UNITS = window.EucUnits.UNITS;
   // Every string the rider reads goes through this (i18n.js).
   const i18n = window.EucI18n.t;
+  // Month names follow the language picked, not the browser.
+  const DATE_LOCALE = window.EucI18n.dateLocale;
   // Temperature *differences* scale by 9/5 but must not get the +32 offset.
   const tempDelta = (c) => UNITS.tempDelta(c);
 
@@ -1478,7 +1480,7 @@
       if (gi >= 0) wheelScopeSel.value = String(gi);
     }
   }
-  const subtitleFmt = new Intl.DateTimeFormat(undefined, { month: "short", year: "numeric" });
+  const subtitleFmt = new Intl.DateTimeFormat(DATE_LOCALE, { month: "short", year: "numeric" });
   function refreshSubtitle() {
     let totalKm = 0;
     for (const m of dated) totalKm += m.distKm;
@@ -1499,7 +1501,7 @@
   const drLo = document.getElementById("dr-lo");
   const drHi = document.getElementById("dr-hi");
   const drReset = document.getElementById("dr-reset");
-  const drFmt = new Intl.DateTimeFormat(undefined, { month: "short", year: "2-digit", day: "numeric" });
+  const drFmt = new Intl.DateTimeFormat(DATE_LOCALE, { month: "short", year: "2-digit", day: "numeric" });
   // "All wheels" over a multi-wheel library blends per-wheel physics:
   // range, efficiency, regen, motor sag, thermals and battery health only
   // mean something per wheel, so those sections carry a MIXED flag until
@@ -1707,8 +1709,8 @@
   // Subtitle now refreshes inside renderAll() so it tracks the current scope.
 
   // ---------- Binning ----------
-  const MONTH_FMT = new Intl.DateTimeFormat(undefined, { month: "short", year: "2-digit" });
-  const WEEK_FMT = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "2-digit" });
+  const MONTH_FMT = new Intl.DateTimeFormat(DATE_LOCALE, { month: "short", year: "2-digit" });
+  const WEEK_FMT = new Intl.DateTimeFormat(DATE_LOCALE, { month: "short", day: "numeric", year: "2-digit" });
   // Monday-anchored week start; ISO style so a Sunday ride doesn't span two
   // years of labels when it sits on the Dec/Jan boundary.
   function weekStart(d) {
@@ -3194,7 +3196,7 @@
       for (const [k, v] of months) if (!best || v > best.v) best = { k, v };
       if (best) {
         const [y, mo] = best.k.split("-").map(Number);
-        const label = new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric" }).format(new Date(y, mo, 1));
+        const label = new Intl.DateTimeFormat(DATE_LOCALE, { month: "long", year: "numeric" }).format(new Date(y, mo, 1));
         out.push({
           kind: "info",
           html: i18n("Most active month: <b>{month}</b> with <b>{dist}</b> {unit}.", { month: label, dist: UNITS.dist(best.v).toFixed(0), unit: UNITS.distUnit }),
@@ -3539,10 +3541,10 @@
     const startD = new Date(t0);
     const endD = new Date(t1);
     let xfmt, stepMonths;
-    if (spanDays <= 120) { xfmt = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }); stepMonths = 1; }
-    else if (spanDays <= 800) { xfmt = new Intl.DateTimeFormat(undefined, { month: "short", year: "2-digit" }); stepMonths = 2; }
-    else if (spanDays <= 2000) { xfmt = new Intl.DateTimeFormat(undefined, { month: "short", year: "2-digit" }); stepMonths = 3; }
-    else { xfmt = new Intl.DateTimeFormat(undefined, { year: "numeric" }); stepMonths = 6; }
+    if (spanDays <= 120) { xfmt = new Intl.DateTimeFormat(DATE_LOCALE, { month: "short", day: "numeric" }); stepMonths = 1; }
+    else if (spanDays <= 800) { xfmt = new Intl.DateTimeFormat(DATE_LOCALE, { month: "short", year: "2-digit" }); stepMonths = 2; }
+    else if (spanDays <= 2000) { xfmt = new Intl.DateTimeFormat(DATE_LOCALE, { month: "short", year: "2-digit" }); stepMonths = 3; }
+    else { xfmt = new Intl.DateTimeFormat(DATE_LOCALE, { year: "numeric" }); stepMonths = 6; }
     const xLabels = [];
     const cursor = new Date(startD.getFullYear(), startD.getMonth(), 1);
     while (cursor.getTime() <= endD.getTime()) {
@@ -5874,7 +5876,7 @@
         const max = sorted[sorted.length - 1];
         // Resolve actual trips for the median / longest values so the takeaway
         // can link to the specific rides.
-        const dateFmt2 = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" });
+        const dateFmt2 = new Intl.DateTimeFormat(DATE_LOCALE, { month: "short", day: "numeric", year: "numeric" });
         const closestTo = (target) => dated.filter((m) => m.distKm > 0).reduce((best, m) => {
           const diff = Math.abs(UNITS.dist(m.distKm) - target);
           if (!best || diff < best.diff) return { m, diff };
@@ -5967,7 +5969,7 @@
         const lifeTopTrip = dated.find((m) => m.topSpeedKmh === lifeTop);
         const medTop = median(tops);
         const lifeTopLabel = lifeTopTrip && lifeTopTrip.date
-          ? new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(lifeTopTrip.date)
+          ? new Intl.DateTimeFormat(DATE_LOCALE, { month: "short", day: "numeric", year: "numeric" }).format(lifeTopTrip.date)
           : null;
         setTakeaway("topspeed-takeaway", [
           lifeTopLabel
@@ -6023,7 +6025,7 @@
           unit: "s", band: true, dp: 2,
         }];
         drawTrendChart(document.getElementById("chart-accel40"), bins, series, { rolling });
-        const dateFmt = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" });
+        const dateFmt = new Intl.DateTimeFormat(DATE_LOCALE, { month: "short", day: "numeric", year: "numeric" });
         const parts = [];
         const findFastest = (field) => {
           const trip = dated.filter((m) => m[field] != null).sort((a, b) => a[field] - b[field])[0];
@@ -6079,7 +6081,7 @@
       const riderEvents = events.filter((e) => e.kind === "lift" || e.kind === "fall");
       riderEvents.sort((a, b) => (b.date?.getTime() || 0) - (a.date?.getTime() || 0));
       const top = riderEvents.slice(0, 200);
-      const fmt = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" });
+      const fmt = new Intl.DateTimeFormat(DATE_LOCALE, { month: "short", day: "numeric", year: "numeric" });
       list.innerHTML = top.map((e) => {
         const peak = UNITS.speed(e.peakSpd).toFixed(0);
         const dur = e.durS != null ? e.durS.toFixed(1) : "—";
@@ -6232,7 +6234,7 @@
         const allLng = dated.map((m) => m.gLongPeak).filter((v) => v != null);
         allLat.sort((a, b) => b - a);
         allLng.sort((a, b) => b - a);
-        const dateFmt = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" });
+        const dateFmt = new Intl.DateTimeFormat(DATE_LOCALE, { month: "short", day: "numeric", year: "numeric" });
         const latTrip = allLat.length ? dated.find((m) => m.gLatPeak === allLat[0]) : null;
         const lngTrip = allLng.length ? dated.find((m) => m.gLongPeak === allLng[0]) : null;
         const trendParts = [];
