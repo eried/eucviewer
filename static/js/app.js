@@ -1875,15 +1875,30 @@ document.addEventListener("DOMContentLoaded", function () {
 
       const dropboxGlyph = `<svg class="recent-file-source" viewBox="0 0 24 24" width="11" height="11" aria-hidden="true" title="${escapeHtml(i18n("From Dropbox"))}"><path fill="currentColor" d="M6 2 0 6l6 4 6-4-6-4zm12 0-6 4 6 4 6-4-6-4zM0 14l6 4 6-4-6-4-6 4zm18-4-6 4 6 4 6-4-6-4zM6 19l6 4 6-4-6-4-6 4z"/></svg>`;
       const stripExt = (n) => (n || "").replace(/\.(dbb|csv|gpx|xlsx)$/i, "");
+      const monthFmt = new Intl.DateTimeFormat(DATE_LOCALE, { month: "short", year: "numeric" });
+      const recentSpanLabel = (tracks) => {
+        if (!tracks || !tracks.length) return "";
+        if (tracks.length === 1) return formatTripLabel(tracks[0]);
+        let lo = Infinity, hi = -Infinity;
+        tracks.forEach((t) => {
+          const ms = new Date(t.dateStart || "").getTime();
+          if (!isNaN(ms)) { if (ms < lo) lo = ms; if (ms > hi) hi = ms; }
+        });
+        if (lo === Infinity) return "";
+        const a = monthFmt.format(new Date(lo)), b = monthFmt.format(new Date(hi));
+        return a === b ? a : a + " \u2013 " + b;
+      };
       items.forEach((item) => {
         const row = document.createElement("div");
         row.className = "recent-file-item";
         const sourceGlyph = item.source === "dropbox" ? dropboxGlyph : "";
-        // Dropbox multi-trip bundles get a stable label so older entries
-        // saved before the rename ("Dropbox 244 trips 2026-06-22.dbb")
-        // don't repeat info already shown by the glyph and meta line.
-        const isMultiDropbox = item.source === "dropbox" && (item.tripCount || 0) > 1;
-        const displayName = isMultiDropbox ? "all_trips" : stripExt(item.fileName);
+        // A Dropbox load has no file of its own, only the bundle it was
+        // handed over in ("dropbox_new.zip"), so it is named by what is in
+        // it: the one trip, or the months the trips span. The glyph says
+        // where it came from and the line below says how many and when.
+        const displayName = item.source === "dropbox"
+          ? (recentSpanLabel(item.tracks) || "Dropbox")
+          : stripExt(item.fileName);
         row.innerHTML = `
           <button type="button" class="recent-file-load">
             <span class="recent-file-name"><span class="recent-file-nametext">${escapeHtml(displayName)}</span>${sourceGlyph}</span>
