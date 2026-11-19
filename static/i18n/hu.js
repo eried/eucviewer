@@ -445,7 +445,7 @@ window.EUC_I18N_DICT = {
 "Impossible accel (m/s²)": "Lehetetlen gyorsulás (m/s²)",
 "In": "Kezdet",
 "In /trips/archive; Restore puts it back in /trips": "A /trips/archive mappában van; a Visszaállítás visszateszi a /trips mappába",
-"In EUC Planet, open <strong>Trip recorder</strong> and share a ride, pick <strong>Export all</strong> from the top-right menu, or enable <strong>Online backup to Dropbox</strong> under <em>Backups &amp; leaderboards</em>.": "Az EUC Planetben nyisd meg a <strong>Menetrögzítő</strong> részt, és ossz meg egy menetet, válaszd a jobb felső menüben az <strong>Összes exportálása</strong> lehetőséget, vagy kapcsold be az <strong>Online mentés Dropboxra</strong> funkciót a <em>Biztonsági mentések és ranglisták</em> alatt.",
+"In EUC Planet, open <strong>Trip recorder</strong> and share a ride, pick <strong>Export all</strong> from the top-right menu, or enable <strong>Online backup to Dropbox</strong> under <em>Backups &amp; leaderboards</em>.": "Az EUC Planetben nyisd meg a <strong>Menetrögzítő</strong> részt, és ossz meg egy menetet, válaszd a jobb felső menüben az <strong>Összes exportálása</strong> lehetőséget, vagy kapcsold be az <strong>Online mentés Dropboxra</strong> funkciót a <em>Biztonsági mentések és Leaderboards</em> alatt.",
 "In sync": "Szinkronban",
 "In-out markers + chroma tails": "Kezdő- és végjelölők + chroma ráhagyás",
 "In-ride cost of speed": "A sebesség ára meneten belül",

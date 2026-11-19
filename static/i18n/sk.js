@@ -445,7 +445,7 @@ window.EUC_I18N_DICT = {
 "Impossible accel (m/s²)": "Nemožné zrýchlenie (m/s²)",
 "In": "Začiatok",
 "In /trips/archive; Restore puts it back in /trips": "V /trips/archive; Obnoviť ju vráti do /trips",
-"In EUC Planet, open <strong>Trip recorder</strong> and share a ride, pick <strong>Export all</strong> from the top-right menu, or enable <strong>Online backup to Dropbox</strong> under <em>Backups &amp; leaderboards</em>.": "V EUC Planet otvorte <strong>Záznamník jázd</strong> a zdieľajte jazdu, v ponuke vpravo hore vyberte <strong>Exportovať všetko</strong> alebo zapnite <strong>Online záloha do Dropboxu</strong> v časti <em>Zálohy a rebríčky</em>.",
+"In EUC Planet, open <strong>Trip recorder</strong> and share a ride, pick <strong>Export all</strong> from the top-right menu, or enable <strong>Online backup to Dropbox</strong> under <em>Backups &amp; leaderboards</em>.": "V EUC Planet otvorte <strong>Záznamník jázd</strong> a zdieľajte jazdu, v ponuke vpravo hore vyberte <strong>Exportovať všetko</strong> alebo zapnite <strong>Online záloha do Dropboxu</strong> v časti <em>Zálohy a Leaderboards</em>.",
 "In sync": "Synchronizovaná",
 "In-out markers + chroma tails": "Značky začiatku a konca + kľúčovacie presahy",
 "In-ride cost of speed": "Cena rýchlosti počas jazdy",

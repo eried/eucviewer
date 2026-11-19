@@ -445,7 +445,7 @@ window.EUC_I18N_DICT = {
 "Impossible accel (m/s²)": "İmkânsız ivme (m/s²)",
 "In": "Giriş",
 "In /trips/archive; Restore puts it back in /trips": "/trips/archive içinde; Geri yükle onu /trips içine geri koyar",
-"In EUC Planet, open <strong>Trip recorder</strong> and share a ride, pick <strong>Export all</strong> from the top-right menu, or enable <strong>Online backup to Dropbox</strong> under <em>Backups &amp; leaderboards</em>.": "EUC Planet'te <strong>Sürüş kaydedici</strong> bölümünü açıp bir sürüşü paylaşın, sağ üstteki menüden <strong>Tümünü dışa aktar</strong> seçeneğini seçin veya <em>Yedekler ve lider tabloları</em> altında <strong>Dropbox'a çevrimiçi yedek</strong> seçeneğini açın.",
+"In EUC Planet, open <strong>Trip recorder</strong> and share a ride, pick <strong>Export all</strong> from the top-right menu, or enable <strong>Online backup to Dropbox</strong> under <em>Backups &amp; leaderboards</em>.": "EUC Planet'te <strong>Sürüş kaydedici</strong> bölümünü açıp bir sürüşü paylaşın, sağ üstteki menüden <strong>Tümünü dışa aktar</strong> seçeneğini seçin veya <em>Yedekler ve Leaderboards</em> altında <strong>Dropbox'a çevrimiçi yedek</strong> seçeneğini açın.",
 "In sync": "Eşit",
 "In-out markers + chroma tails": "Giriş-çıkış işaretleri + chroma uzantıları",
 "In-ride cost of speed": "Sürüş içi hız maliyeti",

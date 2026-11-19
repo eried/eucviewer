@@ -445,7 +445,7 @@ window.EUC_I18N_DICT = {
 "Impossible accel (m/s²)": "あり得ない加速 (m/s²)",
 "In": "イン",
 "In /trips/archive; Restore puts it back in /trips": "/trips/archive にあります。「復元」で /trips に戻します",
-"In EUC Planet, open <strong>Trip recorder</strong> and share a ride, pick <strong>Export all</strong> from the top-right menu, or enable <strong>Online backup to Dropbox</strong> under <em>Backups &amp; leaderboards</em>.": "EUC Planet で <strong>トリップレコーダー</strong> を開いて走行を共有するか、右上のメニューから <strong>すべてエクスポート</strong> を選ぶか、<em>バックアップ &amp; リーダーボード</em> で <strong>Dropbox へのオンラインバックアップ</strong> を有効にします。",
+"In EUC Planet, open <strong>Trip recorder</strong> and share a ride, pick <strong>Export all</strong> from the top-right menu, or enable <strong>Online backup to Dropbox</strong> under <em>Backups &amp; leaderboards</em>.": "EUC Planet で <strong>トリップレコーダー</strong> を開いて走行を共有するか、右上のメニューから <strong>すべてエクスポート</strong> を選ぶか、<em>バックアップ &amp; Leaderboards</em> で <strong>Dropbox へのオンラインバックアップ</strong> を有効にします。",
 "In sync": "同期済み",
 "In-out markers + chroma tails": "イン/アウト点 + クロマの前後余白",
 "In-ride cost of speed": "走行中の速度コスト",

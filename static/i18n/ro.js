@@ -445,7 +445,7 @@ window.EUC_I18N_DICT = {
 "Impossible accel (m/s²)": "Accel. imposibilă (m/s²)",
 "In": "Intrare",
 "In /trips/archive; Restore puts it back in /trips": "În /trips/archive; Restaurează o pune înapoi în /trips",
-"In EUC Planet, open <strong>Trip recorder</strong> and share a ride, pick <strong>Export all</strong> from the top-right menu, or enable <strong>Online backup to Dropbox</strong> under <em>Backups &amp; leaderboards</em>.": "În EUC Planet, deschide <strong>Înregistrator de curse</strong> și partajează o cursă, alege <strong>Exportă tot</strong> din meniul din dreapta sus sau activează <strong>Copie de rezervă online pe Dropbox</strong> din <em>Copii de rezervă și clasamente</em>.",
+"In EUC Planet, open <strong>Trip recorder</strong> and share a ride, pick <strong>Export all</strong> from the top-right menu, or enable <strong>Online backup to Dropbox</strong> under <em>Backups &amp; leaderboards</em>.": "În EUC Planet, deschide <strong>Înregistrator de curse</strong> și partajează o cursă, alege <strong>Exportă tot</strong> din meniul din dreapta sus sau activează <strong>Copie de rezervă online pe Dropbox</strong> din <em>Copii de rezervă și Leaderboards</em>.",
 "In sync": "Sincronizată",
 "In-out markers + chroma tails": "Marcaje intrare-ieșire + cozi chroma",
 "In-ride cost of speed": "Costul vitezei în mers",

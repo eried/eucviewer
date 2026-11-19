@@ -445,7 +445,7 @@ window.EUC_I18N_DICT = {
 "Impossible accel (m/s²)": "อัตราเร่งที่เป็นไปไม่ได้ (m/s²)",
 "In": "เข้า",
 "In /trips/archive; Restore puts it back in /trips": "อยู่ใน /trips/archive กู้คืนจะย้ายกลับไปที่ /trips",
-"In EUC Planet, open <strong>Trip recorder</strong> and share a ride, pick <strong>Export all</strong> from the top-right menu, or enable <strong>Online backup to Dropbox</strong> under <em>Backups &amp; leaderboards</em>.": "ใน EUC Planet เปิด <strong>ตัวบันทึกทริป</strong> แล้วแชร์ทริป เลือก <strong>ส่งออกทั้งหมด</strong> จากเมนูมุมขวาบน หรือเปิดใช้ <strong>สำรองข้อมูลออนไลน์ไปยัง Dropbox</strong> ใน <em>การสำรองข้อมูลและกระดานผู้นำ</em>",
+"In EUC Planet, open <strong>Trip recorder</strong> and share a ride, pick <strong>Export all</strong> from the top-right menu, or enable <strong>Online backup to Dropbox</strong> under <em>Backups &amp; leaderboards</em>.": "ใน EUC Planet เปิด <strong>ตัวบันทึกทริป</strong> แล้วแชร์ทริป เลือก <strong>ส่งออกทั้งหมด</strong> จากเมนูมุมขวาบน หรือเปิดใช้ <strong>สำรองข้อมูลออนไลน์ไปยัง Dropbox</strong> ใน <em>สำรองข้อมูลและ Leaderboards</em>",
 "In sync": "ซิงค์แล้ว",
 "In-out markers + chroma tails": "จุดเข้า-ออก + ส่วนหางโครมา",
 "In-ride cost of speed": "ต้นทุนของความเร็วระหว่างขี่",

@@ -445,7 +445,7 @@ window.EUC_I18N_DICT = {
 "Impossible accel (m/s²)": "Akselerasi mustahil (m/s²)",
 "In": "Awal",
 "In /trips/archive; Restore puts it back in /trips": "Ada di /trips/archive; Pulihkan mengembalikannya ke /trips",
-"In EUC Planet, open <strong>Trip recorder</strong> and share a ride, pick <strong>Export all</strong> from the top-right menu, or enable <strong>Online backup to Dropbox</strong> under <em>Backups &amp; leaderboards</em>.": "Di EUC Planet, buka <strong>Perekam perjalanan</strong> lalu bagikan satu perjalanan, pilih <strong>Ekspor semua</strong> dari menu kanan atas, atau aktifkan <strong>Cadangan online ke Dropbox</strong> di <em>Cadangan &amp; papan peringkat</em>.",
+"In EUC Planet, open <strong>Trip recorder</strong> and share a ride, pick <strong>Export all</strong> from the top-right menu, or enable <strong>Online backup to Dropbox</strong> under <em>Backups &amp; leaderboards</em>.": "Di EUC Planet, buka <strong>Perekam perjalanan</strong> lalu bagikan satu perjalanan, pilih <strong>Ekspor semua</strong> dari menu kanan atas, atau aktifkan <strong>Cadangan online ke Dropbox</strong> di <em>Cadangan &amp; Leaderboards</em>.",
 "In sync": "Sinkron",
 "In-out markers + chroma tails": "Penanda awal-akhir + ekor chroma",
 "In-ride cost of speed": "Biaya kecepatan di dalam perjalanan",

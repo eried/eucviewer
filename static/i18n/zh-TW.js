@@ -445,7 +445,7 @@ window.EUC_I18N_DICT = {
 "Impossible accel (m/s²)": "不可能的加速度 (m/s²)",
 "In": "入點",
 "In /trips/archive; Restore puts it back in /trips": "位於 /trips/archive；按「還原」會放回 /trips",
-"In EUC Planet, open <strong>Trip recorder</strong> and share a ride, pick <strong>Export all</strong> from the top-right menu, or enable <strong>Online backup to Dropbox</strong> under <em>Backups &amp; leaderboards</em>.": "在 EUC Planet 中開啟<strong>行程記錄器</strong>並分享一個行程，或從右上角選單選擇<strong>全部匯出</strong>，也可以在<em>備份與排行榜</em>中啟用<strong>線上備份到 Dropbox</strong>。",
+"In EUC Planet, open <strong>Trip recorder</strong> and share a ride, pick <strong>Export all</strong> from the top-right menu, or enable <strong>Online backup to Dropbox</strong> under <em>Backups &amp; leaderboards</em>.": "在 EUC Planet 中開啟<strong>行程記錄器</strong>並分享一個行程，或從右上角選單選擇<strong>全部匯出</strong>，也可以在<em>備份與 Leaderboards</em>中啟用<strong>線上備份到 Dropbox</strong>。",
 "In sync": "已同步",
 "In-out markers + chroma tails": "入出點 + 色鍵尾段",
 "In-ride cost of speed": "騎乘內的速度成本",

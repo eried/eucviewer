@@ -445,7 +445,7 @@ window.EUC_I18N_DICT = {
 "Impossible accel (m/s²)": "Невъзможно ускорение (m/s²)",
 "In": "Вход",
 "In /trips/archive; Restore puts it back in /trips": "В /trips/archive; „Възстанови“ го връща в /trips",
-"In EUC Planet, open <strong>Trip recorder</strong> and share a ride, pick <strong>Export all</strong> from the top-right menu, or enable <strong>Online backup to Dropbox</strong> under <em>Backups &amp; leaderboards</em>.": "В EUC Planet отворете <strong>Записване на пътувания</strong> и споделете пътуване, изберете <strong>Експортирай всички</strong> от менюто горе вдясно или включете <strong>Онлайн архив в Dropbox</strong> в <em>Архиви и класации</em>.",
+"In EUC Planet, open <strong>Trip recorder</strong> and share a ride, pick <strong>Export all</strong> from the top-right menu, or enable <strong>Online backup to Dropbox</strong> under <em>Backups &amp; leaderboards</em>.": "В EUC Planet отворете <strong>Записване на пътувания</strong> и споделете пътуване, изберете <strong>Експортирай всички</strong> от менюто горе вдясно или включете <strong>Онлайн архив в Dropbox</strong> в <em>Архиви и Leaderboards</em>.",
 "In sync": "Синхронизирано",
 "In-out markers + chroma tails": "Маркери вход-изход + хрома опашки",
 "In-ride cost of speed": "Цената на скоростта по време на каране",

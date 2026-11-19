@@ -445,7 +445,7 @@ window.EUC_I18N_DICT = {
 "Impossible accel (m/s²)": "불가능한 가속 (m/s²)",
 "In": "인",
 "In /trips/archive; Restore puts it back in /trips": "/trips/archive에 있음. 복원하면 /trips로 되돌립니다",
-"In EUC Planet, open <strong>Trip recorder</strong> and share a ride, pick <strong>Export all</strong> from the top-right menu, or enable <strong>Online backup to Dropbox</strong> under <em>Backups &amp; leaderboards</em>.": "EUC Planet에서 <strong>주행 레코더</strong>를 열어 주행을 공유하거나, 오른쪽 위 메뉴에서 <strong>전체 내보내기</strong>를 선택하거나, <em>백업 및 리더보드</em>에서 <strong>Dropbox에 온라인으로 백업합니다</strong>를 켜세요.",
+"In EUC Planet, open <strong>Trip recorder</strong> and share a ride, pick <strong>Export all</strong> from the top-right menu, or enable <strong>Online backup to Dropbox</strong> under <em>Backups &amp; leaderboards</em>.": "EUC Planet에서 <strong>주행 레코더</strong>를 열어 주행을 공유하거나, 오른쪽 위 메뉴에서 <strong>전체 내보내기</strong>를 선택하거나, <em>백업 및 Leaderboards</em>에서 <strong>Dropbox에 온라인으로 백업합니다</strong>를 켜세요.",
 "In sync": "동기화됨",
 "In-out markers + chroma tails": "인/아웃 마커 + 크로마 여백",
 "In-ride cost of speed": "주행 중 속도 비용",

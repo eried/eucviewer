@@ -445,7 +445,7 @@ window.EUC_I18N_DICT = {
 "Impossible accel (m/s²)": "Mahdoton kiihtyvyys (m/s²)",
 "In": "Alku",
 "In /trips/archive; Restore puts it back in /trips": "Kansiossa /trips/archive; Palauta siirtää sen takaisin kansioon /trips",
-"In EUC Planet, open <strong>Trip recorder</strong> and share a ride, pick <strong>Export all</strong> from the top-right menu, or enable <strong>Online backup to Dropbox</strong> under <em>Backups &amp; leaderboards</em>.": "Avaa EUC Planetissa <strong>Matkatallennin</strong> ja jaa matka, valitse oikean yläkulman valikosta <strong>Vie kaikki</strong> tai ota käyttöön <strong>Verkkovarmuuskopio Dropboxiin</strong> kohdassa <em>Varmuuskopiot ja tulostaulut</em>.",
+"In EUC Planet, open <strong>Trip recorder</strong> and share a ride, pick <strong>Export all</strong> from the top-right menu, or enable <strong>Online backup to Dropbox</strong> under <em>Backups &amp; leaderboards</em>.": "Avaa EUC Planetissa <strong>Matkatallennin</strong> ja jaa matka, valitse oikean yläkulman valikosta <strong>Vie kaikki</strong> tai ota käyttöön <strong>Verkkovarmuuskopio Dropboxiin</strong> kohdassa <em>Varmuuskopiot ja Leaderboards</em>.",
 "In sync": "Synkronoitu",
 "In-out markers + chroma tails": "Alku- ja loppumerkit + chroma-hännät",
 "In-ride cost of speed": "Nopeuden hinta ajon aikana",

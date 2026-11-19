@@ -445,7 +445,7 @@ window.EUC_I18N_DICT = {
 "Impossible accel (m/s²)": "Acel. impossível (m/s²)",
 "In": "Entrada",
 "In /trips/archive; Restore puts it back in /trips": "Em /trips/archive; Restaurar devolve-o a /trips",
-"In EUC Planet, open <strong>Trip recorder</strong> and share a ride, pick <strong>Export all</strong> from the top-right menu, or enable <strong>Online backup to Dropbox</strong> under <em>Backups &amp; leaderboards</em>.": "No EUC Planet, abra <strong>Gravador de percursos</strong> e partilhe um percurso, escolha <strong>Exportar tudo</strong> no menu do canto superior direito ou ative <strong>Cópia de segurança online no Dropbox</strong> em <em>Cópias e classificações</em>.",
+"In EUC Planet, open <strong>Trip recorder</strong> and share a ride, pick <strong>Export all</strong> from the top-right menu, or enable <strong>Online backup to Dropbox</strong> under <em>Backups &amp; leaderboards</em>.": "No EUC Planet, abra <strong>Gravador de percursos</strong> e partilhe um percurso, escolha <strong>Exportar tudo</strong> no menu do canto superior direito ou ative <strong>Cópia de segurança online no Dropbox</strong> em <em>Cópias e Leaderboards</em>.",
 "In sync": "Sincronizado",
 "In-out markers + chroma tails": "Marcadores de entrada/saída + caudas chroma",
 "In-ride cost of speed": "Custo da velocidade em andamento",
