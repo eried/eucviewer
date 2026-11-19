@@ -1224,6 +1224,17 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
   if (mapControlsToggle) mapControlsToggle.addEventListener("click", () => mapControlsEl.classList.toggle("collapsed"));
+  // The menu is a different one on the start screen and on the map, so it
+  // never stays open across the two: opening files or going back closes it.
+  (function () {
+    const startEl = document.getElementById("upload-overlay");
+    if (!startEl || !mapControlsEl || typeof MutationObserver === "undefined") return;
+    let wasStart = !startEl.classList.contains("hidden");
+    new MutationObserver(() => {
+      const isStart = !startEl.classList.contains("hidden");
+      if (isStart !== wasStart) { wasStart = isStart; mapControlsEl.classList.add("collapsed"); }
+    }).observe(startEl, { attributes: true, attributeFilter: ["class"] });
+  })();
 
   // --- Hover tooltip for selected track ---
   const tooltip = document.createElement("div");
@@ -1587,6 +1598,9 @@ document.addEventListener("DOMContentLoaded", function () {
     clearBtn.addEventListener("click", async () => {
       await clearRecentFiles();
       await renderRecentFiles();
+      // Nothing left for the menu to do here.
+      const menu = document.getElementById("map-controls");
+      if (menu) menu.classList.add("collapsed");
       // Belt-and-braces: if a previous load left the actions row hidden,
       // make sure Upload trips + Dropbox come back. Recents going away
       // shouldn't strand the user without entry points.
